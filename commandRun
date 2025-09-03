@@ -52,3 +52,14 @@ git log -n 20 --stat
 
 # who contributed & how many commits
 git shortlog -sne --all
+
+
+
+#############################################################################
+For k3s
+kubectl apply -f optimusdb-k3s.yaml
+kubectl -n optimusdb get pods,svc
+
+In the config file...
+If you don’t have MetalLB yet, switch all three Services to:
+type: NodePort
