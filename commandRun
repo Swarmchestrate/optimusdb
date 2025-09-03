@@ -41,3 +41,14 @@ This makes swarmnet an overlay network so all OptimusDB nodes can communicate ac
 git branch -M main
 git remote add origin https://github.com/georgeGeorgakakos/optimusdb.git
 git push -u origin main
+
+
+
+# compact graph of everything
+git log --oneline --decorate --graph --all
+
+# last 20 with changed files
+git log -n 20 --stat
+
+# who contributed & how many commits
+git shortlog -sne --all
