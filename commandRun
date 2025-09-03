@@ -54,6 +54,13 @@ git log -n 20 --stat
 git shortlog -sne --all
 
 
+########################################################################3
+#Overwrite the remote (you really want your local copy to win)
+git fetch origin                     # refresh the lease info
+git push --force-with-lease origin HEAD:main
+
+
+
 
 #############################################################################
 For k3s
@@ -63,3 +70,4 @@ kubectl -n optimusdb get pods,svc
 In the config file...
 If you don’t have MetalLB yet, switch all three Services to:
 type: NodePort
+
