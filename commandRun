@@ -1,0 +1,43 @@
+####
+
+#### OptimusDB Core
+docker build --no-cache -t optimusdb .
+docker run -d --network=swarmnet --name=optimusdb1 -p 18001:8089 -p 14001:4001 -p 15001:5001 optimusdb
+docker run -d --network=swarmnet --name=optimusdb2 -p 18002:8089 -p 14002:4001 -p 15002:5001 optimusdb
+docker run -d --network=swarmnet --name=optimusdb3 -p 18003:8089 -p 14003:4001 -p 15003:5001 optimusdb
+
+docker run -d --network=swarmnet --name=optimusdb4 -p 18004:8090 -p 14004:4001 -p 15004:5001 optimusdb
+docker run -d --network=swarmnet --name=optimusdb5 -p 18005:8090 -p 14005:4001 -p 15005:5001 optimusdb
+docker run -d --network=swarmnet --name=optimusdb6 -p 18006:8090 -p 14006:4001 -p 15006:5001 optimusdb
+
+
+#### OptimusDB UI
+docker build --no-cache -t optimusdbUI .
+docker run -d --network=swarmnet --name=optimusdbui -p 18010:80 18011:4001 18012:5001 18013:9090 optimusdbui
+
+
+#### OptimusDB Command Center
+npm start
+npm run build
+
+
+
+
+#########################33
+PS C:\Users\georg> docker network ls
+NETWORK ID     NAME      DRIVER    SCOPE
+ffafebf41795   bridge    bridge    local
+de08effd63e3   host      host      local
+41f2823f2d94   none      null      local
+PS C:\Users\georg> docker network create --driver bridge swarmnet
+814feee1a3fffe14c874be73ca162382b90ced5534340e8366428753c6190125
+
+docker swarm init   # only if swarm is not initialized
+docker network create --driver overlay swarmnet
+
+This makes swarmnet an overlay network so all OptimusDB nodes can communicate across different Docker hosts.
+
+# Point origin to the new GitHub repo
+git branch -M main
+git remote add origin https://github.com/georgeGeorgakakos/optimusdb.git
+git push -u origin main

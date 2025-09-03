@@ -1,0 +1,146 @@
+{
+  "Identity": {
+    "PeerID": "QmciaYL6BZCtwt7wYKSH5y6gU5biAXNkkWsiG28YYSGo63",
+    "PrivKey": "CAASqAkwggSkAgEAAoIBAQCeQ/Hi9M8bHCYXyIVxPuarObeOo2wGeCliaQ1oYInYFbTBsnMgXLxjjHcP11hqrAKG9K29/3m+KJ8R19/1xHnb0FJXadpqYeUFQgfz/w3pI5yBiyNkjZZashIIZffm4p5TEktiRMi5YEKsFbJVGTJkakT4WMV/Q+sosBDpwU+KwYpRL/P552iDPcY9ClQMHYEFdRcAVylyLg9iVN2UhIKtRVX+Y02QQy8OX7/OpPlYDD6Rj9VTHFCvvUfl7xuh0663k6xeed5Xoy1mBKRg/2torjBa+pKlNciI/rvYotpX9+u9xTlCkbGQAutYYO0nazrIJDyM8iw0ZEWeyRyIEdg/AgMBAAECggEAIyk1NBbvbDZ0wBPskZxH4wKPpUDpXwaTKynrsKTB+x/XaLEcorP3pqYuTXaqTgipBxKVBwEbKwQbUvuC5jcgW5WMtZ7ux3O4TdK9sZeYn5Mp0h33Xv+Vx9CH8RW2XbU7N3l5BfwCHC0motSvKfjPGUAC0qnmNsAAHqn/F++6nDjJ55P4Zud92EkVzENULYZmaWtcYNR3LYeAgbTgWicsISowF2bOUBTIys8dGilt6vobhjmCNuW5/DdFrTZE3Ev62pBO+s5CA2+q8wYtj1ZNCRsJQPC4SWATwY36vWclNij96uXR4ySPy8cykIj3xQFkWMkvbFtGyWd1TydOFw4ZAQKBgQDPX/P0j5lF6dT5NORd0j5CbdXFCJI2bsrcwIuLvhsC1xpaqzdmWkV3ATq3YK4BYzMVN7CmktPVflAZO2nQp7vOwFqjl8FD62mPW45pXhENtYiPi2APbFf2dKxDfTl0Y+kOsnaoNzwk+5PhuVkMEMwWjyh9Er0+OFGGc8qAT7/RWwKBgQDDYBx9iUCMYQYXfLwtoX4eznLFGBssXf7NMgIcH2wzu+TpSuRZBhzKEBmkHfSTcrzqVHAx1qYlE02kLa+8TaFQYM1nGppG12C/wHSIRvE+M9lZbT98AvzQ7OgyY9FwsNq/b/QJ2o162cvm4hAsPHBHNV6gt1iaEcQACUu9ccbF7QKBgFhOwBAw5lBDVxIYV/csBJ89Ln8NO1Y6r+B5jfMgLVh0SSC7MIhBgLtApsRYQ0EMAUDTykHk3JhZhbp49oKIKw3ME8z+XqqRoQ4PKwHrsM9pspGOBIYM2Rh2brT+qmzJ7wD3NlhDzTTifQLubuEYdhBVPiSkyjmoue7LeDxTuZdpAoGBAKt8zQUTV+jfsK0k+zdCLKV1qB9/jTpgNqp9XoS4wAyYu9BZwByz1Mk3YIpBEM/rQg6clu3n7mVUkC2vPDUYHqOilCgPnaLYoT8t+hszycRDVl+8GKENLkNj7ltsagVz9k1aQuXzQ4O1b9f0TSXG1vZpzelbhRWWymcNwcFDAKnxAoGBAKHejsD8Udr6lR340BrvQOFfJt/jolCWPeeyEBezV7yQMCMyzbY4hWC1AopTvUjViVbDZeMtzFQUOrZFDawNSfu0gwYjkklOIRxlJWkNCDTlFsKFi2OhPlgF7LZXoKvgdQJPcy8L+KNkUtkeAKznuzh8mxCbvVrvh85FQU6DX3+b"
+  },
+  "Datastore": {
+    "StorageMax": "10GB",
+    "StorageGCWatermark": 90,
+    "GCPeriod": "1h",
+    "Spec": {
+      "mounts": [
+        {
+          "child": {
+            "path": "blocks",
+            "shardFunc": "/repo/flatfs/shard/v1/next-to-last/2",
+            "sync": true,
+            "type": "flatfs"
+          },
+          "mountpoint": "/blocks",
+          "prefix": "flatfs.datastore",
+          "type": "measure"
+        },
+        {
+          "child": {
+            "compression": "none",
+            "path": "datastore",
+            "type": "levelds"
+          },
+          "mountpoint": "/",
+          "prefix": "leveldb.datastore",
+          "type": "measure"
+        }
+      ],
+      "type": "mount"
+    },
+    "HashOnRead": false,
+    "BloomFilterSize": 0
+  },
+  "Addresses": {
+    "Swarm": [
+      "/ip4/0.0.0.0/tcp/4001",
+      "/ip6/::1/tcp/4001"
+    ],
+    "Announce": [],
+    "AppendAnnounce": [],
+    "NoAnnounce": [],
+    "API": "/ip4/127.0.0.1/tcp/5001",
+    "Gateway": "/ip4/127.0.0.1/tcp/8080"
+  },
+  "Mounts": {
+    "IPFS": "/ipfs",
+    "IPNS": "/ipns",
+    "FuseAllowOther": false
+  },
+  "Discovery": {
+    "MDNS": {
+      "Enabled": true
+    }
+  },
+  "Routing": {
+    "Routers": null,
+    "Methods": null
+  },
+  "Ipns": {
+    "RepublishPeriod": "",
+    "RecordLifetime": "",
+    "ResolveCacheSize": 128
+  },
+  "Bootstrap": [],
+  "Gateway": {
+    "HTTPHeaders": {
+      "Access-Control-Allow-Headers": [
+        "X-Requested-With",
+        "Range",
+        "User-Agent"
+      ],
+      "Access-Control-Allow-Methods": [
+        "GET"
+      ],
+      "Access-Control-Allow-Origin": [
+        "*"
+      ]
+    },
+    "RootRedirect": "",
+    "PathPrefixes": [],
+    "APICommands": [],
+    "NoFetch": false,
+    "NoDNSLink": false,
+    "PublicGateways": null
+  },
+  "API": {
+    "HTTPHeaders": {}
+  },
+  "Swarm": {
+    "AddrFilters": null,
+    "DisableBandwidthMetrics": false,
+    "DisableNatPortMap": false,
+    "RelayClient": {},
+    "RelayService": {},
+    "Transports": {
+      "Network": {},
+      "Security": {},
+      "Multiplexers": {}
+    },
+    "ConnMgr": {},
+    "ResourceMgr": {
+      "Limits": {}
+    }
+  },
+  "AutoNAT": {},
+  "Pubsub": {
+    "Router": "gossipsub",
+    "DisableSigning": false,
+    "Enabled": true
+  },
+  "Peering": {
+    "Peers": null
+  },
+  "DNS": {
+    "Resolvers": {}
+  },
+  "Migration": {
+    "DownloadSources": [],
+    "Keep": ""
+  },
+  "Provider": {
+    "Strategy": ""
+  },
+  "Reprovider": {},
+  "Experimental": {
+    "FilestoreEnabled": true,
+    "UrlstoreEnabled": true,
+    "GraphsyncEnabled": false,
+    "Libp2pStreamMounting": true,
+    "P2pHttpProxy": true,
+    "StrategicProviding": false,
+    "AcceleratedDHTClient": false
+  },
+  "Plugins": {
+    "Plugins": null
+  },
+  "Pinning": {
+    "RemoteServices": {}
+  },
+  "Internal": {}
+}

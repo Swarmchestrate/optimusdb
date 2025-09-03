@@ -1,0 +1,22 @@
+{
+  "KBmetadata": {
+    "fields": [
+      {"name": "_id", "type": "string", "description": "Unique identifier for the metadata entry (Primary Key)"},
+      {"name": "metadata_type", "type": "string", "description": "Type of metadata (e.g., Workflow, Resource)"},
+      {"name": "associated_id", "type": "string", "description": "Identifier of the associated entity in KBdata"},
+      {"name": "name", "type": "string", "description": "Human-readable name of the entity"},
+      {"name": "description", "type": "string", "description": "Detailed description of the metadata entry"},
+      {"name": "tags", "type": "array[string]", "description": "Tags for categorizing or indexing the metadata"},
+      {"name": "status", "type": "string", "description": "Current status of the metadata entry"},
+      {"name": "created_by", "type": "string", "description": "Identifier of the user or system that created the metadata entry"},
+      {"name": "created_at", "type": "timestamp", "description": "Timestamp when the metadata was created"},
+      {"name": "updated_at", "type": "timestamp", "description": "Timestamp when the metadata was last updated"},
+      {"name": "related_ids", "type": "array[string]", "description": "List of related metadata entries"},
+      {"name": "priority", "type": "string", "description": "Priority level (e.g., High, Medium, Low)"},
+      {"name": "scheduling_info", "type": "object", "description": "Scheduling information (e.g., cron expressions)"},
+      {"name": "sla_constraints", "type": "object", "description": "SLA constraints (e.g., latency, throughput)"},
+      {"name": "ownership_details", "type": "object", "description": "Ownership details (e.g., owner, team, organization)"},
+      {"name": "audit_trail", "type": "array[object]", "description": "Audit history of changes"}
+    ]
+  }
+}
