@@ -1,0 +1,916 @@
+version: '3.8'
+
+# OptimusDB Production Deployment
+# Architecture: Heterogeneous Resource Sidecar Pattern
+# Total Containers: 16 (8 agents + 8 TinyLlama sidecars)
+# Network: Bridge (172.28.0.0/16)
+
+services:
+  # =============================================================================
+  # COORDINATOR NODE - Agent-1
+  # Enhanced resources for heavy metadata generation workload
+  # =============================================================================
+
+  tinyllama-agent-1:
+    image: optimusdb/tinyllama:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.tinyllama
+    container_name: tinyllama-agent-1
+    hostname: tinyllama-agent-1
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+    environment:
+      - MODEL_PATH=/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      - LLAMA_HOST=0.0.0.0
+      - LLAMA_PORT=8080
+      - LLAMA_CTX_SIZE=4096
+      - LLAMA_N_GPU_LAYERS=0
+      - LLAMA_THREADS=4
+      - LLAMA_N_PARALLEL=2
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.10
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=tinyllama"
+      - "com.optimusdb.agent=1"
+      - "com.optimusdb.role=coordinator"
+
+  optimusdb-agent-1:
+    image: optimusdb/agent:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: optimusdb-agent-1
+    hostname: optimusdb-agent-1
+    restart: unless-stopped
+    depends_on:
+      tinyllama-agent-1:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    ports:
+      - "9091:9091"  # REST API
+      - "8081:8081"  # Credentials API
+    environment:
+      - AGENT_ID=1
+      - AGENT_PORT=9091
+      - CREDENTIALS_PORT=8081
+      - IPFS_API=/ip4/127.0.0.1/tcp/5001
+      - ORBITDB_DIRECTORY=/data/orbitdb
+      - SQLITE_PATH=/data/optimusdb.db
+      - BOOTSTRAP_PEERS=
+      - ELECTION_ENABLED=true
+      - ELECTION_HEARTBEAT_INTERVAL=5s
+      - ELECTION_LEASE_DURATION=15s
+      - ELECTION_VOTE_TIMEOUT=10s
+      - TINYLLAMA_ENDPOINT=http://tinyllama-agent-1:8080/v1/completions
+      - TINYLLAMA_ENABLED=true
+      - TINYLLAMA_TIMEOUT=30s
+      - TINYLLAMA_MAX_TOKENS=512
+      - TINYLLAMA_TEMPERATURE=0.7
+      - LOG_LEVEL=info
+      - RUST_LOG=info
+    volumes:
+      - agent1-data:/data
+      - agent1-orbitdb:/data/orbitdb
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.11
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=agent"
+      - "com.optimusdb.agent=1"
+      - "com.optimusdb.role=coordinator"
+
+  # =============================================================================
+  # FOLLOWER NODE - Agent-2
+  # =============================================================================
+
+  tinyllama-agent-2:
+    image: optimusdb/tinyllama:latest
+    container_name: tinyllama-agent-2
+    hostname: tinyllama-agent-2
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    environment:
+      - MODEL_PATH=/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      - LLAMA_HOST=0.0.0.0
+      - LLAMA_PORT=8080
+      - LLAMA_CTX_SIZE=2048
+      - LLAMA_N_GPU_LAYERS=0
+      - LLAMA_THREADS=2
+      - LLAMA_N_PARALLEL=1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.20
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=tinyllama"
+      - "com.optimusdb.agent=2"
+      - "com.optimusdb.role=follower"
+
+  optimusdb-agent-2:
+    image: optimusdb/agent:latest
+    container_name: optimusdb-agent-2
+    hostname: optimusdb-agent-2
+    restart: unless-stopped
+    depends_on:
+      tinyllama-agent-2:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    ports:
+      - "9092:9091"
+      - "8082:8081"
+    environment:
+      - AGENT_ID=2
+      - AGENT_PORT=9091
+      - CREDENTIALS_PORT=8081
+      - IPFS_API=/ip4/127.0.0.1/tcp/5001
+      - ORBITDB_DIRECTORY=/data/orbitdb
+      - SQLITE_PATH=/data/optimusdb.db
+      - BOOTSTRAP_PEERS=/ip4/172.28.1.11/tcp/9091
+      - ELECTION_ENABLED=true
+      - ELECTION_HEARTBEAT_INTERVAL=5s
+      - ELECTION_LEASE_DURATION=15s
+      - ELECTION_VOTE_TIMEOUT=10s
+      - TINYLLAMA_ENDPOINT=http://tinyllama-agent-2:8080/v1/completions
+      - TINYLLAMA_ENABLED=true
+      - TINYLLAMA_TIMEOUT=30s
+      - TINYLLAMA_MAX_TOKENS=512
+      - TINYLLAMA_TEMPERATURE=0.7
+      - LOG_LEVEL=info
+      - RUST_LOG=info
+    volumes:
+      - agent2-data:/data
+      - agent2-orbitdb:/data/orbitdb
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.21
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=agent"
+      - "com.optimusdb.agent=2"
+      - "com.optimusdb.role=follower"
+
+  # =============================================================================
+  # FOLLOWER NODE - Agent-3
+  # =============================================================================
+
+  tinyllama-agent-3:
+    image: optimusdb/tinyllama:latest
+    container_name: tinyllama-agent-3
+    hostname: tinyllama-agent-3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    environment:
+      - MODEL_PATH=/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      - LLAMA_HOST=0.0.0.0
+      - LLAMA_PORT=8080
+      - LLAMA_CTX_SIZE=2048
+      - LLAMA_N_GPU_LAYERS=0
+      - LLAMA_THREADS=2
+      - LLAMA_N_PARALLEL=1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.30
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=tinyllama"
+      - "com.optimusdb.agent=3"
+      - "com.optimusdb.role=follower"
+
+  optimusdb-agent-3:
+    image: optimusdb/agent:latest
+    container_name: optimusdb-agent-3
+    hostname: optimusdb-agent-3
+    restart: unless-stopped
+    depends_on:
+      tinyllama-agent-3:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    ports:
+      - "9093:9091"
+      - "8083:8081"
+    environment:
+      - AGENT_ID=3
+      - AGENT_PORT=9091
+      - CREDENTIALS_PORT=8081
+      - IPFS_API=/ip4/127.0.0.1/tcp/5001
+      - ORBITDB_DIRECTORY=/data/orbitdb
+      - SQLITE_PATH=/data/optimusdb.db
+      - BOOTSTRAP_PEERS=/ip4/172.28.1.11/tcp/9091,/ip4/172.28.1.21/tcp/9091
+      - ELECTION_ENABLED=true
+      - ELECTION_HEARTBEAT_INTERVAL=5s
+      - ELECTION_LEASE_DURATION=15s
+      - ELECTION_VOTE_TIMEOUT=10s
+      - TINYLLAMA_ENDPOINT=http://tinyllama-agent-3:8080/v1/completions
+      - TINYLLAMA_ENABLED=true
+      - TINYLLAMA_TIMEOUT=30s
+      - TINYLLAMA_MAX_TOKENS=512
+      - TINYLLAMA_TEMPERATURE=0.7
+      - LOG_LEVEL=info
+      - RUST_LOG=info
+    volumes:
+      - agent3-data:/data
+      - agent3-orbitdb:/data/orbitdb
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.31
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=agent"
+      - "com.optimusdb.agent=3"
+      - "com.optimusdb.role=follower"
+
+  # =============================================================================
+  # FOLLOWER NODE - Agent-4
+  # =============================================================================
+
+  tinyllama-agent-4:
+    image: optimusdb/tinyllama:latest
+    container_name: tinyllama-agent-4
+    hostname: tinyllama-agent-4
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    environment:
+      - MODEL_PATH=/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      - LLAMA_HOST=0.0.0.0
+      - LLAMA_PORT=8080
+      - LLAMA_CTX_SIZE=2048
+      - LLAMA_N_GPU_LAYERS=0
+      - LLAMA_THREADS=2
+      - LLAMA_N_PARALLEL=1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.40
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=tinyllama"
+      - "com.optimusdb.agent=4"
+      - "com.optimusdb.role=follower"
+
+  optimusdb-agent-4:
+    image: optimusdb/agent:latest
+    container_name: optimusdb-agent-4
+    hostname: optimusdb-agent-4
+    restart: unless-stopped
+    depends_on:
+      tinyllama-agent-4:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    ports:
+      - "9094:9091"
+      - "8084:8081"
+    environment:
+      - AGENT_ID=4
+      - AGENT_PORT=9091
+      - CREDENTIALS_PORT=8081
+      - IPFS_API=/ip4/127.0.0.1/tcp/5001
+      - ORBITDB_DIRECTORY=/data/orbitdb
+      - SQLITE_PATH=/data/optimusdb.db
+      - BOOTSTRAP_PEERS=/ip4/172.28.1.11/tcp/9091,/ip4/172.28.1.21/tcp/9091,/ip4/172.28.1.31/tcp/9091
+      - ELECTION_ENABLED=true
+      - ELECTION_HEARTBEAT_INTERVAL=5s
+      - ELECTION_LEASE_DURATION=15s
+      - ELECTION_VOTE_TIMEOUT=10s
+      - TINYLLAMA_ENDPOINT=http://tinyllama-agent-4:8080/v1/completions
+      - TINYLLAMA_ENABLED=true
+      - TINYLLAMA_TIMEOUT=30s
+      - TINYLLAMA_MAX_TOKENS=512
+      - TINYLLAMA_TEMPERATURE=0.7
+      - LOG_LEVEL=info
+      - RUST_LOG=info
+    volumes:
+      - agent4-data:/data
+      - agent4-orbitdb:/data/orbitdb
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.41
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=agent"
+      - "com.optimusdb.agent=4"
+      - "com.optimusdb.role=follower"
+
+  # =============================================================================
+  # FOLLOWER NODE - Agent-5
+  # =============================================================================
+
+  tinyllama-agent-5:
+    image: optimusdb/tinyllama:latest
+    container_name: tinyllama-agent-5
+    hostname: tinyllama-agent-5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    environment:
+      - MODEL_PATH=/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      - LLAMA_HOST=0.0.0.0
+      - LLAMA_PORT=8080
+      - LLAMA_CTX_SIZE=2048
+      - LLAMA_N_GPU_LAYERS=0
+      - LLAMA_THREADS=2
+      - LLAMA_N_PARALLEL=1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.50
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=tinyllama"
+      - "com.optimusdb.agent=5"
+      - "com.optimusdb.role=follower"
+
+  optimusdb-agent-5:
+    image: optimusdb/agent:latest
+    container_name: optimusdb-agent-5
+    hostname: optimusdb-agent-5
+    restart: unless-stopped
+    depends_on:
+      tinyllama-agent-5:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    ports:
+      - "9095:9091"
+      - "8085:8081"
+    environment:
+      - AGENT_ID=5
+      - AGENT_PORT=9091
+      - CREDENTIALS_PORT=8081
+      - IPFS_API=/ip4/127.0.0.1/tcp/5001
+      - ORBITDB_DIRECTORY=/data/orbitdb
+      - SQLITE_PATH=/data/optimusdb.db
+      - BOOTSTRAP_PEERS=/ip4/172.28.1.11/tcp/9091,/ip4/172.28.1.21/tcp/9091,/ip4/172.28.1.31/tcp/9091,/ip4/172.28.1.41/tcp/9091
+      - ELECTION_ENABLED=true
+      - ELECTION_HEARTBEAT_INTERVAL=5s
+      - ELECTION_LEASE_DURATION=15s
+      - ELECTION_VOTE_TIMEOUT=10s
+      - TINYLLAMA_ENDPOINT=http://tinyllama-agent-5:8080/v1/completions
+      - TINYLLAMA_ENABLED=true
+      - TINYLLAMA_TIMEOUT=30s
+      - TINYLLAMA_MAX_TOKENS=512
+      - TINYLLAMA_TEMPERATURE=0.7
+      - LOG_LEVEL=info
+      - RUST_LOG=info
+    volumes:
+      - agent5-data:/data
+      - agent5-orbitdb:/data/orbitdb
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.51
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=agent"
+      - "com.optimusdb.agent=5"
+      - "com.optimusdb.role=follower"
+
+  # =============================================================================
+  # FOLLOWER NODE - Agent-6
+  # =============================================================================
+
+  tinyllama-agent-6:
+    image: optimusdb/tinyllama:latest
+    container_name: tinyllama-agent-6
+    hostname: tinyllama-agent-6
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    environment:
+      - MODEL_PATH=/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      - LLAMA_HOST=0.0.0.0
+      - LLAMA_PORT=8080
+      - LLAMA_CTX_SIZE=2048
+      - LLAMA_N_GPU_LAYERS=0
+      - LLAMA_THREADS=2
+      - LLAMA_N_PARALLEL=1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.60
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=tinyllama"
+      - "com.optimusdb.agent=6"
+      - "com.optimusdb.role=follower"
+
+  optimusdb-agent-6:
+    image: optimusdb/agent:latest
+    container_name: optimusdb-agent-6
+    hostname: optimusdb-agent-6
+    restart: unless-stopped
+    depends_on:
+      tinyllama-agent-6:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    ports:
+      - "9096:9091"
+      - "8086:8081"
+    environment:
+      - AGENT_ID=6
+      - AGENT_PORT=9091
+      - CREDENTIALS_PORT=8081
+      - IPFS_API=/ip4/127.0.0.1/tcp/5001
+      - ORBITDB_DIRECTORY=/data/orbitdb
+      - SQLITE_PATH=/data/optimusdb.db
+      - BOOTSTRAP_PEERS=/ip4/172.28.1.11/tcp/9091,/ip4/172.28.1.21/tcp/9091,/ip4/172.28.1.31/tcp/9091,/ip4/172.28.1.41/tcp/9091,/ip4/172.28.1.51/tcp/9091
+      - ELECTION_ENABLED=true
+      - ELECTION_HEARTBEAT_INTERVAL=5s
+      - ELECTION_LEASE_DURATION=15s
+      - ELECTION_VOTE_TIMEOUT=10s
+      - TINYLLAMA_ENDPOINT=http://tinyllama-agent-6:8080/v1/completions
+      - TINYLLAMA_ENABLED=true
+      - TINYLLAMA_TIMEOUT=30s
+      - TINYLLAMA_MAX_TOKENS=512
+      - TINYLLAMA_TEMPERATURE=0.7
+      - LOG_LEVEL=info
+      - RUST_LOG=info
+    volumes:
+      - agent6-data:/data
+      - agent6-orbitdb:/data/orbitdb
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.61
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=agent"
+      - "com.optimusdb.agent=6"
+      - "com.optimusdb.role=follower"
+
+  # =============================================================================
+  # FOLLOWER NODE - Agent-7
+  # =============================================================================
+
+  tinyllama-agent-7:
+    image: optimusdb/tinyllama:latest
+    container_name: tinyllama-agent-7
+    hostname: tinyllama-agent-7
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    environment:
+      - MODEL_PATH=/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      - LLAMA_HOST=0.0.0.0
+      - LLAMA_PORT=8080
+      - LLAMA_CTX_SIZE=2048
+      - LLAMA_N_GPU_LAYERS=0
+      - LLAMA_THREADS=2
+      - LLAMA_N_PARALLEL=1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.70
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=tinyllama"
+      - "com.optimusdb.agent=7"
+      - "com.optimusdb.role=follower"
+
+  optimusdb-agent-7:
+    image: optimusdb/agent:latest
+    container_name: optimusdb-agent-7
+    hostname: optimusdb-agent-7
+    restart: unless-stopped
+    depends_on:
+      tinyllama-agent-7:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    ports:
+      - "9097:9091"
+      - "8087:8081"
+    environment:
+      - AGENT_ID=7
+      - AGENT_PORT=9091
+      - CREDENTIALS_PORT=8081
+      - IPFS_API=/ip4/127.0.0.1/tcp/5001
+      - ORBITDB_DIRECTORY=/data/orbitdb
+      - SQLITE_PATH=/data/optimusdb.db
+      - BOOTSTRAP_PEERS=/ip4/172.28.1.11/tcp/9091,/ip4/172.28.1.21/tcp/9091,/ip4/172.28.1.31/tcp/9091,/ip4/172.28.1.41/tcp/9091,/ip4/172.28.1.51/tcp/9091,/ip4/172.28.1.61/tcp/9091
+      - ELECTION_ENABLED=true
+      - ELECTION_HEARTBEAT_INTERVAL=5s
+      - ELECTION_LEASE_DURATION=15s
+      - ELECTION_VOTE_TIMEOUT=10s
+      - TINYLLAMA_ENDPOINT=http://tinyllama-agent-7:8080/v1/completions
+      - TINYLLAMA_ENABLED=true
+      - TINYLLAMA_TIMEOUT=30s
+      - TINYLLAMA_MAX_TOKENS=512
+      - TINYLLAMA_TEMPERATURE=0.7
+      - LOG_LEVEL=info
+      - RUST_LOG=info
+    volumes:
+      - agent7-data:/data
+      - agent7-orbitdb:/data/orbitdb
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.71
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=agent"
+      - "com.optimusdb.agent=7"
+      - "com.optimusdb.role=follower"
+
+  # =============================================================================
+  # FOLLOWER NODE - Agent-8
+  # =============================================================================
+
+  tinyllama-agent-8:
+    image: optimusdb/tinyllama:latest
+    container_name: tinyllama-agent-8
+    hostname: tinyllama-agent-8
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    environment:
+      - MODEL_PATH=/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      - LLAMA_HOST=0.0.0.0
+      - LLAMA_PORT=8080
+      - LLAMA_CTX_SIZE=2048
+      - LLAMA_N_GPU_LAYERS=0
+      - LLAMA_THREADS=2
+      - LLAMA_N_PARALLEL=1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.80
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=tinyllama"
+      - "com.optimusdb.agent=8"
+      - "com.optimusdb.role=follower"
+
+  optimusdb-agent-8:
+    image: optimusdb/agent:latest
+    container_name: optimusdb-agent-8
+    hostname: optimusdb-agent-8
+    restart: unless-stopped
+    depends_on:
+      tinyllama-agent-8:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    ports:
+      - "9098:9091"
+      - "8088:8081"
+    environment:
+      - AGENT_ID=8
+      - AGENT_PORT=9091
+      - CREDENTIALS_PORT=8081
+      - IPFS_API=/ip4/127.0.0.1/tcp/5001
+      - ORBITDB_DIRECTORY=/data/orbitdb
+      - SQLITE_PATH=/data/optimusdb.db
+      - BOOTSTRAP_PEERS=/ip4/172.28.1.11/tcp/9091,/ip4/172.28.1.21/tcp/9091,/ip4/172.28.1.31/tcp/9091,/ip4/172.28.1.41/tcp/9091,/ip4/172.28.1.51/tcp/9091,/ip4/172.28.1.61/tcp/9091,/ip4/172.28.1.71/tcp/9091
+      - ELECTION_ENABLED=true
+      - ELECTION_HEARTBEAT_INTERVAL=5s
+      - ELECTION_LEASE_DURATION=15s
+      - ELECTION_VOTE_TIMEOUT=10s
+      - TINYLLAMA_ENDPOINT=http://tinyllama-agent-8:8080/v1/completions
+      - TINYLLAMA_ENABLED=true
+      - TINYLLAMA_TIMEOUT=30s
+      - TINYLLAMA_MAX_TOKENS=512
+      - TINYLLAMA_TEMPERATURE=0.7
+      - LOG_LEVEL=info
+      - RUST_LOG=info
+    volumes:
+      - agent8-data:/data
+      - agent8-orbitdb:/data/orbitdb
+    networks:
+      optimusdb-network:
+        ipv4_address: 172.28.1.81
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "com.optimusdb.service=agent"
+      - "com.optimusdb.agent=8"
+      - "com.optimusdb.role=follower"
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+
+networks:
+  optimusdb-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
+    driver_opts:
+      com.docker.network.bridge.name: optimusdb0
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+
+volumes:
+  # Agent-1 volumes
+  agent1-data:
+    driver: local
+    labels:
+      com.optimusdb.agent: "1"
+      com.optimusdb.type: "data"
+  agent1-orbitdb:
+    driver: local
+    labels:
+      com.optimusdb.agent: "1"
+      com.optimusdb.type: "orbitdb"
+
+  # Agent-2 volumes
+  agent2-data:
+    driver: local
+    labels:
+      com.optimusdb.agent: "2"
+      com.optimusdb.type: "data"
+  agent2-orbitdb:
+    driver: local
+    labels:
+      com.optimusdb.agent: "2"
+      com.optimusdb.type: "orbitdb"
+
+  # Agent-3 volumes
+  agent3-data:
+    driver: local
+    labels:
+      com.optimusdb.agent: "3"
+      com.optimusdb.type: "data"
+  agent3-orbitdb:
+    driver: local
+    labels:
+      com.optimusdb.agent: "3"
+      com.optimusdb.type: "orbitdb"
+
+  # Agent-4 volumes
+  agent4-data:
+    driver: local
+    labels:
+      com.optimusdb.agent: "4"
+      com.optimusdb.type: "data"
+  agent4-orbitdb:
+    driver: local
+    labels:
+      com.optimusdb.agent: "4"
+      com.optimusdb.type: "orbitdb"
+
+  # Agent-5 volumes
+  agent5-data:
+    driver: local
+    labels:
+      com.optimusdb.agent: "5"
+      com.optimusdb.type: "data"
+  agent5-orbitdb:
+    driver: local
+    labels:
+      com.optimusdb.agent: "5"
+      com.optimusdb.type: "orbitdb"
+
+  # Agent-6 volumes
+  agent6-data:
+    driver: local
+    labels:
+      com.optimusdb.agent: "6"
+      com.optimusdb.type: "data"
+  agent6-orbitdb:
+    driver: local
+    labels:
+      com.optimusdb.agent: "6"
+      com.optimusdb.type: "orbitdb"
+
+  # Agent-7 volumes
+  agent7-data:
+    driver: local
+    labels:
+      com.optimusdb.agent: "7"
+      com.optimusdb.type: "data"
+  agent7-orbitdb:
+    driver: local
+    labels:
+      com.optimusdb.agent: "7"
+      com.optimusdb.type: "orbitdb"
+
+  # Agent-8 volumes
+  agent8-data:
+    driver: local
+    labels:
+      com.optimusdb.agent: "8"
+      com.optimusdb.type: "data"
+  agent8-orbitdb:
+    driver: local
+    labels:
+      com.optimusdb.agent: "8"
+      com.optimusdb.type: "orbitdb"

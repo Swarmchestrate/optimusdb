@@ -1,0 +1,414 @@
+>>> Using BASE: http://10.42.0.17:8089/swarmkb
+== Ad-hoc SQL ==
+{
+  "records": [
+    {
+      "id": 1,
+      "raw": "{\"metricValue\":6.809584299999999,\"level\":1,\"timestamp\":1762183376281}",
+      "received_at": "2025-11-03T15:22:56Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 2,
+      "raw": "{\"metricValue\":8.040200599999999,\"level\":1,\"timestamp\":1762183379834}",
+      "received_at": "2025-11-03T15:23:00Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 3,
+      "raw": "{\"metricValue\":9.59596,\"level\":1,\"timestamp\":1762183379835}",
+      "received_at": "2025-11-03T15:23:00Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 4,
+      "raw": "{\"metricValue\":8.585859500000002,\"level\":1,\"timestamp\":1762183380287}",
+      "received_at": "2025-11-03T15:23:00Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 5,
+      "raw": "{\"metricValue\":8.542714,\"level\":1,\"timestamp\":1762183380362}",
+      "received_at": "2025-11-03T15:23:00Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 6,
+      "raw": "{\"metricValue\":7.672956,\"level\":1,\"timestamp\":1762183391282}",
+      "received_at": "2025-11-03T15:23:11Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 7,
+      "raw": "{metricValue=-1.0, timestamp=1762183393750, message={\"comparisonOperator\":\"GREATER_THAN\",\"threshold\":80.0,\"name\":\"cpu_slo_CONSTRAINT\",\"_objectClass\":\"gr.iccs.imu.ems.translate.model.MetricConstraint\"}",
+      "received_at": "2025-11-03T15:23:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 8,
+      "raw": "{metricValue=-1.0, timestamp=1762183393757, message={\"comparisonOperator\":\"GREATER_THAN\",\"threshold\":500.0,\"name\":\"response_time_slo_CONSTRAINT\",\"_objectClass\":\"gr.iccs.imu.ems.translate.model.MetricC",
+      "received_at": "2025-11-03T15:23:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 9,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183393763,\"message\":{\"ipAddress\":\"unknown-address-1762183338260\",\"clientId\":\"K8S-_-dummy-1762183338237-dummy-1762183338237-Kubernetes-_-_\",\"state\":\"INSTALLED\",\"stat",
+      "received_at": "2025-11-03T15:23:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 10,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183393769,\"message\":{\"ipAddress\":\"10.42.0.1\",\"clientId\":\"_-_-_-_-_-10.42.0.1-_\",\"state\":\"REGISTERED\",\"stateLastUpdate\":\"2025-11-03T15:22:26.836792036Z\",\"reference\":",
+      "received_at": "2025-11-03T15:23:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 11,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183393777,\"message\":{\"ipAddress\":\"10.42.3.0\",\"clientId\":\"_-_-_-_-_-10.42.3.0-_\",\"state\":\"REGISTERED\",\"stateLastUpdate\":\"2025-11-03T15:22:30.269399730Z\",\"reference\":",
+      "received_at": "2025-11-03T15:23:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 12,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183393783,\"message\":{\"ipAddress\":\"10.42.1.0\",\"clientId\":\"_-_-_-_-_-10.42.1.0-_\",\"state\":\"REGISTERED\",\"stateLastUpdate\":\"2025-11-03T15:22:30.801895957Z\",\"reference\":",
+      "received_at": "2025-11-03T15:23:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 13,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183393788,\"message\":{\"ipAddress\":\"10.42.4.0\",\"clientId\":\"_-_-_-_-_-10.42.4.0-_\",\"state\":\"REGISTERED\",\"stateLastUpdate\":\"2025-11-03T15:22:31.303524470Z\",\"reference\":",
+      "received_at": "2025-11-03T15:23:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 14,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183393795,\"message\":{\"count-total-events-failures\":0,\"tx\":0.0,\"count-total-events-other\":0,\"count-event-forwards-success\":2,\"count-event-forwards-failure\":0,\"rx\":0.",
+      "received_at": "2025-11-03T15:23:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 15,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183393801,\"message\":{\"count-total-events-failures\":0,\"tx\":0.0,\"count-total-events-other\":0,\"count-event-forwards-success\":1,\"count-event-forwards-failure\":0,\"rx\":0.",
+      "received_at": "2025-11-03T15:23:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 16,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183393807,\"message\":{\"count-total-events-failures\":0,\"tx\":0.0,\"count-total-events-other\":0,\"count-event-forwards-success\":1,\"count-event-forwards-failure\":0,\"rx\":0.",
+      "received_at": "2025-11-03T15:23:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 17,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183393812,\"message\":{\"count-total-events-failures\":0,\"tx\":0.0,\"count-total-events-other\":0,\"count-event-forwards-success\":1,\"count-event-forwards-failure\":0,\"rx\":0.",
+      "received_at": "2025-11-03T15:23:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 18,
+      "raw": "{\"metric_list\":[{\"lower_bound\":\"-Infinity\",\"name\":\"mean_cpu_util_prct\",\"upper_bound\":\"Infinity\"},{\"lower_bound\":\"-Infinity\",\"name\":\"mean_response_time\",\"upper_bound\":\"Infinity\"}],\"version\":0}",
+      "received_at": "2025-11-03T15:23:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 19,
+      "raw": "{\"constraints\":[{\"name\":\"cpu_slo_CONSTRAINT\",\"operator\":\">\",\"threshold\":80.0,\"metric\":\"mean_cpu_util_prct\"},{\"name\":\"response_time_slo_CONSTRAINT\",\"operator\":\">\",\"threshold\":500.0,\"metric\":\"mean_respo",
+      "received_at": "2025-11-03T15:23:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 20,
+      "raw": "{\"metricValue\":9.59596,\"level\":1,\"timestamp\":1762183394933}",
+      "received_at": "2025-11-03T15:23:15Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 21,
+      "raw": "{\"metricValue\":8.629441,\"level\":1,\"timestamp\":1762183395287}",
+      "received_at": "2025-11-03T15:23:15Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 22,
+      "raw": "{\"metricValue\":10.552763599999999,\"level\":1,\"timestamp\":1762183395361}",
+      "received_at": "2025-11-03T15:23:15Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 23,
+      "raw": "{\"metricValue\":8.0402016,\"level\":1,\"timestamp\":1762183395361}",
+      "received_at": "2025-11-03T15:23:15Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 24,
+      "raw": "{\"metricValue\":7.7791718,\"level\":1,\"timestamp\":1762183406281}",
+      "received_at": "2025-11-03T15:23:26Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 25,
+      "raw": "{\"level\":3,\"metricValue\":8.53134658181818,\"timestamp\":1762183406485}",
+      "received_at": "2025-11-03T15:23:26Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 26,
+      "raw": "{\"metricValue\":33139.34032889098,\"level\":1,\"timestamp\":1762183406481}",
+      "received_at": "2025-11-03T15:23:26Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 27,
+      "raw": "{\"metricValue\":33169.076325370974,\"level\":1,\"timestamp\":1762183406481}",
+      "received_at": "2025-11-03T15:23:26Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 28,
+      "raw": "{\"metricValue\":9.59596,\"level\":1,\"timestamp\":1762183409933}",
+      "received_at": "2025-11-03T15:23:30Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 29,
+      "raw": "{\"metricValue\":33129.17986759394,\"level\":1,\"timestamp\":1762183410233}",
+      "received_at": "2025-11-03T15:23:30Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 30,
+      "raw": "{\"metricValue\":8.5858585,\"level\":1,\"timestamp\":1762183410287}",
+      "received_at": "2025-11-03T15:23:30Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 31,
+      "raw": "{\"metricValue\":33159.07898383794,\"level\":1,\"timestamp\":1762183410233}",
+      "received_at": "2025-11-03T15:23:30Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 32,
+      "raw": "{\"metricValue\":33125.31432528903,\"level\":1,\"timestamp\":1762183410587}",
+      "received_at": "2025-11-03T15:23:30Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 33,
+      "raw": "{\"metricValue\":33112.68771260395,\"level\":1,\"timestamp\":1762183410661}",
+      "received_at": "2025-11-03T15:23:30Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 34,
+      "raw": "{\"metricValue\":33149.50239274103,\"level\":1,\"timestamp\":1762183410587}",
+      "received_at": "2025-11-03T15:23:30Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 35,
+      "raw": "{\"metricValue\":33143.807482563956,\"level\":1,\"timestamp\":1762183410661}",
+      "received_at": "2025-11-03T15:23:30Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 36,
+      "raw": "{\"metricValue\":9.5652178,\"level\":1,\"timestamp\":1762183421281}",
+      "received_at": "2025-11-03T15:23:41Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 37,
+      "raw": "{\"metricValue\":8.585859,\"level\":1,\"timestamp\":1762183424933}",
+      "received_at": "2025-11-03T15:23:45Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 38,
+      "raw": "{\"metricValue\":9.090910000000001,\"level\":1,\"timestamp\":1762183425287}",
+      "received_at": "2025-11-03T15:23:45Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 39,
+      "raw": "{\"metricValue\":9.59596,\"level\":1,\"timestamp\":1762183425362}",
+      "received_at": "2025-11-03T15:23:45Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 40,
+      "raw": "{\"metricValue\":7.169811500000001,\"level\":1,\"timestamp\":1762183436281}",
+      "received_at": "2025-11-03T15:23:56Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 41,
+      "raw": "{\"level\":3,\"metricValue\":8.668577177777777,\"timestamp\":1762183436485}",
+      "received_at": "2025-11-03T15:23:56Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 42,
+      "raw": "{\"metricValue\":33198.821461066975,\"level\":1,\"timestamp\":1762183436481}",
+      "received_at": "2025-11-03T15:23:56Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 43,
+      "raw": "{\"level\":3,\"metricValue\":33140.998427361475,\"timestamp\":1762183436585}",
+      "received_at": "2025-11-03T15:23:56Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 44,
+      "raw": "{\"level\":3,\"metricValue\":33140.998427361475,\"timestamp\":1762183436585}",
+      "received_at": "2025-11-03T15:23:56Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 45,
+      "raw": "{\"level\":3,\"metricValue\":33140.998427361475,\"timestamp\":1762183436585}",
+      "received_at": "2025-11-03T15:23:56Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 46,
+      "raw": "{\"metricValue\":10.050251,\"level\":1,\"timestamp\":1762183439834}",
+      "received_at": "2025-11-03T15:23:59Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 47,
+      "raw": "{\"metricValue\":33187.591122348946,\"level\":1,\"timestamp\":1762183440233}",
+      "received_at": "2025-11-03T15:24:00Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 48,
+      "raw": "{\"metricValue\":10.204080999999999,\"level\":1,\"timestamp\":1762183440287}",
+      "received_at": "2025-11-03T15:24:00Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 49,
+      "raw": "{\"metricValue\":8.080808000000001,\"level\":1,\"timestamp\":1762183440361}",
+      "received_at": "2025-11-03T15:24:00Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 50,
+      "raw": "{\"metricValue\":9.137056000000001,\"level\":1,\"timestamp\":1762183440361}",
+      "received_at": "2025-11-03T15:24:00Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 51,
+      "raw": "{\"metricValue\":33185.436011659025,\"level\":1,\"timestamp\":1762183440587}",
+      "received_at": "2025-11-03T15:24:00Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 52,
+      "raw": "{\"metricValue\":33177.439311692964,\"level\":1,\"timestamp\":1762183440661}",
+      "received_at": "2025-11-03T15:24:00Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 53,
+      "raw": "{\"metricValue\":8.760950900000001,\"level\":1,\"timestamp\":1762183451281}",
+      "received_at": "2025-11-03T15:24:11Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 54,
+      "raw": "{metricValue=-1.0, timestamp=1762183453831, message={\"comparisonOperator\":\"GREATER_THAN\",\"threshold\":80.0,\"name\":\"cpu_slo_CONSTRAINT\",\"_objectClass\":\"gr.iccs.imu.ems.translate.model.MetricConstraint\"}",
+      "received_at": "2025-11-03T15:24:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 55,
+      "raw": "{metricValue=-1.0, timestamp=1762183453836, message={\"comparisonOperator\":\"GREATER_THAN\",\"threshold\":500.0,\"name\":\"response_time_slo_CONSTRAINT\",\"_objectClass\":\"gr.iccs.imu.ems.translate.model.MetricC",
+      "received_at": "2025-11-03T15:24:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 56,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183453839,\"message\":{\"ipAddress\":\"unknown-address-1762183338260\",\"clientId\":\"K8S-_-dummy-1762183338237-dummy-1762183338237-Kubernetes-_-_\",\"state\":\"INSTALLED\",\"stat",
+      "received_at": "2025-11-03T15:24:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 57,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183453844,\"message\":{\"ipAddress\":\"10.42.0.1\",\"clientId\":\"_-_-_-_-_-10.42.0.1-_\",\"state\":\"REGISTERED\",\"stateLastUpdate\":\"2025-11-03T15:22:26.836792036Z\",\"reference\":",
+      "received_at": "2025-11-03T15:24:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 58,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183453850,\"message\":{\"ipAddress\":\"10.42.3.0\",\"clientId\":\"_-_-_-_-_-10.42.3.0-_\",\"state\":\"REGISTERED\",\"stateLastUpdate\":\"2025-11-03T15:22:30.269399730Z\",\"reference\":",
+      "received_at": "2025-11-03T15:24:13Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 59,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183453853,\"message\":{\"ipAddress\":\"10.42.1.0\",\"clientId\":\"_-_-_-_-_-10.42.1.0-_\",\"state\":\"REGISTERED\",\"stateLastUpdate\":\"2025-11-03T15:22:30.801895957Z\",\"reference\":",
+      "received_at": "2025-11-03T15:24:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 60,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183453858,\"message\":{\"ipAddress\":\"10.42.4.0\",\"clientId\":\"_-_-_-_-_-10.42.4.0-_\",\"state\":\"REGISTERED\",\"stateLastUpdate\":\"2025-11-03T15:22:31.303524470Z\",\"reference\":",
+      "received_at": "2025-11-03T15:24:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 61,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183453860,\"message\":{\"count-total-events-failures\":0,\"tx\":0.0,\"count-total-events-other\":0,\"count-event-forwards-success\":9,\"count-event-forwards-failure\":0,\"rx\":0.",
+      "received_at": "2025-11-03T15:24:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 62,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183453865,\"message\":{\"count-total-events-failures\":0,\"tx\":0.0,\"count-total-events-other\":0,\"count-event-forwards-success\":8,\"count-event-forwards-failure\":0,\"rx\":0.",
+      "received_at": "2025-11-03T15:24:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 63,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183453869,\"message\":{\"count-total-events-failures\":0,\"tx\":0.0,\"count-total-events-other\":0,\"count-event-forwards-success\":9,\"count-event-forwards-failure\":0,\"rx\":0.",
+      "received_at": "2025-11-03T15:24:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 64,
+      "raw": "{\"metricValue\":-1.0,\"timestamp\":1762183453872,\"message\":{\"count-total-events-failures\":0,\"tx\":0.0,\"count-total-events-other\":0,\"count-event-forwards-success\":8,\"count-event-forwards-failure\":0,\"rx\":0.",
+      "received_at": "2025-11-03T15:24:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 65,
+      "raw": "{\"metric_list\":[{\"lower_bound\":\"-Infinity\",\"name\":\"mean_cpu_util_prct\",\"upper_bound\":\"Infinity\"},{\"lower_bound\":\"-Infinity\",\"name\":\"mean_response_time\",\"upper_bound\":\"Infinity\"}],\"version\":0}",
+      "received_at": "2025-11-03T15:24:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 66,
+      "raw": "{\"constraints\":[{\"name\":\"cpu_slo_CONSTRAINT\",\"operator\":\">\",\"threshold\":80.0,\"metric\":\"mean_cpu_util_prct\"},{\"name\":\"response_time_slo_CONSTRAINT\",\"operator\":\">\",\"threshold\":500.0,\"metric\":\"mean_respo",
+      "received_at": "2025-11-03T15:24:14Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 67,
+      "raw": "{\"metricValue\":7.614213,\"level\":1,\"timestamp\":1762183454933}",
+      "received_at": "2025-11-03T15:24:15Z",
+      "topic": "/topic/>"
+    },
+    {
+      "id": 68,
+      "raw": "{\"metricValue\":9.137056000000001,\"level\":1,\"timestamp\":1762183455287}",
+      "received_at": "2025-11-03T15:24:15Z",
+      "topic": "/topic/>"
+    }
+  ]
+}

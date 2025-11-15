@@ -1,0 +1,336 @@
+####
+
+#### OptimusDB Core
+docker build --no-cache -t optimusdb .
+docker run -d --network=swarmnet --name=optimusdb1 -p 18001:8089 -p 14001:4001 -p 15001:5001 optimusdb
+docker run -d --network=swarmnet --name=optimusdb2 -p 18002:8089 -p 14002:4001 -p 15002:5001 optimusdb
+docker run -d --network=swarmnet --name=optimusdb3 -p 18003:8089 -p 14003:4001 -p 15003:5001 optimusdb
+docker run -d --network=swarmnet --name=optimusdb4 -p 18004:8089 -p 14004:4001 -p 15004:5001 optimusdb
+docker run -d --network=swarmnet --name=optimusdb5 -p 18005:8089 -p 14005:4001 -p 15005:5001 optimusdb
+docker run -d --network=swarmnet --name=optimusdb6 -p 18006:8089 -p 14006:4001 -p 15006:5001 optimusdb
+docker run -d --network=swarmnet --name=optimusdb7 -p 18007:8089 -p 14007:4001 -p 15007:5001 optimusdb
+docker run -d --network=swarmnet --name=optimusdb8 -p 18008:8089 -p 14008:4001 -p 15008:5001 optimusdb
+
+
+
+#### OptimusDB UI
+docker build --no-cache -t optimusdbUI .
+docker run -d --network=swarmnet --name=optimusdbui -p 18010:80 18011:4001 18012:5001 18013:9090 optimusdbui
+
+
+#### OptimusDB Command Center
+npm start
+npm run build
+
+
+
+
+#########################33
+PS C:\Users\georg> docker network ls
+NETWORK ID     NAME      DRIVER    SCOPE
+ffafebf41795   bridge    bridge    local
+de08effd63e3   host      host      local
+41f2823f2d94   none      null      local
+PS C:\Users\georg> docker network create --driver bridge swarmnet
+814feee1a3fffe14c874be73ca162382b90ced5534340e8366428753c6190125
+
+docker swarm init   # only if swarm is not initialized
+docker network create --driver overlay swarmnet
+
+This makes swarmnet an overlay network so all OptimusDB nodes can communicate across different Docker hosts.
+
+# Point origin to the new GitHub repo
+git branch -M main
+git remote add origin https://github.com/georgeGeorgakakos/optimusdb.git
+git push -u origin main
+
+
+
+# compact graph of everything
+git log --oneline --decorate --graph --all
+
+# last 20 with changed files
+git log -n 20 --stat
+
+# who contributed & how many commits
+git shortlog -sne --all
+
+
+########################################################################3
+#Overwrite the remote (you really want your local copy to win)
+git fetch origin                     # refresh the lease info
+git push --force-with-lease origin HEAD:main
+
+
+
+
+#############################################################################
+For k3s
+kubectl apply -f optimusdb-k3s.yaml
+kubectl -n optimusdb get pods,svc
+
+In the config file...
+If you don’t have MetalLB yet, switch all three Services to:
+type: NodePort
+
+# apply your manifest
+kubectl apply -f k3smanifest/optimusdb-k3s.yaml
+
+# watch pods come up
+kubectl -n optimusdb get pods -w
+
+# check PVCs got bound
+kubectl -n optimusdb get pvc
+
+# see the services (and external IPs if you use MetalLB)
+kubectl -n optimusdb get svc
+
+#Logs & health
+kubectl -n optimusdb logs -f statefulset/optimusdb   # all pods stream
+# or a single pod
+kubectl -n optimusdb logs -f pod/optimusdb-1
+
+#Update image / roll forward
+kubectl -n optimusdb set image statefulset/optimusdb optimusdb=ghcr.io/georgegeorgakakos/optimusdb:latest
+kubectl -n optimusdb rollout status statefulset/optimusdb
+
+
+#Scale
+kubectl -n optimusdb scale statefulset/optimusdb --replicas=3
+
+
+#######################################################################################################################
+#################################DEBUG EMS - OptimusDB Integration    #################################################
+#######################################################################################################################
+#######################################################################################################################
+
+sudo kubectl set env statefulset/optimusdb \
+  EMS_SERVICE_NAME=ems-broker \
+  EMS_NAMESPACE=messaging \
+  EMS_STOMP_PORT=61613 \
+  EMS_TOPIC=/topic/> \
+  EMS_DURABLE=1 \
+  EMS_SUB_NAME=optimusdb-ems \
+  MQ_USER=aaa \
+  MQ_PASS=111
+
+# give each pod a stable client id (here: use pod name)
+# (Downward API via kubectl set env can’t reference fieldRef, so just set a literal per pod if needed, or put it in the YAML spec)
+
+
+
+sudo kubectl set env statefulset/optimusdb \
+  EMS_SERVICE_NAME=emsserver-ems-server \
+  EMS_NAMESPACE=default \
+  EMS_STOMP_PORT=61613 \
+  EMS_TOPIC=/topic/> \
+  EMS_DURABLE=1 \
+  EMS_SUB_NAME=optimusdb-ems \
+  MQ_USER=aaa \
+  MQ_PASS=111
+# (Best: set MQ_CLIENT_ID via Downward API in YAML; otherwise skip)
+sudo kubectl rollout restart statefulset/optimusdb
+sudo kubectl rollout status statefulset/optimusdb
+
+
+
+###
+###
+sudo kubectl set env statefulset/optimusdb \
+  EMS_SERVICE_NAME=emsserver-ems-server \
+  EMS_NAMESPACE=default \
+  EMS_STOMP_PORT=61610 \
+  EMS_TOPIC=/topic/> \
+  EMS_DURABLE=1 \
+  EMS_SUB_NAME=optimusdb-ems \
+  MQ_USER=aaa \
+  MQ_PASS=111
+
+sudo kubectl rollout restart statefulset/optimusdb
+sudo kubectl rollout status statefulset/optimusdb
+
+
+1) Show the connect errors (includes host:port)
+sudo kubectl exec -it optimusdb-0 -- sh -lc "DB=\$(find \"\$HOME/.cache/optimusdb\" -type f -name optimuslog.db | head -n1); \
+sqlite3 -header -column \"\$DB\" \
+\"SELECT timestamp, level, substr(message,1,300) AS message
+   FROM optimusLogger
+  WHERE message LIKE '%EMS MQ connect failed%' OR message LIKE '%EMS start failed%'
+  ORDER BY id DESC LIMIT 10;\""
+
+
+2) Show the successful subscribe line
+sudo kubectl exec -it optimusdb-0 -- sh -lc "DB=\$(find \"\$HOME/.cache/optimusdb\" -type f -name optimuslog.db | head -n1); \
+sqlite3 -header -column \"\$DB\" \
+\"SELECT timestamp, level, substr(message,1,300) AS message
+   FROM optimusLogger
+  WHERE message LIKE '%EMS subscribed to%'
+  ORDER BY id DESC LIMIT 10;\""
+
+
+3) Only EMS-tagged rows (source='ems')
+sudo kubectl exec -it optimusdb-0 -- sh -lc "DB=\$(find \"\$HOME/.cache/optimusdb\" -type f -name optimuslog.db | head -n1); \
+sqlite3 -header -column \"\$DB\" \
+\"SELECT id, timestamp, level, source, substr(message,1,200) AS message
+   FROM optimusLogger
+  WHERE source = 'ems'
+  ORDER BY id DESC LIMIT 50;\""
+
+### Debug commands
+###The subscriber uses whatever is in the pod env EMS_STOMP_PORT and the Service’s targetPort.
+
+ubuntu@ip-172-31-26-15:~$ # 1) What the pod is configured to dial
+sudo kubectl exec -it optimusdb-0 -- env | egrep '^(EMS_SERVICE_NAME|EMS_NAMESPACE|EMS_STOMP_PORT|EMS_TOPIC)'
+
+# 2) What the Service exposes (look for stomp… targetPort)
+sudo kubectl -n default describe svc emsserver-ems-server | egrep -A2 'Ports:|stomp'
+
+# 3) The endpoints behind the Service (actual pod IP:port)
+sudo kubectl -n default get endpoints emsserver-ems-server -o wide
+EMS_STOMP_PORT=61610
+EMS_SERVICE_NAME=emsserver-ems-server
+EMS_NAMESPACE=default
+EMS_TOPIC=/topic/
+Port:                     stomp  61613/TCP
+TargetPort:               61613/TCP
+Endpoints:                10.42.0.244:61613
+Port:                     stomp-61610  61610/TCP
+TargetPort:               61610/TCP
+Endpoints:                10.42.0.244:61610
+NAME                   ENDPOINTS                                                           AGE
+emsserver-ems-server   10.42.0.244:61613,10.42.0.244:61610,10.42.0.244:61616 + 1 more...   2d21h
+
+
+########################################################################################################################
+####    Commands to redeploy
+####
+
+# Delete all OptimusDB resources
+sudo kubectl delete -f optimusdb-k3s.yaml
+
+ubuntu@ip-172-31-26-15:/opt/iccs/manifests$ sudo kubectl get pvc -A | grep optimusdb
+default     data-optimusdb-0   Bound    pvc-5cca430b-5114-4dab-ac01-09a7ba048c7b   5Gi        RWO            local-path     <unset>                 50m
+default     data-optimusdb-1   Bound    pvc-c17880eb-41e7-4b46-ab30-d8a4c04c4d3a   5Gi        RWO            local-path     <unset>                 50m
+default     data-optimusdb-2   Bound    pvc-232e1e61-c520-4699-ba12-739fb26ccad7   5Gi        RWO            local-path     <unset>                 50m
+
+
+sudo kubectl delete pvc data-optimusdb-0 -n default
+sudo kubectl delete pvc data-optimusdb-1 -n default
+sudo kubectl delete pvc data-optimusdb-2 -n default
+
+#verify
+sudo kubectl get pods -A | grep optimusdb
+sudo kubectl get svc -A | grep optimusdb
+
+sudo kubectl apply -f optimusdb-k3s.yaml
+########################################################################################################################
+####    Commands to verify the EMS topics are persisted after deployment in optimusDB
+####
+
+A) Watch per-message lines
+sudo kubectl exec -it optimusdb-0 -- sh -lc '
+DB=$(find "$HOME/.cache/optimusdb" -type f -name optimuslog.db | head -n1)
+echo "SELECT timestamp, level, substr(message,1,220)
+      FROM optimusLogger
+      WHERE source = '\''ems'\''
+      ORDER BY id DESC LIMIT 20;" | sqlite3 -header -column "$DB"
+'
+
+
+B) List rows persisted in ems_events
+sudo kubectl exec -it optimusdb-0 -- sh -lc '
+DB=$(find "$HOME/.cache/optimusdb" -type f -name optimuslog.db | head -n1)
+echo "SELECT received_at, action, resource, substr(params_json,1,160)
+      FROM ems_events
+      ORDER BY id DESC LIMIT 20;" | sqlite3 -header -column "$DB"
+'
+
+C) Fire a test message (from a temp pod with Bash)
+sudo kubectl run -it stomp-test --rm --restart=Never \
+  --image=ghcr.io/nicolaka/netshoot:latest -- \
+  bash -lc '
+h="emsserver-ems-server.default.svc.cluster.local"
+p=61610
+u="${MQ_USER:-admin}"
+pw="${MQ_PASS:-admin}"
+t="${EMS_TOPIC:-/topic/>}"
+
+exec 3<>/dev/tcp/$h/$p || { echo "cannot connect to $h:$p"; exit 1; }
+printf "CONNECT\naccept-version:1.2\nhost:/\nlogin:%s\npasscode:%s\n\n\0" "$u" "$pw" >&3
+sleep 0.2
+body="{\"action\":\"probe\",\"resource\":\"health\",\"params\":{\"ping\":true}}"
+printf "SEND\ndestination:%s\ncontent-type:application/json\ncontent-length:%d\n\n%s\0" "$t" "${#body}" "$body" >&3
+echo "sent"
+'
+
+
+### working
+sudo kubectl exec -it optimusdb-0 -- \
+  sh -lc 'DB=$(find $HOME/.cache/optimusdb -type f -name optimuslog.db | head -n1); \
+sqlite3 -header -column "$DB" "
+  SELECT received_at, client_id, topic, substr(raw_json,1,160)
+  FROM ems_events
+  ORDER BY id DESC LIMIT 20;
+"'
+
+
+
+
+# Dump ALL logs from optimusLogger into a CSV so you can inspect
+sudo kubectl exec -it optimusdb-0 -- sh -lc '
+DB=$(find "$HOME/.cache/optimusdb" -type f -name optimuslog.db | head -n1)
+sqlite3 -header -csv "$DB" "
+  SELECT id, timestamp, level, source, message
+  FROM optimusLogger
+  ORDER BY id;
+" ' > optimusdb_logs.csv
+
+# Check file size
+ls -lh optimusdb_logs.csv
+
+# Peek at the first few lines
+head -n 20 optimusdb_logs.csv
+
+################################
+sudo kubectl exec -it optimusdb-0 -- sh -lc '
+DB=$(find "$HOME/.cache/optimusdb" -type f -name optimuslog.db | head -n1)
+sqlite3 -header -column "$DB" "
+  SELECT id,
+         received_at,
+         client_id,
+         topic,
+         action,
+         resource,
+         substr(params_json,1,120) AS params
+  FROM ems_events
+  ORDER BY id DESC
+  LIMIT 200;
+"'
+
+
+########################################################################################################################
+2447  sudo ./emsInterogateV2.sh --tables
+ 2448  sudo ./emsInterogateV2.sh --count
+ 2449  sudo ./emsInterogateV2.sh --events 100
+ 2450  sudo ./emsInterogateV2.sh -logs 100 --since 60 --level ERROR
+ 2451  sudo ./emsInterogateV2.sh --logs 100 --since 60 --level ERROR
+ 2452  sudo ./emsInterogateV2.sh --sql "SELECT id,received_at,topic,substr(raw_json,1,200) AS raw FROM ems_events ORDER BY id DESC LIMIT 20;"
+
+
+########################################################################################################################
+####    Commands to upload to Git
+####
+
+#This confirms what’s changed:
+git status
+
+# Add all changes
+git add .
+
+#
+git commit -m "Enhanced detailed READMEs"
+#
+git push -u origin main
+
+
+

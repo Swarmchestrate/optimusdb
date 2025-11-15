@@ -1,0 +1,462 @@
+curl --location 'http://127.0.0.1:8089/swarmkb/command' \
+--header 'Content-Type: application/json' \
+--data '{
+"method": {
+            "argcnt": 0,
+            "cmd": "query"
+          },
+"args": []
+}'
+
+========================================================================================================================
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "crudput"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+        {
+            "_id": "123e4567-e89b-12d3-a456-426614174000",
+            "resource_provider": "Azure",
+            "capacity_provider": "ACME Corporation",
+            "resource_name": "ExampleResource",
+            "resource_type": "Cloud",
+            "resource_def": "VM",
+            "resource_nature": "IaaS",
+            "status": "Running",
+            "resource_grpname": "ProductionCluster",
+            "pricing": ["1 credit per hr"],
+            "resource_tags": ["production", "high-availability"],
+            "cpu_capacity": 4,
+            "memory_capacity": 8192,
+            "storage": 500,
+            "region": "US-East",
+            "country": "USA",
+            "operating_system": "Linux",
+            "city": "New York",
+            "energy_type": "Green",
+            "energy_consumption_dm": "Medium",
+            "access_sensors": "TemperatureSensor",
+            "device": "Hardware: Nvidia GPU, Software: CUDA",
+            "Mobility": "Yes",
+            "powered_type": "Battery powered",
+            "orchestration_id": "e19b1a23-12a3-45b6-9c27-13e9d7a12bcd",
+            "network_type": "VPC",
+            "bandwidth": "100 Mbps",
+            "cidr_block": "192.168.1.0/24",
+            "storage_type": "Block",
+            "storage_capacity": 1000,
+            "used_storage": 200,
+            "last_heartbeat": "2025-02-05T12:30:00Z",
+            "created_at": "2025-02-05T12:34:56Z",
+            "updated_at": "2025-02-05T13:00:00Z",
+            "allocated_at": "2025-02-05T12:40:00Z",
+            "deallocated_at": null
+        },
+        {
+            "_id": "987f6543-b21c-34d5-e678-526714274001",
+            "resource_provider": "GCP",
+            "capacity_provider": "XYZ Services",
+            "resource_name": "AnotherResource",
+            "resource_type": "Edge",
+            "resource_def": "Database",
+            "resource_nature": "DBaaS",
+            "status": "Stopped",
+            "resource_grpname": "AnalyticsCluster",
+            "pricing": ["2 credits per hr"],
+            "resource_tags": ["analytics", "low-latency"],
+            "cpu_capacity": 8,
+            "memory_capacity": 16384,
+            "storage": 2000,
+            "region": "EU-West",
+            "country": "Germany",
+            "operating_system": "Windows Server",
+            "city": "Berlin",
+            "energy_type": "Mix",
+            "energy_consumption_dm": "High",
+            "access_sensors": "HumiditySensor",
+            "device": "Hardware: AMD GPU, Software: OpenCL",
+            "Mobility": "No",
+            "powered_type": "Mains powered",
+            "orchestration_id": "b34a12c3-34d5-78e9-4567-89d12bcd345e",
+            "network_type": "Subnet",
+            "bandwidth": "50 Mbps",
+            "cidr_block": "10.0.1.0/24",
+            "storage_type": "Object",
+            "storage_capacity": 5000,
+            "used_storage": 4500,
+            "last_heartbeat": "2025-02-05T14:20:00Z",
+            "created_at": "2025-02-05T14:22:33Z",
+            "updated_at": "2025-02-05T14:50:00Z",
+            "allocated_at": "2025-02-05T14:25:00Z",
+            "deallocated_at": "2025-02-05T15:00:00Z"
+        }
+    ]
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // docker build --no-cache -t optimusdb .
+    //docker run -d --network=vmwarenet --name=optimusdb4 optimusdb
+
+    method → Defines the operation (crudput with 2 arguments).
+    args → Input arguments (dummy1, dummy2).
+    dstype → Type of datastore (dsswres).
+    sqlselect → Placeholder for SQL query (dummysql).
+    graph_traversal → Reserved for graph-based processing.
+    criteria → Detailed information about resources, including:
+        IDs, providers, resource names, and configurations.
+        Compute specs (cpu_capacity, memory_capacity).
+        Storage details (storage_type, storage_capacity, used_storage).
+        Networking (network_type, bandwidth, cidr_block).
+        Energy & sustainability details (energy_type, energy_consumption_dm).
+        Timestamps (created_at, updated_at, last_heartbeat).
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+http://192.168.2.13:8089/swarmkb/command
+
+
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "crudput"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+        {
+            "_id": "123e4567-e89b-12d3-a456-426614174000",
+            "resource_provider": "Azure",
+            "capacity_provider": "ACME Corporation",
+            "resource_name": "ExampleResource",
+            "resource_type": "Cloud",
+            "resource_def": "VM",
+            "resource_nature": "IaaS",
+            "status": "Running",
+            "resource_grpname": "ProductionCluster",
+            "pricing": ["1 credit per hr"],
+            "resource_tags": ["production", "high-availability"],
+            "cpu_capacity": 4,
+            "memory_capacity": 8192,
+            "storage": 500,
+            "region": "US-East",
+            "country": "USA",
+            "operating_system": "Linux",
+            "city": "New York",
+            "energy_type": "Green",
+            "energy_consumption_dm": "Medium",
+            "access_sensors": "TemperatureSensor",
+            "device": "Hardware: Nvidia GPU, Software: CUDA",
+            "Mobility": "Yes",
+            "powered_type": "Battery powered",
+            "orchestration_id": "e19b1a23-12a3-45b6-9c27-13e9d7a12bcd",
+            "network_type": "VPC",
+            "bandwidth": "100 Mbps",
+            "cidr_block": "192.168.1.0/24",
+            "storage_type": "Block",
+            "storage_capacity": 1000,
+            "used_storage": 200,
+            "last_heartbeat": "2025-02-05T12:30:00Z",
+            "created_at": "2025-02-05T12:34:56Z",
+            "updated_at": "2025-02-05T13:00:00Z",
+            "allocated_at": "2025-02-05T12:40:00Z",
+            "deallocated_at": null
+        },
+        {
+            "_id": "987f6543-b21c-34d5-e678-526714274001",
+            "resource_provider": "GCP",
+            "capacity_provider": "XYZ Services",
+            "resource_name": "AnotherResource",
+            "resource_type": "Edge",
+            "resource_def": "Database",
+            "resource_nature": "DBaaS",
+            "status": "Stopped",
+            "resource_grpname": "AnalyticsCluster",
+            "pricing": ["2 credits per hr"],
+            "resource_tags": ["analytics", "low-latency"],
+            "cpu_capacity": 8,
+            "memory_capacity": 16384,
+            "storage": 2000,
+            "region": "EU-West",
+            "country": "Germany",
+            "operating_system": "Windows Server",
+            "city": "Berlin",
+            "energy_type": "Mix",
+            "energy_consumption_dm": "High",
+            "access_sensors": "HumiditySensor",
+            "device": "Hardware: AMD GPU, Software: OpenCL",
+            "Mobility": "No",
+            "powered_type": "Mains powered",
+            "orchestration_id": "b34a12c3-34d5-78e9-4567-89d12bcd345e",
+            "network_type": "Subnet",
+            "bandwidth": "50 Mbps",
+            "cidr_block": "10.0.1.0/24",
+            "storage_type": "Object",
+            "storage_capacity": 5000,
+            "used_storage": 4500,
+            "last_heartbeat": "2025-02-05T14:20:00Z",
+            "created_at": "2025-02-05T14:22:33Z",
+            "updated_at": "2025-02-05T14:50:00Z",
+            "allocated_at": "2025-02-05T14:25:00Z",
+            "deallocated_at": "2025-02-05T15:00:00Z"
+        }
+    ]
+}
+
+
+///Search 1 Query with Multiple AND Conditions
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+        {
+            "resource_provider": "Azure",
+            "capacity_provider": "ACME Corporation",
+            "resource_type": "Cloud",
+            "resource_def": "VM",
+            "resource_nature": "IaaS"
+        }
+    ]
+}
+
+///Search 2 Query with Multiple OR Conditions
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+        { "resource_provider": "GCP" },
+        { "resource_provider": "Azure" }
+    ]
+}
+///Finding two recods
+
+
+///Search 3 Numeric Filtering ($gte)
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+        {
+            "cpu_capacity": { "$gte": 5 },
+            "memory_capacity": { "$gte": 16384 }
+        }
+    ]
+}
+///Finding 1 record
+
+
+///Search 4 RegEx Filtering ($gte)
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+        {
+            "status": "Running",
+            "region": { "$regex": "EU*" }
+        }
+    ]
+}
+///Finding 1 record
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+        {
+            "status": "Running",
+            "region": { "$regex": "EU*" }
+        }
+    ]
+}
+///Finding 1 record
+////Match Only Exact Words (Case-Sensitive)
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+        {
+            "region": { "$regex": "^US-East$" }
+        }
+    ]
+}
+///Finding 1 record
+
+////Case-Insensitive Matching for "AWS" Provider
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+    {
+        "resource_provider": { "$regex": "(?i)azure" }
+    }
+]
+}
+///Finding 1 record
+
+////// Match Networks That Have Either "VPC" or "Subnet"
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+    {
+        "network_type": { "$regex": "VPC|Subnet" }
+    }
+]
+
+}
+///Finding 2 record
+
+
+//////////////////////////////////////
+//  Query: Find Running AWS or Azure Resources in the US-East Region
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+
+        { "resource_provider": "GCP" },
+        { "resource_provider": "Azure" },
+        {
+            "status": "Running",
+            "region": { "$regex": "US*" }
+        }
+    ]
+}
+//Query: Find Running AWS or Azure Resources in the US-East Region
+
+
+//Query: High-Performance Compute (CPU ≥ 4, Memory ≥ 8GB) with Object Storage
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+        {
+            "cpu_capacity": { "$gte": 4 },
+            "memory_capacity": { "$gte": 8192 },
+            "storage_type": { "$regex": "Object*" }
+        }
+    ]
+}
+
+//Find Edge Devices with AMD GPUs in Germany
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+        {
+            "resource_type": "Edge",
+            "device": { "$regex": "AMD GPU" },
+            "country": "Germany"
+        }
+    ]
+}
+
+
+//Find Any Cloud or Edge Resource with at Least 500GB Storage
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "query"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "dsswres",
+    "sqlselect": "dummysql",
+    "graph_traversal": [{}],
+    "criteria": [
+        { "resource_type": "Cloud" },
+        { "resource_type": "Edge" },
+        {
+            "storage_capacity": { "$gte": 500 }
+        }
+    ]
+}
+
+
+///// THis is the scenarion where the Contribution Data Store is interogated to bring all information of peers
+{
+    "method": {
+        "argcnt": 2,
+        "cmd": "contri"
+    },
+    "args": ["dummy1", "dummy2"],
+    "dstype": "contributions",
+    "sqldml": "",
+    "graph_traversal": [{}],
+    "criteria": [{}]
+}
+///Example gets contribution records

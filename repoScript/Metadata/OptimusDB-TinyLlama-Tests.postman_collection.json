@@ -1,0 +1,1025 @@
+{
+  "info": {
+    "_postman_id": "optimusdb-swarmkb-v1",
+    "name": "OptimusDB SwarmKB API - Complete Collection",
+    "description": "Complete API collection for OptimusDB distributed database system.\n\n## Base URL Structure:\n- **Main API Context**: `/swarmkb/*` (configurable via -context flag)\n- **Metadata API**: `/api/v1/metadata/*` (fixed path)\n\n## Node Ports:\n- Node 1: 18001\n- Node 2: 18002\n- Node 3: 18003\n- Node 4: 18004\n- Node 5: 18005\n- Node 6: 18006\n- Node 7: 18007\n- Node 8: 18008\n\n## Architecture:\n- **OrbitDB**: Distributed document store (P2P)\n- **SQLite**: Local relational database\n- **TinyLlama**: AI metadata enrichment (internal)\n- **IPFS/LibP2P**: P2P networking layer\n\nSee full documentation at: https://github.com/yourusername/optimusdb",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "optimusdb"
+  },
+  "item": [
+    {
+      "name": "📦 Document Operations (CRUD)",
+      "item": [
+        {
+          "name": "CREATE - Insert Document",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has success status\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"crudput\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"prod_{{$randomInt}}\",\n      \"name\": \"Gaming Laptop Ultra Pro\",\n      \"description\": \"Professional gaming laptop with NVIDIA RTX 4090 GPU, Intel Core i9-13900K processor, 64GB DDR5 RAM, dual 2TB Gen4 NVMe SSDs, 17.3-inch 4K 240Hz display, mechanical RGB keyboard, advanced vapor chamber cooling\",\n      \"category\": \"Electronics\",\n      \"subcategory\": \"Computers\",\n      \"brand\": \"TechForce\",\n      \"model\": \"TF-ULTRA-2024\",\n      \"price\": 3999.99,\n      \"stock\": 15,\n      \"tags\": [\"gaming\", \"laptop\", \"high-performance\", \"4k\", \"rtx4090\"],\n      \"specifications\": {\n        \"cpu\": \"Intel i9-13900K\",\n        \"gpu\": \"NVIDIA RTX 4090 24GB\",\n        \"ram\": \"64GB DDR5\",\n        \"storage\": \"2TB NVMe x2\",\n        \"display\": \"17.3\\\" 4K 240Hz\",\n        \"weight\": \"3.2kg\"\n      },\n      \"created_at\": \"{{$isoTimestamp}}\",\n      \"updated_at\": \"{{$isoTimestamp}}\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Insert a new document into OptimusDB.**\n\n### Process:\n1. Document inserted into OrbitDB distributed docstore\n2. **Automatic metadata generation triggered**\n3. System metadata (ID, timestamps, source) created\n4. Contextual metadata attempted via TinyLlama\n5. Metadata stored in KBMetadata OrbitDB store\n6. Metadata indexed in SQLite metadata_catalog table\n7. Replication across cluster begins\n\n### Request Body:\n- `method.cmd`: \"crudput\"\n- `method.argcnt`: 1\n- `dstype`: \"dsswres\" (main document store) or \"dsswresaloc\" (allocation store)\n- `criteria`: Array of documents to insert (must have `_id` field)\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": \"OK: Successfully inserted records\"\n}\n```\n\n### Notes:\n- Each document MUST have a unique `_id` field\n- Complex nested structures supported\n- Arrays and objects handled automatically\n- Replication to peers happens asynchronously"
+          },
+          "response": []
+        },
+        {
+          "name": "READ - Query Documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"category\": \"Electronics\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Query documents from OrbitDB using filter criteria.**\n\n### Filtering:\n- **Exact match**: `{\"field\": \"value\"}`\n- **Multiple fields**: All must match (AND logic)\n- **Multiple criteria objects**: Any can match (OR logic)\n- **Nested objects**: Use dot notation or exact match\n- **Arrays**: Exact array match or element presence\n\n### Query Examples:\n\n**Simple filter:**\n```json\n{\"category\": \"Electronics\"}\n```\n\n**Multiple fields (AND):**\n```json\n{\"category\": \"Electronics\", \"price\": 1999.99}\n```\n\n**Multiple criteria (OR):**\n```json\n[\n  {\"category\": \"Electronics\"},\n  {\"category\": \"Accessories\"}\n]\n```\n\n**Nested object:**\n```json\n{\"specifications.cpu\": \"Intel i9\"}\n```\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": [\n    {\"_id\": \"prod_001\", \"name\": \"...\", ...},\n    {\"_id\": \"prod_002\", \"name\": \"...\", ...}\n  ]\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "READ - Query by ID",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"prod_12345\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "Query a specific document by its unique ID."
+          },
+          "response": []
+        },
+        {
+          "name": "UPDATE - Modify Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"crudupdate\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"prod_12345\"\n    }\n  ],\n  \"UpdateData\": [\n    {\n      \"price\": 3499.99,\n      \"stock\": 10,\n      \"status\": \"on_sale\",\n      \"updated_at\": \"{{$isoTimestamp}}\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Update existing documents in OrbitDB.**\n\n### Process:\n1. Query documents matching `criteria`\n2. Apply all fields from `UpdateData`\n3. Save updated documents back to OrbitDB\n4. Replicate changes to cluster\n\n### Request Structure:\n- `criteria`: Filter to find documents to update\n- `UpdateData`: Array of update objects (fields to change)\n\n### Behavior:\n- Only matching documents are updated\n- Fields in UpdateData overwrite existing values\n- Fields not in UpdateData remain unchanged\n- Multiple documents can be updated in one call\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": \"SUCCESS! 3 document(s) updated\"\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE - Remove Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"prod_12345\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Delete documents from OrbitDB.**\n\n### Process:\n1. Query for documents matching criteria\n2. Delete each matched document\n3. Replicate deletions across cluster\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": \"SUCCESS! 2 document(s) deleted\"\n}\n```\n\n### ⚠️ Warning:\n- Deletions are permanent\n- Cannot be undone\n- Replicated immediately to all peers"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE - Bulk Delete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"status\": \"discontinued\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "Delete multiple documents matching a criteria."
+          },
+          "response": []
+        }
+      ],
+      "description": "Basic CRUD operations on OrbitDB distributed document store.\n\n**Document Store Types:**\n- `dsswres` - Main document store\n- `dsswresaloc` - Allocation document store\n- `kbdata` - Knowledge base data\n- `kbmetadata` - Metadata catalog\n- `validations` - Validation records\n- `tosca_imported` - TOSCA templates"
+    },
+    {
+      "name": "🔍 Advanced Queries",
+      "item": [
+        {
+          "name": "Distributed Query - Local First",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"query\",\n    \"argcnt\": 0\n  },\n  \"criteria\": [\n    {\n      \"category\": \"Electronics\",\n      \"price\": {\"$gte\": 1000}\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"time_budget_ms\": 1200,\n    \"min_rows\": 5,\n    \"include_local\": true,\n    \"annotate_source\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Advanced distributed query with configurable strategy.**\n\n### Query Strategies:\n\n**LOCAL_ONLY**\n- Query only the local node\n- Fastest, but limited results\n- Use for node-specific data\n\n**REMOTE_ONLY**\n- Query only remote peers\n- Useful for distributed aggregation\n- Excludes local data\n\n**LOCAL_THEN_REMOTE_MERGE** (Default)\n- Query local first\n- Then query peers in parallel\n- Merge and deduplicate results\n- Best balance of speed and completeness\n\n**PARALLEL_MERGE**\n- Query local and peers simultaneously\n- Merge as results arrive\n- Fastest for large clusters\n\n**QUORUM**\n- Wait for N peer responses\n- Ensures consistency across nodes\n- Use `quorum_n` to set threshold\n\n### Consistency Levels:\n\n**BEST_EFFORT** (Default)\n- Return as much data as possible within time budget\n- May be incomplete\n- Fastest\n\n**QUORUM**\n- Wait for `quorum_n` peers to respond\n- More consistent\n- Slower\n\n**ALL**\n- Wait for all peers (bounded by time_budget_ms)\n- Most consistent\n- Slowest\n\n### Options:\n- `time_budget_ms`: Max query time (default: 1200ms)\n- `min_rows`: Stop early if this many rows found\n- `quorum_n`: Number of peers required for quorum\n- `max_peers`: Limit query to top N peers by reputation\n- `include_local`: Include local results\n- `annotate_source`: Add `_source` field to results\n\n### Response with Annotations:\n```json\n{\n  \"status\": 200,\n  \"data\": [\n    {\n      \"_id\": \"prod_001\",\n      \"name\": \"Gaming Laptop\",\n      \"_source\": {\n        \"type\": \"local\",\n        \"peer_id\": \"\"\n      },\n      \"_trace\": {\n        \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\"\n      }\n    },\n    {\n      \"_id\": \"prod_002\",\n      \"name\": \"Monitor\",\n      \"_source\": {\n        \"type\": \"peer\",\n        \"peer_id\": \"QmXXX...\"\n      }\n    }\n  ]\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Distributed Query - Quorum Mode",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"query\",\n    \"argcnt\": 0\n  },\n  \"criteria\": [\n    {\n      \"status\": \"active\"\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"QUORUM\",\n    \"consistency\": \"QUORUM\",\n    \"time_budget_ms\": 2000,\n    \"quorum_n\": 3,\n    \"min_rows\": 10,\n    \"include_local\": true,\n    \"annotate_source\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "Query with quorum consensus - waits for at least N peers to respond."
+          },
+          "response": []
+        },
+        {
+          "name": "Complex Filter Query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"query\",\n    \"argcnt\": 0\n  },\n  \"criteria\": [\n    {\n      \"category\": \"Electronics\",\n      \"price\": {\"$gte\": 500},\n      \"stock\": {\"$gte\": 1},\n      \"brand\": {\"$regex\": \"Tech.*\"}\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"time_budget_ms\": 1500,\n    \"annotate_source\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Query with advanced filtering operators.**\n\n### Supported Operators:\n\n**Comparison:**\n- `{\"$gte\": value}` - Greater than or equal\n- `{\"$gt\": value}` - Greater than\n- `{\"$lte\": value}` - Less than or equal\n- `{\"$lt\": value}` - Less than\n- `{\"$ne\": value}` - Not equal\n\n**Pattern Matching:**\n- `{\"$regex\": \"pattern\"}` - Regular expression match\n\n**Example:**\n```json\n{\n  \"price\": {\"$gte\": 100, \"$lte\": 1000},\n  \"name\": {\"$regex\": \"^Gaming.*\"},\n  \"category\": \"Electronics\"\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Contributions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"contri\",\n    \"argcnt\": 1\n  },\n  \"criteria\": []\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Query the Contributions EventLogStore.**\n\n### What are Contributions?\nContributions track peer discovery and file sharing events:\n- Peer discovery records\n- File upload events\n- IPFS content addressing\n- Replication history\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": [\n    {\n      \"agentname\": \"optimusdb-node1\",\n      \"path\": \"QmXXX...\",\n      \"contributor\": \"12D3KooXXX...\",\n      \"creationTS\": \"2025-01-15T10:30:00Z\",\n      \"localip\": \"192.168.1.100\",\n      \"nodeip\": \"203.0.113.50\",\n      \"remoteIPs\": [\"192.168.1.101\", \"192.168.1.102\"]\n    }\n  ]\n}\n```\n\n### Notes:\n- Contributions store is **read-only** via API\n- Automatically populated by peer discovery\n- Stored in OrbitDB EventLog (append-only)"
+          },
+          "response": []
+        }
+      ],
+      "description": "Advanced querying capabilities with distributed consensus and filtering."
+    },
+    {
+      "name": "🗄️ SQL Operations",
+      "item": [
+        {
+          "name": "SQL SELECT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"SELECT * FROM products WHERE price > 1000 ORDER BY price DESC LIMIT 10\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Execute SQL SELECT query against local SQLite database.**\n\n### Process:\n1. Execute query on local SQLite\n2. If no results, automatically query remote peers\n3. Deduplicate results from multiple sources\n4. Return merged dataset\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"records\": [\n      {\"id\": 1, \"name\": \"Product A\", \"price\": 1500},\n      {\"id\": 2, \"name\": \"Product B\", \"price\": 1200}\n    ]\n  }\n}\n```\n\n### Features:\n- **Automatic peer fallback**: Queries peers if local DB is empty\n- **Deduplication**: Removes duplicate rows from merged results\n- **Full SQL support**: All SELECT features (JOIN, GROUP BY, etc.)"
+          },
+          "response": []
+        },
+        {
+          "name": "SQL INSERT with Metadata",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"INSERT INTO products (name, description, category, price, stock) VALUES ('Mechanical Keyboard Pro', 'Professional mechanical keyboard with Cherry MX Red switches, RGB per-key backlighting, aluminum frame, USB-C connection, N-key rollover, dedicated media controls', 'Accessories', 179.99, 50)\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**SQL INSERT with automatic metadata generation.**\n\n### Automatic Metadata Process:\n1. **SQL INSERT** executed in local SQLite\n2. **System metadata** generated:\n   - Unique ID (hash-based)\n   - Timestamps (created_at, updated_at)\n   - Source information (node, IP)\n   - Author/creator tracking\n3. **Contextual metadata** attempted:\n   - TinyLlama generates description summary\n   - Keywords extracted from content\n   - Tags auto-generated\n   - Name/title inference\n4. **Metadata storage**:\n   - **OrbitDB KBMetadata**: Distributed catalog\n   - **SQLite metadata_catalog**: Local index\n5. **Replication**: Metadata synced to cluster\n\n### Generated Metadata Example:\n```json\n{\n  \"id\": \"meta_a1b2c3d4\",\n  \"metadata_type\": \"dataset\",\n  \"component\": \"products\",\n  \"behaviour\": \"transactional\",\n  \"description\": \"Professional mechanical keyboard for gaming and productivity\",\n  \"name\": \"Mechanical Keyboard Pro\",\n  \"tags\": [\"keyboard\", \"mechanical\", \"gaming\", \"rgb\"],\n  \"created_by\": \"optimusdb-node1\",\n  \"created_at\": \"2025-01-15T10:30:00Z\",\n  \"updated_at\": \"2025-01-15T10:30:00Z\"\n}\n```\n\n### Fallback Behavior:\n- If TinyLlama unavailable, basic metadata still generated\n- Description set to fallback message\n- System metadata always created\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"status\": \"success\",\n    \"message\": \"SQL statement executed successfully\"\n  }\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "SQL UPDATE",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"UPDATE products SET price = 159.99, stock = 45 WHERE name = 'Mechanical Keyboard Pro'\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "Execute SQL UPDATE statement."
+          },
+          "response": []
+        },
+        {
+          "name": "SQL DELETE",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"DELETE FROM products WHERE stock = 0 AND status = 'discontinued'\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "Execute SQL DELETE statement."
+          },
+          "response": []
+        },
+        {
+          "name": "SQL CREATE TABLE",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE, phone TEXT, address TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "Create new table in SQLite database."
+          },
+          "response": []
+        },
+        {
+          "name": "SQL Complex Query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"SELECT category, COUNT(*) as count, AVG(price) as avg_price, MIN(price) as min_price, MAX(price) as max_price FROM products WHERE stock > 0 GROUP BY category HAVING COUNT(*) > 5 ORDER BY avg_price DESC\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "Complex aggregation query with GROUP BY and HAVING."
+          },
+          "response": []
+        }
+      ],
+      "description": "SQL operations on local SQLite database with automatic peer fallback and metadata generation."
+    },
+    {
+      "name": "🤖 Metadata Enrichment",
+      "item": [
+        {
+          "name": "Enrich Dataset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"db\": \"optimusdb.db\",\n  \"table\": \"products\",\n  \"maxRows\": 100,\n  \"greek\": false\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/api/v1/metadata/enrich",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["api", "v1", "metadata", "enrich"]
+            },
+            "description": "**Enrich a dataset with AI-generated metadata.**\n\n### Process:\n1. Read rows from specified SQLite table\n2. For each row:\n   - Send content to TinyLlama\n   - Generate description/summary\n   - Extract keywords\n   - Create tags\n3. Store enriched metadata in OrbitDB\n4. Index in SQLite metadata_catalog\n\n### Parameters:\n- `db`: SQLite database filename\n- `table`: Table name to enrich\n- `maxRows`: Maximum rows to process (default: 200)\n- `greek`: Use Greek language for descriptions (default: false)\n\n### Response:\n```json\n{\n  \"dataset\": \"products\",\n  \"rows_processed\": 100,\n  \"metadata_entries\": 100,\n  \"processing_time_ms\": 45000,\n  \"tinyllama_available\": true\n}\n```\n\n### Notes:\n- **Requires TinyLlama** to be running and healthy\n- Processing time depends on dataset size\n- Can take 30-60 seconds for 100 rows\n- Caching reduces repeat enrichment time"
+          },
+          "response": []
+        },
+        {
+          "name": "Enrich Batch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"datasets\": [\n    {\n      \"db\": \"optimusdb.db\",\n      \"table\": \"products\",\n      \"maxRows\": 50\n    },\n    {\n      \"db\": \"optimusdb.db\",\n      \"table\": \"customers\",\n      \"maxRows\": 50\n    },\n    {\n      \"db\": \"optimusdb.db\",\n      \"table\": \"orders\",\n      \"maxRows\": 100\n    }\n  ],\n  \"greek\": false\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/api/v1/metadata/enrich-batch",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["api", "v1", "metadata", "enrich-batch"]
+            },
+            "description": "**Batch enrich multiple datasets in one request.**\n\n### Use Cases:\n- Initial database setup\n- Bulk metadata generation\n- Multi-table enrichment\n\n### Response:\n```json\n{\n  \"total_datasets\": 3,\n  \"successful\": 3,\n  \"failed\": 0,\n  \"results\": [\n    {\"dataset\": \"products\", \"rows_processed\": 50},\n    {\"dataset\": \"customers\", \"rows_processed\": 50},\n    {\"dataset\": \"orders\", \"rows_processed\": 100}\n  ],\n  \"total_time_ms\": 95000\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Profile Dataset",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:18001/api/v1/metadata/profile?db=optimusdb.db&table=products",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["api", "v1", "metadata", "profile"],
+              "query": [
+                {"key": "db", "value": "optimusdb.db"},
+                {"key": "table", "value": "products"}
+              ]
+            },
+            "description": "**Get statistical profile of a dataset.**\n\n### Returns:\n- Row count\n- Column information\n- Data types\n- Sample values\n- Metadata coverage\n\n### Response:\n```json\n{\n  \"dataset\": \"products\",\n  \"row_count\": 1250,\n  \"columns\": [\n    {\"name\": \"id\", \"type\": \"INTEGER\", \"nullable\": false},\n    {\"name\": \"name\", \"type\": \"TEXT\", \"nullable\": false},\n    {\"name\": \"price\", \"type\": \"REAL\", \"nullable\": true}\n  ],\n  \"metadata_coverage\": 0.85,\n  \"last_enriched\": \"2025-01-15T10:30:00Z\"\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:18001/api/v1/metadata/metrics",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["api", "v1", "metadata", "metrics"]
+            },
+            "description": "**Get metadata enrichment performance metrics.**\n\n### Metrics Include:\n- Total enrichment operations\n- Success/failure rates\n- Average processing time\n- TinyLlama availability\n- Cache hit rates\n\n### Response:\n```json\n{\n  \"total_enrichments\": 5420,\n  \"successful\": 5350,\n  \"failed\": 70,\n  \"success_rate\": 0.987,\n  \"avg_processing_time_ms\": 450,\n  \"tinyllama_health\": \"healthy\",\n  \"cache_hit_rate\": 0.65,\n  \"last_enrichment\": \"2025-01-15T10:30:00Z\"\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:18001/api/v1/metadata/health",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["api", "v1", "metadata", "health"]
+            },
+            "description": "**Check metadata service and TinyLlama health.**\n\n### Response:\n```json\n{\n  \"status\": \"healthy\",\n  \"metadata_service\": \"running\",\n  \"tinyllama_status\": \"healthy\",\n  \"tinyllama_endpoint\": \"http://127.0.0.1:8080/v1/completions\",\n  \"cache_status\": \"active\",\n  \"uptime_seconds\": 3600\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Cache",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:18001/api/v1/metadata/cache",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["api", "v1", "metadata", "cache"]
+            },
+            "description": "**Clear the metadata enrichment cache.**\n\n### When to Use:\n- After TinyLlama model update\n- To force fresh metadata generation\n- Troubleshooting stale data\n\n### Response:\n```json\n{\n  \"status\": \"success\",\n  \"message\": \"Cache cleared successfully\",\n  \"entries_removed\": 1250\n}\n```"
+          },
+          "response": []
+        }
+      ],
+      "description": "AI-powered metadata enrichment using TinyLlama.\n\n**Endpoints:** `/api/v1/metadata/*`\n\n**Features:**\n- Automatic description generation\n- Keyword extraction\n- Tag creation\n- Dataset profiling\n- Performance metrics"
+    },
+    {
+      "name": "🌐 Cluster Management",
+      "item": [
+        {
+          "name": "List Peers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/peers",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "peers"]
+            },
+            "description": "**Get list of discovered and connected peers.**\n\n### Response:\n```json\n[\n  {\n    \"ID\": \"12D3KooWXXX...\",\n    \"Addrs\": [\n      \"/ip4/192.168.1.101/tcp/4001\",\n      \"/ip4/203.0.113.50/tcp/4001\"\n    ]\n  },\n  {\n    \"ID\": \"12D3KooWYYY...\",\n    \"Addrs\": [\n      \"/ip4/192.168.1.102/tcp/4001\"\n    ]\n  }\n]\n```\n\n### Peer Discovery Methods:\n- **mDNS**: Local network discovery\n- **DHT**: Distributed hash table\n- **PubSub**: Topic-based discovery\n\n### Use Cases:\n- Monitor cluster health\n- Verify peer connectivity\n- Debug replication issues"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Benchmarks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/benchmarks",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "benchmarks"]
+            },
+            "description": "**Gather performance benchmark data from all peers.**\n\n### Requirements:\n- OptimusDB must be started with `-benchmark` flag\n\n### Response:\n```json\n[\n  {\n    \"node_id\": \"12D3KooWXXX...\",\n    \"cpu_usage\": 15.3,\n    \"memory_usage\": 512.5,\n    \"disk_usage\": 2048.7,\n    \"network_rx\": 1024,\n    \"network_tx\": 2048,\n    \"query_latency_ms\": 45,\n    \"replication_lag_ms\": 120\n  }\n]\n```\n\n### Use Cases:\n- Performance monitoring\n- Load balancing decisions\n- Capacity planning"
+          },
+          "response": []
+        }
+      ],
+      "description": "Cluster management and peer monitoring."
+    },
+    {
+      "name": "📋 Logging & Monitoring",
+      "item": [
+        {
+          "name": "Query Logs by Hour",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/log?date=2025-01-15&hour=14",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "log"],
+              "query": [
+                {"key": "date", "value": "2025-01-15"},
+                {"key": "hour", "value": "14"}
+              ]
+            },
+            "description": "**Query logs for specific date and hour.**\n\n### Parameters:\n- `date`: YYYY-MM-DD format\n- `hour`: HH format (00-23)\n\n### Response:\n```json\n[\n  {\n    \"id\": 1,\n    \"timestamp\": \"2025-01-15T14:30:00Z\",\n    \"level\": \"INFO\",\n    \"source\": \"service\",\n    \"message\": \"Document inserted successfully\"\n  }\n]\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "EMS - Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/ems",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "ems"]
+            },
+            "description": "Get information about EMS endpoints."
+          },
+          "response": []
+        },
+        {
+          "name": "EMS - Query Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/ems/logs?limit=50&level=ERROR&since_min=60",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "ems", "logs"],
+              "query": [
+                {"key": "limit", "value": "50", "description": "Number of records (1-1000)"},
+                {"key": "level", "value": "ERROR", "description": "INFO, WARN, ERROR, DEBUG"},
+                {"key": "since_min", "value": "60", "description": "Minutes ago"}
+              ]
+            },
+            "description": "**Query EMS (Event Management System) logs.**\n\n### Filters:\n- `limit`: 1-1000 records (default: 50)\n- `level`: INFO, WARN, ERROR, DEBUG\n- `since_min`: Time window in minutes\n\n### Response:\n```json\n{\n  \"records\": [\n    {\n      \"id\": 1,\n      \"timestamp\": \"2025-01-15T14:30:00Z\",\n      \"level\": \"ERROR\",\n      \"source\": \"ems\",\n      \"message\": \"Connection timeout to ActiveMQ\"\n    }\n  ]\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "EMS - Query Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/ems/events?limit=50&since_min=60",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "ems", "events"],
+              "query": [
+                {"key": "limit", "value": "50"},
+                {"key": "since_min", "value": "60"}
+              ]
+            },
+            "description": "**Query EMS events from the events table.**\n\n### Response:\n```json\n{\n  \"records\": [\n    {\n      \"id\": 1,\n      \"received_at\": \"2025-01-15T14:30:00Z\",\n      \"client_id\": \"client-001\",\n      \"topic\": \"orders\",\n      \"action\": \"create\",\n      \"resource\": \"order_12345\",\n      \"params\": \"{...}\",\n      \"raw\": \"{...}\"\n    }\n  ]\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "EMS - Custom SQL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/ems/sql?q=SELECT * FROM ems_events WHERE action = 'create' LIMIT 10",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "ems", "sql"],
+              "query": [
+                {"key": "q", "value": "SELECT * FROM ems_events WHERE action = 'create' LIMIT 10"}
+              ]
+            },
+            "description": "**Execute custom SQL against the logger database.**\n\n### Available Tables:\n- `optimusLogger` - General logs\n- `ems_events` - EMS event records\n\n### Example Queries:\n```sql\n-- Recent errors\nSELECT * FROM optimusLogger \nWHERE level = 'ERROR' \nAND timestamp >= datetime('now','-1 hour');\n\n-- EMS events by topic\nSELECT topic, COUNT(*) as count \nFROM ems_events \nGROUP BY topic;\n```"
+          },
+          "response": []
+        }
+      ],
+      "description": "Logging, monitoring, and EMS integration."
+    },
+    {
+      "name": "📄 TOSCA Management",
+      "item": [
+        {
+          "name": "Upload TOSCA Template",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User",
+                "value": "admin",
+                "description": "Optional: user identifier"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"file\": \"<BASE64_ENCODED_TOSCA_YAML>\",\n  \"filename\": \"infrastructure-template.yaml\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/upload",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "upload"]
+            },
+            "description": "**Upload TOSCA (Topology and Orchestration Specification for Cloud Applications) template.**\n\n### Process:\n1. Base64 decode the YAML content\n2. Parse TOSCA structure\n3. Compute unique template ID (hash)\n4. Count node templates\n5. Store original YAML in OrbitDB (DsTOSCA_Imported)\n6. Add YAML to IPFS for content addressing\n7. Index metadata in SQLite (tosca_metadata table)\n8. Generate contextual metadata (if TinyLlama available)\n\n### Request Body:\n```json\n{\n  \"file\": \"<BASE64_ENCODED_YAML>\",\n  \"filename\": \"my-infrastructure.yaml\"\n}\n```\n\n### To Base64 Encode (Bash):\n```bash\nbase64 -w 0 my-template.yaml\n```\n\n### To Base64 Encode (PowerShell):\n```powershell\n[Convert]::ToBase64String([IO.File]::ReadAllBytes(\"my-template.yaml\"))\n```\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"message\": \"TOSCA uploaded successfully\",\n    \"template_id\": \"tosca_a1b2c3d4e5f6\",\n    \"node_count\": 12,\n    \"filename\": \"infrastructure-template.yaml\",\n    \"filesize\": 4096,\n    \"sha256\": \"abc123...\"\n  }\n}\n```\n\n### Metadata Stored:\n- Template ID (unique hash)\n- Description from TOSCA\n- Node count\n- File metadata (size, SHA256)\n- IPFS path\n- Uploader info\n- Source pod/IP"
+          },
+          "response": []
+        },
+        {
+          "name": "Query TOSCA Templates",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"tosca_imported\",\n  \"criteria\": [\n    {\n      \"type\": \"tosca_template\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "Query uploaded TOSCA templates from the tosca_imported store."
+          },
+          "response": []
+        }
+      ],
+      "description": "TOSCA template upload and management."
+    },
+    {
+      "name": "🔧 System Operations",
+      "item": [
+        {
+          "name": "Get Benchmark Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"benchmark\",\n    \"argcnt\": 0\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Get performance benchmark data for this node.**\n\n### Requirements:\n- OptimusDB started with `-benchmark` flag\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"node_id\": \"12D3KooWXXX...\",\n    \"cpu_usage_percent\": 15.3,\n    \"memory_usage_mb\": 512.5,\n    \"disk_usage_mb\": 2048.7,\n    \"uptime_seconds\": 3600,\n    \"queries_processed\": 1250,\n    \"avg_query_latency_ms\": 45\n  }\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Cache Stats",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"cachestats\",\n    \"argcnt\": 0\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Get query cache statistics.**\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"cache_size\": 1250,\n    \"hit_rate\": 0.65,\n    \"miss_rate\": 0.35,\n    \"total_hits\": 8125,\n    \"total_misses\": 4375,\n    \"evictions\": 250\n  }\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Cache",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\n    \"cmd\": \"clearcache\",\n    \"argcnt\": 0\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Clear the query result cache.**\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": \"Cache cleared successfully\"\n}\n```"
+          },
+          "response": []
+        }
+      ],
+      "description": "System operations and cache management."
+    },
+    {
+      "name": "🔗 Multi-Node Replication Tests",
+      "item": [
+        {
+          "name": "1. Insert on Node 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Store timestamp for verification",
+                  "pm.environment.set(\"replication_timestamp\", new Date().toISOString());"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\"cmd\": \"crudput\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"replication_test_{{$timestamp}}\",\n      \"name\": \"Replication Test Product\",\n      \"description\": \"Testing cross-node replication in distributed cluster\",\n      \"node_source\": \"node1\",\n      \"test_timestamp\": \"{{$isoTimestamp}}\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18001/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18001",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Step 1:** Insert data on Node 1 to test replication."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Verify on Node 2 (Wait 3s)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Wait for replication",
+                  "setTimeout(function(){}, 3000);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\"cmd\": \"crudget\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\"node_source\": \"node1\"}\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18002/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18002",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Step 2:** Query Node 2 to verify replication from Node 1."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Verify on Node 5",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\"cmd\": \"crudget\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\"node_source\": \"node1\"}\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18005/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18005",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Step 3:** Verify on Node 5 (further from source)."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Distributed Query Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": {\"cmd\": \"query\", \"argcnt\": 0},\n  \"criteria\": [\n    {\"node_source\": \"node1\"}\n  ],\n  \"options\": {\n    \"strategy\": \"PARALLEL_MERGE\",\n    \"time_budget_ms\": 2000,\n    \"annotate_source\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:18003/swarmkb/command",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "18003",
+              "path": ["swarmkb", "command"]
+            },
+            "description": "**Step 4:** Use distributed query to see which nodes have the data."
+          },
+          "response": []
+        }
+      ],
+      "description": "**Test data replication across the 8-node cluster.**\n\n### Test Sequence:\n1. Insert data on Node 1\n2. Wait 3 seconds for replication\n3. Query Node 2 (should see data)\n4. Query Node 5 (should see data)\n5. Distributed query from Node 3 (see all copies)\n\n### Expected Results:\n- Data appears on all nodes within seconds\n- Distributed query shows multiple sources\n- Source annotations show replication path"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:18001",
+      "type": "string"
+    },
+    {
+      "key": "context",
+      "value": "swarmkb",
+      "type": "string"
+    },
+    {
+      "key": "node2_port",
+      "value": "18002",
+      "type": "string"
+    },
+    {
+      "key": "node3_port",
+      "value": "18003",
+      "type": "string"
+    }
+  ]
+}

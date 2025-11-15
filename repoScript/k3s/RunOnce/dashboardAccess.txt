@@ -1,0 +1,47 @@
+Step-by-Step: Create an Admin User + Access Token
+
+1. Create a Service Account for Admin Access
+
+Run this command:
+
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kube-system
+EOF
+
+2. Bind Admin Permissions to That User
+
+cat <<EOF | kubectl apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kube-system
+EOF
+
+
+3. Get the Login Token
+
+kubectl -n kube-system get secret $(kubectl -n kube-system get sa admin-user -o jsonpath="{.secrets[0].name}") -o go-template='{{.data.token}}' | base64 -d
+
+     Copy the token output — this is your login token.
+
+
+
+4. Open the Dashboard in Browser
+
+Use the address you already exposed via port-forward or LoadBalancer, for example:
+
+    http://192.168.1.200:8000 (if LoadBalancer)
+
+Paste the token when prompted and click "Sign In".
