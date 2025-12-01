@@ -169,8 +169,14 @@ func InitSQLite(dbPath string) (*KnowledgeBaseSQLite, error) {
 	// Create tables
 	err = GlobalKBSQLite.createDataCatalog()
 	if err != nil {
-		log.Fatalf("[ERROR] Table creation failed for DataCatalog: %v", err)
-		GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Table creation failed for DataCatalog: %v", err), runtime.GOOS)
+		log.Fatalf("[ERROR] Main Table creation failed for DataCatalog: %v", err)
+		GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Main Table creation failed for DataCatalog: %v", err), runtime.GOOS)
+		return nil, err
+	}
+	err = GlobalKBSQLite.createDataCatalogSchemas()
+	if err != nil {
+		log.Fatalf("[ERROR] Tables creation failed for DataCatalog: %v", err)
+		GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Tables creation failed for DataCatalog: %v", err), runtime.GOOS)
 		return nil, err
 	}
 	err = GlobalKBSQLite.createTOSCAMetadataTable()
@@ -361,6 +367,515 @@ func (kb *LoggerSQLite) createLogTable() error {
 	}
 	//log.Println("[INFO] Table `optimusLogger` created or already exists.")
 	GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Table `optimusLogger` created or already exists."), runtime.GOOS)
+	return nil
+}
+
+func (kb *KnowledgeBaseSQLite) createDataCatalogSchemas() error {
+	// Combined SQL schema for Amundsen integration
+	stmt := `
+		-- ============================================================================
+		-- DATACATALOG TABLE (Core Metadata Storage)
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS datacatalog (
+			_id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			metadata_type TEXT NOT NULL,
+			description TEXT,
+			component TEXT,
+			created_by TEXT,
+			author TEXT,
+			tags TEXT,
+			badges TEXT,
+			priority TEXT,
+			status TEXT,
+			environment TEXT,
+			version TEXT,
+			columns TEXT,
+			lineage_upstream TEXT,
+			lineage_downstream TEXT,
+			owners TEXT,
+			ownership_details TEXT,
+			data_quality_score REAL,
+			last_quality_check INTEGER,
+			compliance_level TEXT,
+			access_count INTEGER DEFAULT 0,
+			last_accessed INTEGER,
+			row_count INTEGER,
+			size_bytes INTEGER,
+			statistics TEXT,
+			table_type TEXT,
+			refresh_frequency TEXT,
+			refresh_schedule TEXT,
+			storage_location TEXT,
+			partition_key TEXT,
+			sort_key TEXT,
+			documentation_url TEXT,
+			wiki_url TEXT,
+			slack_channel TEXT,
+			related_tables TEXT,
+			associated_id TEXT,
+			related_ids TEXT,
+			scheduling_info TEXT,
+			sla_constraints TEXT,
+			behaviour TEXT,
+			generation_code TEXT,
+			transformation_logic TEXT,
+			created_at INTEGER DEFAULT (strftime('%s', 'now')),
+			updated_at INTEGER DEFAULT (strftime('%s', 'now')),
+			search_vector TEXT
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_datacatalog_name ON datacatalog(name);
+		CREATE INDEX IF NOT EXISTS idx_datacatalog_metadata_type ON datacatalog(metadata_type);
+		CREATE INDEX IF NOT EXISTS idx_datacatalog_component ON datacatalog(component);
+		CREATE INDEX IF NOT EXISTS idx_datacatalog_created_by ON datacatalog(created_by);
+		CREATE INDEX IF NOT EXISTS idx_datacatalog_status ON datacatalog(status);
+		CREATE INDEX IF NOT EXISTS idx_datacatalog_updated_at ON datacatalog(updated_at);
+		
+		-- ============================================================================
+		-- USERS TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS users (
+			_id TEXT PRIMARY KEY,
+			user_id TEXT UNIQUE NOT NULL,
+			email TEXT NOT NULL,
+			display_name TEXT,
+			first_name TEXT,
+			last_name TEXT,
+			profile_url TEXT,
+			github_username TEXT,
+			slack_id TEXT,
+			team_name TEXT,
+			department TEXT,
+			role_name TEXT,
+			employee_type TEXT,
+			manager_id TEXT,
+			manager_email TEXT,
+			is_active INTEGER DEFAULT 1,
+			created_at INTEGER DEFAULT (strftime('%s', 'now')),
+			updated_at INTEGER DEFAULT (strftime('%s', 'now')),
+			last_login INTEGER
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id);
+		CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+		CREATE INDEX IF NOT EXISTS idx_users_team_name ON users(team_name);
+		CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
+		
+		-- ============================================================================
+		-- DASHBOARDS TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS dashboards (
+			_id TEXT PRIMARY KEY,
+			dashboard_id TEXT UNIQUE NOT NULL,
+			name TEXT NOT NULL,
+			url TEXT,
+			description TEXT,
+			group_name TEXT,
+			group_url TEXT,
+			product TEXT,
+			cluster TEXT DEFAULT 'default',
+			created_by TEXT,
+			owners TEXT,
+			tags TEXT,
+			badges TEXT,
+			view_count INTEGER DEFAULT 0,
+			last_viewed INTEGER,
+			created_timestamp INTEGER DEFAULT (strftime('%s', 'now')),
+			updated_timestamp INTEGER DEFAULT (strftime('%s', 'now')),
+			last_run INTEGER,
+			dashboard_type TEXT,
+			refresh_interval TEXT,
+			data_sources TEXT
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_dashboards_dashboard_id ON dashboards(dashboard_id);
+		CREATE INDEX IF NOT EXISTS idx_dashboards_group_name ON dashboards(group_name);
+		CREATE INDEX IF NOT EXISTS idx_dashboards_product ON dashboards(product);
+		CREATE INDEX IF NOT EXISTS idx_dashboards_created_by ON dashboards(created_by);
+		
+		-- ============================================================================
+		-- BADGES TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS badges (
+			_id TEXT PRIMARY KEY,
+			badge TEXT UNIQUE NOT NULL,
+			category TEXT DEFAULT 'default',
+			description TEXT,
+			color TEXT,
+			icon TEXT,
+			badge_type TEXT,
+			created_at INTEGER DEFAULT (strftime('%s', 'now'))
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_badges_badge ON badges(badge);
+		CREATE INDEX IF NOT EXISTS idx_badges_category ON badges(category);
+		
+		-- ============================================================================
+		-- TYPE_METADATA TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS type_metadata (
+			_id TEXT PRIMARY KEY,
+			type_key TEXT UNIQUE NOT NULL,
+			name TEXT NOT NULL,
+			description TEXT,
+			kind TEXT,
+			created_at INTEGER DEFAULT (strftime('%s', 'now')),
+			updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_type_metadata_type_key ON type_metadata(type_key);
+		
+		-- ============================================================================
+		-- USER_RESOURCE_RELATIONS TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS user_resource_relations (
+			_id TEXT PRIMARY KEY,
+			resource_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			relation_type TEXT NOT NULL,
+			resource_type TEXT NOT NULL,
+			created_at INTEGER DEFAULT (strftime('%s', 'now')),
+			UNIQUE(resource_id, user_id, relation_type)
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_urr_resource_id ON user_resource_relations(resource_id);
+		CREATE INDEX IF NOT EXISTS idx_urr_user_id ON user_resource_relations(user_id);
+		CREATE INDEX IF NOT EXISTS idx_urr_relation_type ON user_resource_relations(relation_type);
+		
+		-- ============================================================================
+		-- USER_TABLE_RELATIONS TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS user_table_relations (
+			_id TEXT PRIMARY KEY,
+			table_id TEXT NOT NULL,
+			user_email TEXT NOT NULL,
+			relation_type TEXT NOT NULL,
+			created_at INTEGER DEFAULT (strftime('%s', 'now')),
+			UNIQUE(table_id, user_email, relation_type)
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_utr_table_id ON user_table_relations(table_id);
+		CREATE INDEX IF NOT EXISTS idx_utr_user_email ON user_table_relations(user_email);
+		
+		-- ============================================================================
+		-- USER_DASHBOARD_RELATIONS TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS user_dashboard_relations (
+			_id TEXT PRIMARY KEY,
+			dashboard_id TEXT NOT NULL,
+			user_email TEXT NOT NULL,
+			relation_type TEXT NOT NULL,
+			created_at INTEGER DEFAULT (strftime('%s', 'now')),
+			UNIQUE(dashboard_id, user_email, relation_type)
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_udr_dashboard_id ON user_dashboard_relations(dashboard_id);
+		CREATE INDEX IF NOT EXISTS idx_udr_user_email ON user_dashboard_relations(user_email);
+		
+		-- ============================================================================
+		-- TABLE_DASHBOARD_RELATIONS TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS table_dashboard_relations (
+			_id TEXT PRIMARY KEY,
+			table_uri TEXT NOT NULL,
+			dashboard_id TEXT NOT NULL,
+			created_at INTEGER DEFAULT (strftime('%s', 'now')),
+			UNIQUE(table_uri, dashboard_id)
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_tdr_table_uri ON table_dashboard_relations(table_uri);
+		CREATE INDEX IF NOT EXISTS idx_tdr_dashboard_id ON table_dashboard_relations(dashboard_id);
+		
+		-- ============================================================================
+		-- RESOURCE_DEPENDENCIES TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS resource_dependencies (
+			_id TEXT PRIMARY KEY,
+			source_id TEXT NOT NULL,
+			source_type TEXT NOT NULL,
+			target_id TEXT NOT NULL,
+			target_type TEXT NOT NULL,
+			target_name TEXT,
+			dependency_type TEXT,
+			level INTEGER DEFAULT 1,
+			created_at INTEGER DEFAULT (strftime('%s', 'now'))
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_rd_source_id ON resource_dependencies(source_id);
+		CREATE INDEX IF NOT EXISTS idx_rd_target_id ON resource_dependencies(target_id);
+		CREATE INDEX IF NOT EXISTS idx_rd_source_type ON resource_dependencies(source_type);
+		
+		-- ============================================================================
+		-- COLUMN_METADATA TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS column_metadata (
+			_id TEXT PRIMARY KEY,
+			table_id TEXT NOT NULL,
+			column_name TEXT NOT NULL,
+			column_type TEXT,
+			description TEXT,
+			is_nullable INTEGER DEFAULT 1,
+			is_primary_key INTEGER DEFAULT 0,
+			is_foreign_key INTEGER DEFAULT 0,
+			is_partition_key INTEGER DEFAULT 0,
+			is_sort_key INTEGER DEFAULT 0,
+			sample_value TEXT,
+			min_value TEXT,
+			max_value TEXT,
+			avg_value TEXT,
+			distinct_count INTEGER,
+			null_count INTEGER,
+			data_format TEXT,
+			pii_flag INTEGER DEFAULT 0,
+			tags TEXT,
+			sort_order INTEGER,
+			created_at INTEGER DEFAULT (strftime('%s', 'now')),
+			updated_at INTEGER DEFAULT (strftime('%s', 'now')),
+			UNIQUE(table_id, column_name)
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_cm_table_id ON column_metadata(table_id);
+		CREATE INDEX IF NOT EXISTS idx_cm_column_name ON column_metadata(column_name);
+		CREATE INDEX IF NOT EXISTS idx_cm_is_primary_key ON column_metadata(is_primary_key);
+		
+		-- ============================================================================
+		-- ACCESS_LOG TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS access_log (
+			_id TEXT PRIMARY KEY,
+			resource_id TEXT NOT NULL,
+			resource_type TEXT NOT NULL,
+			user_id TEXT,
+			action TEXT,
+			timestamp INTEGER DEFAULT (strftime('%s', 'now')),
+			source TEXT,
+			duration_ms INTEGER,
+			success INTEGER DEFAULT 1
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_al_resource_id ON access_log(resource_id);
+		CREATE INDEX IF NOT EXISTS idx_al_user_id ON access_log(user_id);
+		CREATE INDEX IF NOT EXISTS idx_al_timestamp ON access_log(timestamp);
+		
+		-- ============================================================================
+		-- SEARCH_CACHE TABLE
+		-- ============================================================================
+		CREATE TABLE IF NOT EXISTS search_cache (
+			_id TEXT PRIMARY KEY,
+			query_hash TEXT UNIQUE NOT NULL,
+			query_text TEXT,
+			results TEXT,
+			result_count INTEGER,
+			created_at INTEGER DEFAULT (strftime('%s', 'now')),
+			expires_at INTEGER
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_sc_query_hash ON search_cache(query_hash);
+		CREATE INDEX IF NOT EXISTS idx_sc_expires_at ON search_cache(expires_at);
+		`
+
+	// Execute the schema creation
+	_, err := kb.DB.Exec(stmt)
+	if err != nil {
+		return fmt.Errorf("failed to create datacatalog schemas: %w", err)
+	}
+
+	GlobalLoggerDB.AddToOptimusLog("INFO", "Catalog schemas created or already exist.", runtime.GOOS)
+
+	// Insert default badges
+	err = kb.insertDefaultBadges()
+	if err != nil {
+		return fmt.Errorf("failed to insert default badges: %w", err)
+	}
+
+	// Insert default test user
+	err = kb.insertDefaultUser()
+	if err != nil {
+		return fmt.Errorf("failed to insert default user: %w", err)
+	}
+
+	return nil
+}
+
+// insertDefaultBadges inserts default badge definitions
+func (kb *KnowledgeBaseSQLite) insertDefaultBadges() error {
+	stmt := `
+	INSERT OR IGNORE INTO badges (_id, badge, category, badge_type, description) VALUES
+		('badge_001', 'Verified', 'quality', 'success', 'Data quality has been verified'),
+		('badge_002', 'PII', 'compliance', 'warning', 'Contains personally identifiable information'),
+		('badge_003', 'Deprecated', 'status', 'danger', 'This dataset is deprecated'),
+		('badge_004', 'Production', 'environment', 'success', 'Used in production systems'),
+		('badge_005', 'Beta', 'status', 'info', 'Currently in beta testing'),
+		('badge_006', 'High Priority', 'priority', 'danger', 'High priority dataset'),
+		('badge_007', 'Real-time', 'technical', 'info', 'Real-time data updates'),
+		('badge_008', 'ML Model', 'technical', 'info', 'Machine learning model output');
+	`
+	_, err := kb.DB.Exec(stmt)
+	if err != nil {
+		return fmt.Errorf("failed to insert default badges: %w", err)
+	}
+
+	GlobalLoggerDB.AddToOptimusLog("INFO", "Default badges inserted.", runtime.GOOS)
+	return nil
+}
+
+// insertDefaultUser inserts the test user for Amundsen
+func (kb *KnowledgeBaseSQLite) insertDefaultUser() error {
+	stmt := `
+	INSERT OR REPLACE INTO users 
+		(_id, user_id, email, display_name, first_name, last_name, team_name, department, 
+		 role_name, employee_type, is_active, created_at, updated_at) 
+	VALUES 
+		('user_001', 'test_user_id', 'test@email.com', 'Test User', 'Test', 'User', 
+		 'Data Science', 'Engineering', 'Data Engineer', 'full-time', 1, 
+		 strftime('%s', 'now'), strftime('%s', 'now'));
+	`
+	_, err := kb.DB.Exec(stmt)
+	if err != nil {
+		return fmt.Errorf("failed to insert default user: %w", err)
+	}
+
+	GlobalLoggerDB.AddToOptimusLog("INFO", "Default test user inserted.", runtime.GOOS)
+	return nil
+}
+
+// insertSampleData populates the database with sample data for testing
+func (kb *KnowledgeBaseSQLite) InsertSampleData() error {
+	stmt := `
+	-- Sample Users
+	INSERT OR REPLACE INTO users VALUES
+		('user_002', 'john_doe', 'john.doe@company.com', 'John Doe', 'John', 'Doe',
+		 'http://company.com/profiles/john', 'johndoe', 'U123456', 'ML Platform', 
+		 'Engineering', 'ML Engineer', 'full-time', NULL, NULL, 1, 
+		 strftime('%s', 'now'), strftime('%s', 'now'), NULL),
+		('user_003', 'ml_team', 'ml-team@company.com', 'ML Team', 'ML', 'Team',
+		 '', '', 'U789012', 'ML Platform', 'Engineering', 'Team Account', 'team',
+		 NULL, NULL, 1, strftime('%s', 'now'), strftime('%s', 'now'), NULL);
+	
+	-- Sample Dashboards
+	INSERT OR REPLACE INTO dashboards VALUES
+		('dash_001', 'recommendation_performance', 
+		 'Recommendation Engine Performance',
+		 'http://dashboards.company.com/recommendation_performance',
+		 'Real-time monitoring of recommendation engine metrics including CTR, conversion rate, and model accuracy',
+		 'Data Science', 'http://dashboards.company.com/datascience', 
+		 'ML Platform', 'default', 'ml_team', 'ml_team,john_doe',
+		 'ML,Recommendations,Performance', 'Production,Real-time', 
+		 0, NULL, strftime('%s', 'now'), strftime('%s', 'now'), strftime('%s', 'now'),
+		 'operational', '5 minutes', NULL),
+		('dash_002', 'user_engagement_analytics',
+		 'User Engagement Analytics',
+		 'http://dashboards.company.com/user_engagement',
+		 'Track user behavior patterns, session duration, and feature adoption',
+		 'Product Analytics', 'http://dashboards.company.com/product',
+		 'Analytics Platform', 'default', 'john_doe', 'john_doe',
+		 'Users,Engagement,Analytics', 'Production', 
+		 0, NULL, strftime('%s', 'now'), strftime('%s', 'now'), strftime('%s', 'now'),
+		 'analytical', '1 hour', NULL);
+	
+	-- Sample Tables
+	INSERT OR REPLACE INTO datacatalog VALUES
+		('rec_engine_001',
+		 'Recommendation Engine.Product Recommendation Scores',
+		 'Recommendation Engine',
+		 'Real-time product recommendation scores using collaborative filtering and content-based algorithms. Powers personalized product suggestions across web, mobile, and email channels.',
+		 'Data Science', 'ml_team', 'ML Team',
+		 'ML,Real-time,Recommendations,Production',
+		 'Production,Verified,ML Model',
+		 'high', 'active', 'production', 'v2.3.1',
+		 '[{"name":"user_id","type":"varchar","description":"Unique user identifier","sample_value":"USR_12345","is_nullable":false,"is_primary_key":true},{"name":"product_id","type":"varchar","description":"Product identifier","sample_value":"PROD_67890","is_nullable":false,"is_primary_key":true},{"name":"score","type":"float","description":"Recommendation confidence score (0.0-1.0)","sample_value":"0.87","is_nullable":false},{"name":"model_version","type":"varchar","description":"ML model version used","sample_value":"v2.3.1","is_nullable":false},{"name":"timestamp","type":"timestamp","description":"Time when recommendation was generated","sample_value":"2024-12-01T19:57:00Z","is_nullable":false}]',
+		 '[{"key":"Data Science://optimusdb.User Behavior/User Click Events","level":1},{"key":"Data Science://optimusdb.Product Catalog/Product Attributes","level":1}]',
+		 '[{"key":"Data Science://optimusdb.Analytics/Recommendation Performance Metrics","level":1},{"key":"dashboard://recommendation_performance","level":1}]',
+		 'ml_team,john_doe', '{"primary":"ml_team","contributors":["john_doe"]}',
+		 0.95, strftime('%s', 'now'), 'Internal',
+		 1250000, strftime('%s', 'now'), 125000000, 1024000000,
+		 '{"row_count":125000000,"size_mb":976,"avg_score":0.72}',
+		 'fact', 'real-time', 'Continuous streaming',
+		 's3://ml-data/recommendations/', 'date', 'user_id,product_id',
+		 'https://wiki.company.com/ml/recommendations',
+		 'https://wiki.company.com/ml/recommendations',
+		 '#ml-platform', NULL, NULL, NULL,
+		 '{"type":"streaming","latency":"<100ms"}',
+		 '{"latency":"<100ms","availability":"99.9%"}',
+		 'High-throughput real-time scoring',
+		 'CREATE TABLE recommendations AS SELECT * FROM ml_model_output;',
+		 'Collaborative filtering + Content-based hybrid model',
+		 strftime('%s', 'now') - 7776000,
+		 strftime('%s', 'now'), NULL),
+	
+		('user_clicks_001',
+		 'User Click Events',
+		 'User Behavior',
+		 'Raw clickstream data capturing all user interactions across web and mobile platforms.',
+		 'Data Science', 'john_doe', 'John Doe',
+		 'Events,User Behavior,Clickstream,Raw',
+		 'Production,Real-time',
+		 'medium', 'active', 'production', 'v1.0.0',
+		 '[{"name":"event_id","type":"varchar","description":"Unique event identifier","sample_value":"EVT_789012","is_nullable":false,"is_primary_key":true},{"name":"user_id","type":"varchar","description":"User identifier","sample_value":"USR_12345","is_nullable":false},{"name":"event_type","type":"varchar","description":"Type of event","sample_value":"click","is_nullable":false},{"name":"timestamp","type":"timestamp","description":"Event timestamp","sample_value":"2024-12-01T19:57:00Z","is_nullable":false}]',
+		 '[]',
+		 '[{"key":"Data Science://optimusdb.Recommendation Engine/Recommendation Engine.Product Recommendation Scores","level":1}]',
+		 'john_doe', '{"primary":"john_doe"}',
+		 0.88, strftime('%s', 'now'), 'PII',
+		 5500000, strftime('%s', 'now'), 500000000, 2048000000,
+		 '{"row_count":500000000,"size_mb":1953}',
+		 'fact', 'real-time', 'Continuous streaming',
+		 's3://events/clickstream/', 'date', 'user_id,timestamp',
+		 'https://wiki.company.com/analytics/clickstream',
+		 'https://wiki.company.com/analytics/clickstream',
+		 '#data-platform', NULL, NULL, NULL,
+		 '{"type":"streaming","latency":"<1s"}',
+		 '{"latency":"<5s","availability":"99.95%"}',
+		 'High-volume event stream', NULL,
+		 'Direct stream from application events',
+		 strftime('%s', 'now') - 15552000,
+		 strftime('%s', 'now'), NULL),
+	
+		('product_cat_001',
+		 'Product Attributes',
+		 'Product Catalog',
+		 'Master product catalog with detailed attributes, categories, pricing, and inventory information.',
+		 'Data Science', 'test_user_id', 'Test User',
+		 'Products,Catalog,Reference,Master Data',
+		 'Production,Verified',
+		 'high', 'active', 'production', 'v3.1.0',
+		 '[{"name":"product_id","type":"varchar","description":"Unique product identifier","sample_value":"PROD_67890","is_nullable":false,"is_primary_key":true},{"name":"product_name","type":"varchar","description":"Product display name","sample_value":"Wireless Headphones","is_nullable":false},{"name":"category","type":"varchar","description":"Product category","sample_value":"Electronics","is_nullable":false},{"name":"price","type":"float","description":"Current price in USD","sample_value":"79.99","is_nullable":false},{"name":"inventory_count","type":"int","description":"Available inventory","sample_value":"150","is_nullable":false}]',
+		 '[]',
+		 '[{"key":"Data Science://optimusdb.Recommendation Engine/Recommendation Engine.Product Recommendation Scores","level":1}]',
+		 'test_user_id,ml_team', '{"primary":"test_user_id"}',
+		 0.98, strftime('%s', 'now'), NULL,
+		 150, strftime('%s', 'now'), 45000, 10240000,
+		 '{"row_count":45000,"size_mb":9}',
+		 'dimension', 'daily', '0 2 * * *',
+		 's3://master-data/products/', NULL, 'product_id',
+		 'https://wiki.company.com/catalog/products',
+		 'https://wiki.company.com/catalog/products',
+		 '#product-team', NULL, NULL, NULL,
+		 '{"type":"batch","schedule":"daily 2am UTC"}',
+		 '{"freshness":"<24h","completeness":"99%"}',
+		 'Reference data for product information', NULL,
+		 'Synchronized from ProductDB',
+		 strftime('%s', 'now') - 31536000,
+		 strftime('%s', 'now'), NULL);
+	
+	-- Table-Dashboard Relations
+	INSERT OR REPLACE INTO table_dashboard_relations VALUES
+		('tdr_001', 'Data Science://optimusdb.Recommendation_Engine/Recommendation_Engine.Product_Recommendation_Scores', 'recommendation_performance', strftime('%s', 'now')),
+		('tdr_002', 'Data Science://optimusdb.User_Behavior/User_Click_Events', 'user_engagement_analytics', strftime('%s', 'now'));
+	
+	-- User-Resource Relations
+	INSERT OR REPLACE INTO user_resource_relations VALUES
+		('urr_001', 'rec_engine_001', 'test_user_id', 'follow', 'table', strftime('%s', 'now')),
+		('urr_002', 'rec_engine_001', 'john_doe', 'follow', 'table', strftime('%s', 'now')),
+		('urr_003', 'user_clicks_001', 'test_user_id', 'follow', 'table', strftime('%s', 'now'));
+	`
+
+	_, err := kb.DB.Exec(stmt)
+	if err != nil {
+		return fmt.Errorf("failed to insert sample data: %w", err)
+	}
+
+	GlobalLoggerDB.AddToOptimusLog("INFO", "Sample data inserted successfully.", runtime.GOOS)
 	return nil
 }
 

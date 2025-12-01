@@ -1,0 +1,71 @@
+sudo kubectl set env statefulset/optimusdb \
+  EMS_SERVICE_NAME=emsserver-ems-server \
+  EMS_NAMESPACE=default \
+  EMS_STOMP_PORT=61610 \
+  EMS_TOPIC=/topic/> \
+  EMS_DURABLE=1 \
+  EMS_SUB_NAME=optimusdb-ems \
+  MQ_USER=aaa \
+  MQ_PASS=111
+
+
+
+sudo kubectl rollout restart statefulset/optimusdb
+sudo kubectl rollout status statefulset/optimusdb
+
+
+
+curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"sql":"SELECT id,received_at,client_id,topic,action,resource,substr(params_json,1,200) AS params,substr(raw_json,1,200) AS raw FROM ems_events ORDER BY id DESC LIMIT 50;"}' \
+  "http://10.42.0.183:18001/swarmkb/ems/sql" | jq .
+
+curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"sql":"SELECT id,received_at,client_id,topic,action,resource,substr(params_json,1,200) AS params,substr(raw_json,1,200) AS raw FROM ems_events ORDER BY id DESC LIMIT 50;"}' \
+  "http://10.42.0.183:18001/swarmkb/ems/sql" | jq .
+
+
+
+curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"sql":"SELECT id,received_at,topic,substr(raw_json,1,240) AS raw FROM ems_events WHERE raw_json LIKE ''%unmarshal%'' ORDER BY id DESC LIMIT 20;"}' \
+  "http://10.42.0.183:18001/swarmkb/ems/sql" | jq .
+
+
+
+##working Raw SQLite inside the pod (low-level check)
+sudo kubectl exec -it optimusdb-0 -- sh -lc '
+DB=$(find "$HOME/.cache/optimusdb" -type f -name optimuslog.db | head -n1)
+sqlite3 -readonly -header -column "$DB" "
+  SELECT id,received_at,client_id,topic,action,resource,substr(raw_json,1,160) AS raw
+  FROM ems_events ORDER BY id DESC LIMIT 20;
+"
+'
+
+###GET with URL-encoded SQL (if you prefer)
+
+ENC=$(python3 - <<'PY'
+import urllib.parse
+sql = """SELECT id,received_at,client_id,topic,action,resource,
+                substr(params_json,1,200) AS params,
+                substr(raw_json,1,200)    AS raw
+         FROM ems_events
+         ORDER BY id DESC
+         LIMIT 50;"""
+print(urllib.parse.quote(sql))
+PY
+)
+curl -s "http://10.42.0.183:18001/swarmkb/ems/sql?q=$ENC" | jq .
+
+
+
+curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"sql":"SELECT id,timestamp,level,substr(message,1,240) AS msg FROM optimusLogger WHERE source=''ems'' AND message LIKE ''%unmarshal%'' ORDER BY id DESC LIMIT 50;"}' \
+  "http://10.42.0.183:18001/swarmkb/ems/sql" | jq .
+
+
+
+
+   sudo ./emsInterogate.sh --last
+   sudo ./emsInterogate.sh --recent 90
+   sudo ./emsInterogate.sh --errors
+   sudo ./emsInterogate.sh --sql "SELECT COUNT(*) AS n FROM ems_events;"
+sudo bash ./tosca-uploadV2.sh mytosca.yaml 18003 swarmkb default lb
