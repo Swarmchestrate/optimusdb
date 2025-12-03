@@ -38,6 +38,7 @@ Key goals:
 - [Core Application Components](docs/OptimusDB_CoreApplicationComponents.md)
 - [High Level Architecture](#architecture-high-level)
 - [High Level API quickstart](docs/OptimusDB_APIQuickstart.md)
+- [API Reference Guides](docs/API/OptimusDB_API_Documentation1.md)
 - [Query quickstart](docs/OptimusDB_QueryQuickstart.md)
 - [Query Engine SQL Overview](docs/OptimusDB_SQLEngine.md)
 - [Query Engine Strategies](docs/OptimusDB_QueriesStrategy.md)
