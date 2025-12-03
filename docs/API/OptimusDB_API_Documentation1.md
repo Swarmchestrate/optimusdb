@@ -5,9 +5,9 @@
 All API documentation has been updated to use **`swarmkb`** as the default context instead of `optimusdb`.
 
 ### Files Updated
-- [API Endpoints Reference](docs/API/OptimusDB_API_Documentation1.md)
-- [API Quick Reference](docs/API/OptimusDB_API_Quick_Reference.md)
-- [API Testing Guide](docs/API/OptimusDB_API_Documentation1.md)
+- [API Endpoints Reference](OptimusDB_API_Endpoints_Reference.md)
+- [API Quick Reference](OptimusDB_API_Quick_Reference.md)
+- [API Testing Guide](OptimusDB_API_Documentation1.md)
 
 ### What Changed
 
