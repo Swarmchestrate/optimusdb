@@ -19,6 +19,7 @@ import (
 	"optimusdb/config"
 	"optimusdb/contextualmetadata"
 	"optimusdb/credentials"
+	"optimusdb/election"
 	"optimusdb/tosca"
 	"os"
 	"regexp"
@@ -574,6 +575,200 @@ func sendSuccessResponse(w http.ResponseWriter, data interface{}) {
 	})
 }
 
+// agentStatusHandler returns comprehensive agent status including role and peer health
+// Add this function to api/http.go (before ServeHTTP function)
+func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			sendErrorResponse(w, http.StatusMethodNotAllowed, "Only GET is allowed")
+			return
+		}
+
+		ctx := context.Background()
+
+		// Get current node info
+		h := optimusdb.Node.PeerHost
+		selfPeerID := h.ID().String()
+
+		// Get self addresses
+		selfAddrs := make([]string, 0)
+		for _, addr := range h.Addrs() {
+			selfAddrs = append(selfAddrs, addr.String())
+		}
+
+		// Get election status
+		role, currentLeader, currentTerm, leadershipCount := election.GetNodeStatus()
+
+		// Determine if this node is the coordinator
+		isCoordinator := *config.FlagCoordinator
+		isCurrentLeader := (role == "Leader" || role == "leader")
+
+		// Get self reputation/health metrics
+		selfReputation, _ := election.GetPeerReputation(selfPeerID)
+		var selfHealthScore float64 = 0
+		if selfReputation != nil {
+			selfHealthScore = election.CalculateHealthScore(*selfReputation)
+		}
+
+		// Get all peers reputation
+		allReputations, err := election.GetAllPeersReputation()
+		if err != nil {
+			log.Printf("[ERROR] Failed to get peer reputations: %v", err)
+			allReputations = []election.NodeReputation{}
+		}
+
+		// Get connected peers from IPFS
+		coreAPI := (*optimusdb.Orbit).IPFS()
+		connInfo, _ := coreAPI.Swarm().Peers(ctx)
+		connectedPeerIDs := make(map[string]bool)
+		for _, ci := range connInfo {
+			connectedPeerIDs[ci.ID().String()] = true
+		}
+
+		// Get discovered peers
+		discoveredPeers := optimusdb.GetDiscoveredPeers()
+
+		// Build peer list with roles and health
+		peersList := make([]map[string]interface{}, 0)
+
+		for _, rep := range allReputations {
+			// Skip self
+			if rep.NodeID == selfPeerID {
+				continue
+			}
+
+			// Determine peer role
+			peerRole := "Follower"
+			if rep.NodeID == currentLeader {
+				peerRole = "Coordinator"
+			}
+
+			// Calculate health score
+			healthScore := election.CalculateHealthScore(rep)
+
+			// Determine connection status
+			isConnected := connectedPeerIDs[rep.NodeID]
+
+			// Health status based on score
+			var healthStatus string
+			if healthScore >= 80 {
+				healthStatus = "Excellent"
+			} else if healthScore >= 60 {
+				healthStatus = "Good"
+			} else if healthScore >= 40 {
+				healthStatus = "Fair"
+			} else if healthScore >= 20 {
+				healthStatus = "Poor"
+			} else {
+				healthStatus = "Critical"
+			}
+
+			peerInfo := map[string]interface{}{
+				"peer_id":   rep.NodeID,
+				"role":      peerRole,
+				"is_leader": rep.NodeID == currentLeader,
+				"connected": isConnected,
+				"health": map[string]interface{}{
+					"score":        fmt.Sprintf("%.2f", healthScore),
+					"status":       healthStatus,
+					"cpu_usage":    fmt.Sprintf("%.2f%%", rep.UserCPU+rep.SystemCPU),
+					"cpu_idle":     fmt.Sprintf("%.2f%%", rep.IdleCPU),
+					"memory_used":  fmt.Sprintf("%.2f MB", rep.MemoryAvailable),
+					"memory_total": fmt.Sprintf("%.2f MB", rep.MemoryAllocationTotal),
+					"memory_sys":   fmt.Sprintf("%.2f MB", rep.MemorySystem),
+					"disk_read":    fmt.Sprintf("%.2f MB/s", rep.AvgReadMBs),
+					"disk_write":   fmt.Sprintf("%.2f MB/s", rep.AvgWriteMBs),
+					"latency":      fmt.Sprintf("%.2f ms", rep.Latency),
+					"uptime":       fmt.Sprintf("%.2f", rep.Uptime),
+				},
+				"metrics": map[string]interface{}{
+					"leadership_count": rep.LeadershipCount,
+					"geography_score":  rep.GeographyScore,
+				},
+			}
+
+			peersList = append(peersList, peerInfo)
+		}
+
+		// Get latest election info
+		//lastElectionLeader, lastElectionTerm, lastElectionTime, _ := election.GetLatestElectionInfo()
+		_, lastElectionTerm, lastElectionTime, _ := election.GetLatestElectionInfo()
+
+		// Build self health info
+		var selfHealth map[string]interface{}
+		if selfReputation != nil {
+			healthStatus := "Unknown"
+			if selfHealthScore >= 80 {
+				healthStatus = "Excellent"
+			} else if selfHealthScore >= 60 {
+				healthStatus = "Good"
+			} else if selfHealthScore >= 40 {
+				healthStatus = "Fair"
+			} else if selfHealthScore >= 20 {
+				healthStatus = "Poor"
+			} else {
+				healthStatus = "Critical"
+			}
+
+			selfHealth = map[string]interface{}{
+				"score":        fmt.Sprintf("%.2f", selfHealthScore),
+				"status":       healthStatus,
+				"cpu_usage":    fmt.Sprintf("%.2f%%", selfReputation.UserCPU+selfReputation.SystemCPU),
+				"cpu_idle":     fmt.Sprintf("%.2f%%", selfReputation.IdleCPU),
+				"memory_used":  fmt.Sprintf("%.2f MB", selfReputation.MemoryAvailable),
+				"memory_total": fmt.Sprintf("%.2f MB", selfReputation.MemoryAllocationTotal),
+				"memory_sys":   fmt.Sprintf("%.2f MB", selfReputation.MemorySystem),
+				"disk_read":    fmt.Sprintf("%.2f MB/s", selfReputation.AvgReadMBs),
+				"disk_write":   fmt.Sprintf("%.2f MB/s", selfReputation.AvgWriteMBs),
+				"latency":      fmt.Sprintf("%.2f ms", selfReputation.Latency),
+				"uptime":       fmt.Sprintf("%.2f", selfReputation.Uptime),
+			}
+		} else {
+			selfHealth = map[string]interface{}{
+				"score":  "N/A",
+				"status": "Initializing",
+			}
+		}
+
+		// Build complete response
+		response := map[string]interface{}{
+			"status": "success",
+			"agent": map[string]interface{}{
+				"peer_id":           selfPeerID,
+				"addresses":         selfAddrs,
+				"role":              role,
+				"is_coordinator":    isCoordinator,
+				"is_current_leader": isCurrentLeader,
+				"health":            selfHealth,
+				"metrics": map[string]interface{}{
+					"leadership_count": leadershipCount,
+				},
+			},
+			"election": map[string]interface{}{
+				"current_leader":     currentLeader,
+				"current_term":       currentTerm,
+				"last_election_time": lastElectionTime,
+				"last_election_term": lastElectionTerm,
+			},
+			"cluster": map[string]interface{}{
+				"total_peers":      len(peersList),
+				"connected_peers":  len(connectedPeerIDs) - 1, // -1 to exclude self
+				"discovered_peers": len(discoveredPeers),
+				"coordinators":     1, // Always 1 coordinator in the cluster
+				"followers":        len(peersList),
+			},
+			"peers": peersList,
+			"configuration": map[string]interface{}{
+				"context":   *config.FlagContext,
+				"http_port": *config.FlagHTTPPort,
+			},
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		}
+
+		sendJSONResponse(w, response)
+	}
+}
+
 // //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ServeHTTP
 // //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -608,6 +803,11 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 	simple HTTP endpoint all command related to data stores
 	*/
 	server.Handle("/"+*config.FlagContext+"/command", mw(commandHandler(reqChan, resChan)))
+
+	/**
+	Agent status endpoint - shows coordinator/follower status and peer health
+	*/
+	server.Handle("/"+*config.FlagContext+"/agent/status", mw(agentStatusHandler(optimusdb)))
 
 	/**
 		/upload-tosca endpoint

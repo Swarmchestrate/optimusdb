@@ -489,8 +489,14 @@ func main() {
 	log.Println("[INIT] Waiting for GossipSub mesh to stabilize...")
 	time.Sleep(5 * time.Second)
 
+	//log.Println("[INIT] Starting Election Controller...")
+	//go election.RunFullNode(termCtx, hostMain, ps, &knowledgeBaseDB)
 	log.Println("[INIT] Starting Election Controller...")
-	go election.RunFullNode(termCtx, hostMain, ps, &knowledgeBaseDB)
+	electionNode := election.RunFullNode(termCtx, hostMain, ps, &knowledgeBaseDB)
+	if app.GlobalLoggerDB != nil {
+		_ = app.GlobalLoggerDB.AddToOptimusLog("ELECTION", fmt.Sprintf("ELECTION Results: %v", electionNode), runtime.GOOS)
+	}
+	log.Printf("[INIT] ✅ Election node initialized and stored globally")
 
 	// ===============================
 	// START BACKGROUND METADATA ENRICHER

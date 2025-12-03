@@ -26,6 +26,8 @@ import (
 )
 
 var GlobalReputationDB *ReputationSQLite
+var GlobalElectionNode *Node
+var electionNodeMutex sync.RWMutex
 
 type ReputationSQLite struct {
 	reputationDB *sql.DB
@@ -849,7 +851,8 @@ func (n *Node) PeriodicReputationPublisher() {
 }
 
 // IMPROVED RunFullNode with better mesh waiting
-func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, discovery *app.KnowledgeBaseDB) {
+func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, discovery *app.KnowledgeBaseDB) *Node {
+	//func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, discovery *app.KnowledgeBaseDB) {
 	// Get pre-created topic and subscription from discovery
 	var electionTopic *pubsub.Topic
 	var electionSub *pubsub.Subscription
@@ -878,7 +881,11 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	node := NewNode(ctx, host, pubsubObj, discovery)
 	node.electionTopic = electionTopic
 	node.electionSub = electionSub
-
+	// Add after them:
+	//     // Store globally for API access
+	electionNodeMutex.Lock()
+	GlobalElectionNode = node
+	electionNodeMutex.Unlock()
 	defer GlobalReputationDB.reputationDB.Close()
 
 	log.Println("[INIT] Starting OptimusDB Election Node as FOLLOWER")
@@ -977,6 +984,8 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 	log.Println("[SHUTDOWN] Election controller exiting")
+
+	return node
 }
 
 func NewNode(ctx context.Context, host host.Host, pubsub *pubsub.PubSub, discovery *app.KnowledgeBaseDB) *Node {
@@ -1099,4 +1108,132 @@ func (n *Node) LogRoleStatus() {
 			return
 		}
 	}
+}
+
+// GetNodeStatus returns the current node's election status
+func GetNodeStatus() (role string, leader string, term int, leadershipCount int) {
+	electionNodeMutex.RLock()
+	defer electionNodeMutex.RUnlock()
+
+	if GlobalElectionNode == nil {
+		return "Unknown", "", 0, 0
+	}
+
+	GlobalElectionNode.mutex.Lock()
+	role = GlobalElectionNode.role
+	leader = GlobalElectionNode.leader.String()
+	term = GlobalElectionNode.currentTerm
+	leadershipCount = GlobalElectionNode.leadershipCount
+	GlobalElectionNode.mutex.Unlock()
+
+	return
+}
+
+// GetAllPeersReputation retrieves reputation data for all known peers
+func GetAllPeersReputation() ([]NodeReputation, error) {
+	if GlobalReputationDB == nil || GlobalReputationDB.reputationDB == nil {
+		return nil, fmt.Errorf("reputation database not initialized")
+	}
+
+	query := `SELECT node_id, uptime, leadership_count, latency, user_cpu, system_cpu, 
+              idle_cpu, memory_available, memory_total_alloc, memory_sys, 
+              avg_read_mbs, avg_write_mbs, geography_score 
+              FROM reputation ORDER BY node_id`
+
+	rows, err := GlobalReputationDB.reputationDB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var reputations []NodeReputation
+	for rows.Next() {
+		var rep NodeReputation
+		err := rows.Scan(
+			&rep.NodeID,
+			&rep.Uptime,
+			&rep.LeadershipCount,
+			&rep.Latency,
+			&rep.UserCPU,
+			&rep.SystemCPU,
+			&rep.IdleCPU,
+			&rep.MemoryAvailable,
+			&rep.MemoryAllocationTotal,
+			&rep.MemorySystem,
+			&rep.AvgReadMBs,
+			&rep.AvgWriteMBs,
+			&rep.GeographyScore,
+		)
+		if err != nil {
+			log.Printf("[ERROR] Failed to scan reputation row: %v", err)
+			continue
+		}
+		reputations = append(reputations, rep)
+	}
+
+	return reputations, nil
+}
+
+// GetPeerReputation retrieves reputation for a specific peer
+func GetPeerReputation(peerID string) (*NodeReputation, error) {
+	if GlobalReputationDB == nil || GlobalReputationDB.reputationDB == nil {
+		return nil, fmt.Errorf("reputation database not initialized")
+	}
+
+	query := `SELECT node_id, uptime, leadership_count, latency, user_cpu, system_cpu, 
+              idle_cpu, memory_available, memory_total_alloc, memory_sys, 
+              avg_read_mbs, avg_write_mbs, geography_score 
+              FROM reputation WHERE node_id = ?`
+
+	row := GlobalReputationDB.reputationDB.QueryRow(query, peerID)
+
+	var rep NodeReputation
+	err := row.Scan(
+		&rep.NodeID,
+		&rep.Uptime,
+		&rep.LeadershipCount,
+		&rep.Latency,
+		&rep.UserCPU,
+		&rep.SystemCPU,
+		&rep.IdleCPU,
+		&rep.MemoryAvailable,
+		&rep.MemoryAllocationTotal,
+		&rep.MemorySystem,
+		&rep.AvgReadMBs,
+		&rep.AvgWriteMBs,
+		&rep.GeographyScore,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // Peer not found
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &rep, nil
+}
+
+// CalculateHealthScore calculates health score for a node reputation
+func CalculateHealthScore(nr NodeReputation) float64 {
+	return calculateReputation(nr)
+}
+
+// GetLatestElectionInfo gets the most recent election information
+func GetLatestElectionInfo() (leaderID string, term int, timestamp string, err error) {
+	if GlobalReputationDB == nil || GlobalReputationDB.reputationDB == nil {
+		return "", 0, "", fmt.Errorf("reputation database not initialized")
+	}
+
+	query := `SELECT leader_id, term, timestamp FROM election_log 
+              ORDER BY timestamp DESC LIMIT 1`
+
+	row := GlobalReputationDB.reputationDB.QueryRow(query)
+	err = row.Scan(&leaderID, &term, &timestamp)
+
+	if err == sql.ErrNoRows {
+		return "", 0, "", nil // No elections yet
+	}
+
+	return leaderID, term, timestamp, err
 }
