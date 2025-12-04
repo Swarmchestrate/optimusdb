@@ -617,6 +617,12 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 			allReputations = []election.NodeReputation{}
 		}
 
+		// Create a map for quick reputation lookup
+		reputationMap := make(map[string]*election.NodeReputation)
+		for i := range allReputations {
+			reputationMap[allReputations[i].NodeID] = &allReputations[i]
+		}
+
 		// Get connected peers from IPFS
 		coreAPI := (*optimusdb.Orbit).IPFS()
 		connInfo, _ := coreAPI.Swarm().Peers(ctx)
@@ -631,67 +637,97 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 		// Build peer list with roles and health
 		peersList := make([]map[string]interface{}, 0)
 
-		for _, rep := range allReputations {
+		// ⭐ FIX: Use connected peers as source, not just reputations
+		for peerIDStr := range connectedPeerIDs {
 			// Skip self
-			if rep.NodeID == selfPeerID {
+			if peerIDStr == selfPeerID {
 				continue
 			}
 
+			// Try to get reputation data
+			rep, hasReputation := reputationMap[peerIDStr]
+
 			// Determine peer role
 			peerRole := "Follower"
-			if rep.NodeID == currentLeader {
+			isLeader := false
+			if peerIDStr == currentLeader {
 				peerRole = "Coordinator"
+				isLeader = true
 			}
 
-			// Calculate health score
-			healthScore := election.CalculateHealthScore(rep)
+			var peerInfo map[string]interface{}
 
-			// Determine connection status
-			isConnected := connectedPeerIDs[rep.NodeID]
+			if hasReputation {
+				// We have reputation data for this peer
+				healthScore := election.CalculateHealthScore(*rep)
 
-			// Health status based on score
-			var healthStatus string
-			if healthScore >= 80 {
-				healthStatus = "Excellent"
-			} else if healthScore >= 60 {
-				healthStatus = "Good"
-			} else if healthScore >= 40 {
-				healthStatus = "Fair"
-			} else if healthScore >= 20 {
-				healthStatus = "Poor"
+				var healthStatus string
+				if healthScore >= 80 {
+					healthStatus = "Excellent"
+				} else if healthScore >= 60 {
+					healthStatus = "Good"
+				} else if healthScore >= 40 {
+					healthStatus = "Fair"
+				} else if healthScore >= 20 {
+					healthStatus = "Poor"
+				} else {
+					healthStatus = "Critical"
+				}
+
+				peerInfo = map[string]interface{}{
+					"peer_id":   peerIDStr,
+					"role":      peerRole,
+					"is_leader": isLeader,
+					"connected": true,
+					"health": map[string]interface{}{
+						"score":        fmt.Sprintf("%.2f", healthScore),
+						"status":       healthStatus,
+						"cpu_usage":    fmt.Sprintf("%.2f%%", rep.UserCPU+rep.SystemCPU),
+						"cpu_idle":     fmt.Sprintf("%.2f%%", rep.IdleCPU),
+						"memory_used":  fmt.Sprintf("%.2f MB", rep.MemoryAvailable),
+						"memory_total": fmt.Sprintf("%.2f MB", rep.MemoryAllocationTotal),
+						"memory_sys":   fmt.Sprintf("%.2f MB", rep.MemorySystem),
+						"disk_read":    fmt.Sprintf("%.2f MB/s", rep.AvgReadMBs),
+						"disk_write":   fmt.Sprintf("%.2f MB/s", rep.AvgWriteMBs),
+						"latency":      fmt.Sprintf("%.2f ms", rep.Latency),
+						"uptime":       fmt.Sprintf("%.2f", rep.Uptime),
+					},
+					"metrics": map[string]interface{}{
+						"leadership_count": rep.LeadershipCount,
+						"geography_score":  rep.GeographyScore,
+					},
+				}
 			} else {
-				healthStatus = "Critical"
-			}
-
-			peerInfo := map[string]interface{}{
-				"peer_id":   rep.NodeID,
-				"role":      peerRole,
-				"is_leader": rep.NodeID == currentLeader,
-				"connected": isConnected,
-				"health": map[string]interface{}{
-					"score":        fmt.Sprintf("%.2f", healthScore),
-					"status":       healthStatus,
-					"cpu_usage":    fmt.Sprintf("%.2f%%", rep.UserCPU+rep.SystemCPU),
-					"cpu_idle":     fmt.Sprintf("%.2f%%", rep.IdleCPU),
-					"memory_used":  fmt.Sprintf("%.2f MB", rep.MemoryAvailable),
-					"memory_total": fmt.Sprintf("%.2f MB", rep.MemoryAllocationTotal),
-					"memory_sys":   fmt.Sprintf("%.2f MB", rep.MemorySystem),
-					"disk_read":    fmt.Sprintf("%.2f MB/s", rep.AvgReadMBs),
-					"disk_write":   fmt.Sprintf("%.2f MB/s", rep.AvgWriteMBs),
-					"latency":      fmt.Sprintf("%.2f ms", rep.Latency),
-					"uptime":       fmt.Sprintf("%.2f", rep.Uptime),
-				},
-				"metrics": map[string]interface{}{
-					"leadership_count": rep.LeadershipCount,
-					"geography_score":  rep.GeographyScore,
-				},
+				// No reputation data yet, use defaults
+				peerInfo = map[string]interface{}{
+					"peer_id":   peerIDStr,
+					"role":      peerRole,
+					"is_leader": isLeader,
+					"connected": true,
+					"health": map[string]interface{}{
+						"score":        "50.00",
+						"status":       "Connected",
+						"cpu_usage":    "N/A",
+						"cpu_idle":     "N/A",
+						"memory_used":  "N/A",
+						"memory_total": "N/A",
+						"memory_sys":   "N/A",
+						"disk_read":    "N/A",
+						"disk_write":   "N/A",
+						"latency":      "10.00 ms",
+						"uptime":       "N/A",
+					},
+					"metrics": map[string]interface{}{
+						"leadership_count": 0,
+						"geography_score":  0,
+					},
+				}
 			}
 
 			peersList = append(peersList, peerInfo)
 		}
 
 		// Get latest election info
-		//lastElectionLeader, lastElectionTerm, lastElectionTime, _ := election.GetLatestElectionInfo()
 		_, lastElectionTerm, lastElectionTime, _ := election.GetLatestElectionInfo()
 
 		// Build self health info
@@ -730,6 +766,23 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 			}
 		}
 
+		// Count coordinators and followers
+		coordCount := 0
+		followerCount := 0
+		for _, peer := range peersList {
+			if peer["role"] == "Coordinator" {
+				coordCount++
+			} else {
+				followerCount++
+			}
+		}
+		// Add self to counts
+		if isCoordinator || isCurrentLeader {
+			coordCount++
+		} else {
+			followerCount++
+		}
+
 		// Build complete response
 		response := map[string]interface{}{
 			"status": "success",
@@ -751,13 +804,13 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 				"last_election_term": lastElectionTerm,
 			},
 			"cluster": map[string]interface{}{
-				"total_peers":      len(peersList),
-				"connected_peers":  len(connectedPeerIDs) - 1, // -1 to exclude self
+				"total_peers":      len(peersList) + 1, // ✅ Fixed: +1 for self
+				"connected_peers":  len(connectedPeerIDs) - 1,
 				"discovered_peers": len(discoveredPeers),
-				"coordinators":     1, // Always 1 coordinator in the cluster
-				"followers":        len(peersList),
+				"coordinators":     coordCount,    // ✅ Fixed: actual count
+				"followers":        followerCount, // ✅ Fixed: actual count
 			},
-			"peers": peersList,
+			"peers": peersList, // ✅ Now populated!
 			"configuration": map[string]interface{}{
 				"context":   *config.FlagContext,
 				"http_port": *config.FlagHTTPPort,
