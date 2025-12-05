@@ -2,7 +2,7 @@ package ipfs
 
 import (
 	"context"
-	"fmt"
+	"optimusdb/logger"
 	"os"
 	"sync"
 
@@ -17,13 +17,13 @@ import (
 func GetIPFSNode(path string) (files.Node, error) {
 	fileStat, err := os.Stat(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: GetIPFSNode : %+v\n", err)
+		logger.Error("[ERROR] On GetIPFSNode : %+v", err)
 		return nil, err
 	}
 
 	node, err := files.NewSerialFile(path, true, fileStat)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: NewSerialFile : %+v\n", err)
+		logger.Error("[ERROR] NewSerialFile : %+v", err)
 		return nil, err
 	}
 
@@ -43,12 +43,12 @@ func ConnectToPeers(ctx context.Context, orbitdb *iface.OrbitDB, peers []string)
 	for _, addrStr := range peers {
 		addr, err := ma.NewMultiaddr(addrStr)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: ConnectToPeers/NewMultiaddr : %+v\n", err)
+			logger.Error("[ERROR] ConnectToPeers/NewMultiaddr : %+v", err)
 			return err
 		}
 		pii, err := peer.AddrInfoFromP2pAddr(addr)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: ConnectToPeers/AddrInfoFromP2pAddr : %+v\n", err)
+			logger.Error("[ERROR] ConnectToPeers/AddrInfoFromP2pAddr : %+v", err)
 			return err
 		}
 		pi, ok := peerInfos[pii.ID]
@@ -66,8 +66,8 @@ func ConnectToPeers(ctx context.Context, orbitdb *iface.OrbitDB, peers []string)
 			defer wg.Done()
 			err := api.Swarm().Connect(ctx, *peerInfo)
 			if err != nil {
-				// TODO : should be sent via Response channel
-				fmt.Fprintf(os.Stderr, "ERROR: ConnectToPeers/peerInfos : %+v\n", err)
+				logger.Error("[ERROR] When trying to ConnectToPeers/peerInfos : %+v", err)
+				//fmt.Fprintf(os.Stderr, "ERROR: ConnectToPeers/peerInfos : %+v\n", err)
 			}
 		}(peerInfo)
 	}

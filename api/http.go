@@ -12,7 +12,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"optimusdb/app"
@@ -20,6 +19,7 @@ import (
 	"optimusdb/contextualmetadata"
 	"optimusdb/credentials"
 	"optimusdb/election"
+	"optimusdb/logger"
 	"optimusdb/tosca"
 	"os"
 	"regexp"
@@ -613,7 +613,7 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 		// Get all peers reputation
 		allReputations, err := election.GetAllPeersReputation()
 		if err != nil {
-			log.Printf("[ERROR] Failed to get peer reputations: %v", err)
+			logger.Error("[ERROR] Failed to get peer reputations: %v", err)
 			allReputations = []election.NodeReputation{}
 		}
 
@@ -1143,7 +1143,7 @@ func EnrichHandler(kb *app.KnowledgeBaseDB) http.HandlerFunc {
 // RegisterMetadataRoutes registers metadata enrichment endpoints
 func RegisterMetadataRoutes(router *mux.Router, kb *app.KnowledgeBaseDB) {
 	if kb.MetadataService == nil || kb.MetadataCache == nil {
-		log.Println("[API] Metadata service not initialized, skipping metadata routes")
+		logger.Info("[API] Metadata service not initialized, skipping metadata routes")
 		return
 	}
 
@@ -1164,5 +1164,5 @@ func RegisterMetadataRoutes(router *mux.Router, kb *app.KnowledgeBaseDB) {
 	apiV1.HandleFunc("/metadata/health", metadataHandler.HealthCheck).Methods("GET")
 	apiV1.HandleFunc("/metadata/cache", metadataHandler.ClearCache).Methods("DELETE")
 
-	log.Println("[API] ✅ Metadata enrichment endpoints registered")
+	logger.Info("[API] ✅ Metadata enrichment endpoints registered")
 }

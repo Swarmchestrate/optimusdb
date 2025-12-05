@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"optimusdb/contextualmetadata"
+	"optimusdb/logger"
 	"os"
 	"os/signal"
 	"runtime"
@@ -50,7 +51,9 @@ func (mt *MeshTracer) Trace(evt *pubsub_pb.TraceEvent) {
 					peerID = pid.String()
 				}
 			}
-			log.Printf("[MESH] 🌿 GRAFT: Peer %s joined mesh for topic %s",
+			//log.Printf("[MESH] 🌿 GRAFT: Peer %s joined mesh for topic %s",
+			//	peerID, *evt.Graft.Topic)
+			logger.Info("[MESH] 🌿 GRAFT: Peer %s joined mesh for topic %s",
 				peerID, *evt.Graft.Topic)
 		}
 	case pubsub_pb.TraceEvent_PRUNE:
@@ -62,12 +65,15 @@ func (mt *MeshTracer) Trace(evt *pubsub_pb.TraceEvent) {
 					peerID = peerID[:8] + "..."
 				}
 			}
-			log.Printf("[MESH] ✂️ PRUNE: Peer %s left mesh for topic %s",
+			//log.Printf("[MESH] ✂️ PRUNE: Peer %s left mesh for topic %s",
+			//	peerID, *evt.Prune.Topic)
+			logger.Info("[MESH] ✂️ PRUNE: Peer %s left mesh for topic %s",
 				peerID, *evt.Prune.Topic)
 		}
 	case pubsub_pb.TraceEvent_JOIN:
 		if evt.Join != nil && evt.Join.Topic != nil {
-			log.Printf("[MESH] ➕ JOIN: Subscribed to topic %s", *evt.Join.Topic)
+			//log.Printf("[MESH] ➕ JOIN: Subscribed to topic %s", *evt.Join.Topic)
+			logger.Info("[MESH] ➕ JOIN: Subscribed to topic %s", *evt.Join.Topic)
 		}
 	case pubsub_pb.TraceEvent_ADD_PEER:
 		peerID := ""
@@ -77,7 +83,8 @@ func (mt *MeshTracer) Trace(evt *pubsub_pb.TraceEvent) {
 				peerID = peerID[:8] + "..."
 			}
 		}
-		log.Printf("[MESH] 👥 ADD_PEER: Connected to %s", peerID)
+		//log.Printf("[MESH] 👥 ADD_PEER: Connected to %s", peerID)
+		logger.Info("[MESH] 👥 ADD_PEER: Connected to %s", peerID)
 	}
 }
 
@@ -100,10 +107,10 @@ func MonitorMeshStatus(ctx context.Context, ps *pubsub.PubSub, topic *pubsub.Top
 			// Get mesh peers for the specific topic
 			meshPeers := ps.ListPeers("optimusdb")
 
-			log.Printf("[MESH-STATUS] ════════════════════════════════")
-			log.Printf("[MESH-STATUS] Connected peers: %d", len(allPeers))
-			log.Printf("[MESH-STATUS] Topic 'optimusdb' subscribers: %d", len(topicPeers))
-			log.Printf("[MESH-STATUS] Mesh peers: %d", len(meshPeers))
+			//log.Printf("[MESH-STATUS] ════════════════════════════════")
+			logger.Info("[MESH-STATUS] Connected peers: %d", len(allPeers))
+			logger.Info("[MESH-STATUS] Topic 'optimusdb' subscribers: %d", len(topicPeers))
+			logger.Info("[MESH-STATUS] Mesh peers: %d", len(meshPeers))
 
 			// List mesh peer details
 			for i, p := range meshPeers {
@@ -112,9 +119,9 @@ func MonitorMeshStatus(ctx context.Context, ps *pubsub.PubSub, topic *pubsub.Top
 					shortID = shortID[:8] + "..."
 				}
 				connectedness := host.Network().Connectedness(p)
-				log.Printf("[MESH-STATUS]   [%d] %s - %s", i+1, shortID, connectedness)
+				logger.Info("[MESH-STATUS]   [%d] %s - %s", i+1, shortID, connectedness)
 			}
-			log.Printf("[MESH-STATUS] ════════════════════════════════")
+			//log.Printf("[MESH-STATUS] ════════════════════════════════")
 		}
 	}
 }
@@ -145,6 +152,8 @@ func main() {
 
 	// Init logging DB
 	app.GlobalLoggerDB, _ = app.InitLog()
+	// Set the database for the global logger
+	logger.SetGlobalDatabase(app.GlobalLoggerDB)
 
 	// Reputation DB
 	election.GlobalReputationDB, _ = election.InitReputationDB()
@@ -174,6 +183,8 @@ func main() {
 	// Init peer + KB components
 	if err := app.InitPeer(&knowledgeBaseDB, &rdbms, &bench, logChan); err != nil {
 		fmt.Fprintf(os.Stderr, "Error on setup:\n %+v\n", err)
+		logger.Error("Error on setup of InitPeer under main: %v", err)
+
 		os.Exit(1)
 	}
 
@@ -185,7 +196,7 @@ func main() {
 	// ===============================
 	// TINYLLAMA METADATA ENRICHMENT
 	// ===============================
-	log.Println("[METADATA] Initializing TinyLlama metadata enrichment...")
+	logger.Info("[METADATA] Initializing TinyLlama metadata enrichment...")
 
 	// Variables for metadata system
 	var llmClient *contextualmetadata.HTTPClient
@@ -194,8 +205,8 @@ func main() {
 	// Initialize TinyLlama HTTP client
 	llmClient, err := contextualmetadata.NewTinyLlamaHTTP()
 	if err != nil {
-		log.Printf("[METADATA] ⚠️  TinyLlama not available: %v", err)
-		log.Println("[METADATA] ℹ️  Will use basic metadata generation")
+		logger.Info("[METADATA] ⚠️  TinyLlama not available: %v", err)
+		logger.Info("[METADATA] ℹ️  Will use basic metadata generation")
 		if app.GlobalLoggerDB != nil {
 			_ = app.GlobalLoggerDB.AddToOptimusLog("WARN", "TinyLlama unavailable: "+err.Error(), runtime.GOOS)
 		}
@@ -204,10 +215,10 @@ func main() {
 		// Quick health check
 		healthCtx, healthCancel := context.WithTimeout(termCtx, 20*time.Second) // TBD if more is required
 		if err := llmClient.HealthCheck(healthCtx); err != nil {
-			log.Printf("[METADATA] ⚠️  TinyLlama health check failed: %v", err)
+			logger.Info("[METADATA] ⚠️  TinyLlama health check failed: %v", err)
 			llmClient = nil
 		} else {
-			log.Println("[METADATA] ✅ TinyLlama client initialized and healthy")
+			logger.Info("[METADATA] ✅ TinyLlama client initialized and healthy")
 			if app.GlobalLoggerDB != nil {
 				_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", "TinyLlama client initialized", runtime.GOOS)
 			}
@@ -230,7 +241,7 @@ func main() {
 		}
 	}
 	knowledgeBaseDB.MetadataCache = contextualmetadata.NewMetadataCache(cacheTTL)
-	log.Printf("[METADATA] 📦 Metadata cache initialized (TTL: %v)", cacheTTL)
+	logger.Info("[METADATA] 📦 Metadata cache initialized (TTL: %v)", cacheTTL)
 
 	// Initialize background enricher (optional, controlled by env var)
 	if os.Getenv("METADATA_AUTO_ENRICH") == "true" || os.Getenv("METADATA_AUTO_ENRICH") == "1" {
@@ -256,36 +267,36 @@ func main() {
 		}
 		metadataEnricher.SetInterval(enrichInterval)
 
-		log.Printf("[METADATA] 🔄 Background enricher enabled (interval: %v)", enrichInterval)
-		if app.GlobalLoggerDB != nil {
-			_ = app.GlobalLoggerDB.AddToOptimusLog("INFO",
-				fmt.Sprintf("Background metadata enricher enabled (interval: %v)", enrichInterval),
-				runtime.GOOS)
-		}
+		logger.Info("[METADATA] 🔄 Background enricher enabled (interval: %v)", enrichInterval)
+		//if app.GlobalLoggerDB != nil {
+		//	_ = app.GlobalLoggerDB.AddToOptimusLog("INFO",
+		//		fmt.Sprintf("Background metadata enricher enabled (interval: %v)", enrichInterval),
+		//		runtime.GOOS)
+		//}
 	} else {
-		log.Println("[METADATA] Background enricher disabled (set METADATA_AUTO_ENRICH=true to enable)")
+		logger.Info("[METADATA] Background enricher disabled (set METADATA_AUTO_ENRICH=true to enable)")
 	}
-
-	log.Println("[METADATA] ✅ Metadata enrichment system initialized")
+	logger.Info("[METADATA] ✅ Metadata enrichment system initialized")
 
 	// EMS subscriber (ActiveMQ/STOMP)
 	emsCtx, emsCancel := context.WithCancel(termCtx)
 	cleanupEMS, err := knowledgeBaseDB.StartEMSSubscriber(emsCtx)
 	if err != nil {
 		log.Printf("[ERROR] EMS init failed: %v", err)
-		if app.GlobalLoggerDB != nil {
-			_ = app.GlobalLoggerDB.AddToOptimusLog("ERROR", "EMS init failed: "+err.Error(), runtime.GOOS)
-		}
+		//if app.GlobalLoggerDB != nil {
+		//	_ = app.GlobalLoggerDB.AddToOptimusLog("ERROR", "EMS init failed: "+err.Error(), runtime.GOOS)
+		//}
+		logger.Error("[ERROR] EMS init failed: %v", err)
 	} else {
 		go func() {
 			<-termCtx.Done()
 			_ = cleanupEMS()
 			emsCancel()
 		}()
-		log.Println("[INFO] EMS service started (auto-reconnect enabled)")
-		if app.GlobalLoggerDB != nil {
-			_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", "EMS service started (auto-reconnect enabled)", runtime.GOOS)
-		}
+		logger.Info("[INFO] EMS service started (auto-reconnect enabled)")
+		//if app.GlobalLoggerDB != nil {
+		//	_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", "EMS service started (auto-reconnect enabled)", runtime.GOOS)
+		//}
 	}
 
 	// API channels
@@ -298,30 +309,33 @@ func main() {
 			switch l.Type {
 			case app.RecoverableErr:
 				if err, ok := l.Data.(error); ok {
-					log.Printf("[ERROR] Recovering from : %v\n", err)
+					logger.Error("[ERROR] Recovering from : %v\n", err)
 				} else {
-					log.Printf("[ERROR] Recovering from non-error type: %v\n", l.Data)
+					logger.Error("[ERROR] Recovering from non-error type: %v\n", l.Data)
 				}
 			case app.NonRecoverableErr:
 				if err, ok := l.Data.(error); ok {
-					log.Printf("[ERROR] Cannot recover from : %+v\n", err)
+					logger.Error("[ERROR] Cannot recover from : %+v\n", err)
 				} else {
-					log.Printf("[ERROR] Non-recoverable issue, but not an error type: %v\n", l.Data)
+					logger.Error("[ERROR] Non-recoverable issue, but not an error type: %v\n", l.Data)
 				}
 				termCancel()
 			case app.Info:
 				if msg, ok := l.Data.(string); ok {
-					log.Printf("[INFO] Logging Channel: %s\n", msg)
+					logger.Info("[INFO] Logging Channel: %s\n", msg)
 				} else {
-					log.Printf("[INFO] Unexpected info format: %v\n", l.Data)
-					_ = app.GlobalLoggerDB.AddToOptimusLog("WARN", fmt.Sprintf("Unexpected info format: %+v", l.Data), runtime.GOOS)
+					logger.Info("[INFO] Unexpected info format: %v\n", l.Data)
+					//_ = app.GlobalLoggerDB.AddToOptimusLog("WARN", fmt.Sprintf("Unexpected info format: %+v", l.Data), runtime.GOOS)
 				}
 			case app.Print:
 				log.Print(l.Data)
-				_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Main Data: %+v", l.Data), runtime.GOOS)
+				logger.Info("[INFO] Main Data: %+v", l.Data)
+				//_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Main Data: %+v", l.Data), runtime.GOOS)
+
 			default:
-				log.Printf("[WARN] Unknown log type: %+v\n", l)
-				_ = app.GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Unknown log type: %+v", l), runtime.GOOS)
+				//log.Printf("[WARN] Unknown log type: %+v\n", l)
+				logger.Debug("[DEBUG] Unknown log type: %+v\n", l)
+				//_ = app.GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Unknown log type: %+v", l), runtime.GOOS)
 			}
 		}
 	}()
@@ -339,8 +353,8 @@ func main() {
 	// USE SINGLE HOST FOR EVERYTHING
 	// ===============================
 	hostMain := knowledgeBaseDB.Node.PeerHost
-	log.Println("[INIT] Using unified libp2p host for discovery and GossipSub")
-	log.Println("[INIT] Libp2p Node ID:", hostMain.ID())
+	logger.Debug("[DEBUG] Using unified libp2p host for discovery and GossipSub")
+	logger.Info("[INFO] Libp2p Node ID:", hostMain.ID())
 
 	// Register SQL stream handler on main host
 	go app.AwaitRegisterSQLDMLStreamHandler(hostMain, logChan)
@@ -354,8 +368,8 @@ func main() {
 	var discoveryService *api.Service
 
 	if *config.FlagAutodiscovery {
-		log.Println("[DISCOVERY] Auto Discovery for Peers has been enabled")
-		_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", "Auto Discovery for Peers has been enabled", runtime.GOOS)
+		logger.Info("[DISCOVERY] Auto Discovery for Peers has been enabled")
+		//_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", "Auto Discovery for Peers has been enabled", runtime.GOOS)
 
 		var prMsg string
 		if *config.FlagAutodiscoveryMDNS {
@@ -367,21 +381,18 @@ func main() {
 		} else {
 			prMsg = "No Auto-Discovery method selected"
 		}
-		log.Println("[DISCOVERY]", prMsg)
-		_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", prMsg, runtime.GOOS)
+		logger.Info("[DISCOVERY]", prMsg)
+		//_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", prMsg, runtime.GOOS)
 
 		// Start discovery - this will create GossipSub if PubSub discovery is enabled
 		discoveryService = api.StartDiscovery(hostMain, &knowledgeBaseDB)
 		if discoveryService == nil {
-			log.Println("[ERROR] Discovery service failed to start")
-			_ = app.GlobalLoggerDB.AddToOptimusLog("ERROR", "Discovery service failed to start", runtime.GOOS)
+			logger.Error("[ERROR] Discovery service failed to start")
+			//_ = app.GlobalLoggerDB.AddToOptimusLog("ERROR", "Discovery service failed to start", runtime.GOOS)
 		} else {
-			log.Println("[DISCOVERY] ✅ Discovery service started on unified host")
-
 			// Wait for initial peer discovery
-			log.Println("[DISCOVERY] Waiting for peer discovery...")
+			logger.Info("[DISCOVERY] ✅ Discovery service started on unified host,Waiting for peer discovery...")
 			time.Sleep(3 * time.Second)
-
 			go api.PrintDiscoveredPeers(&knowledgeBaseDB)
 		}
 	}
@@ -399,12 +410,12 @@ func main() {
 		electionTopic = discoveryService.Topic
 		electionSub = discoveryService.Sub
 
-		log.Println("[INIT] ✅ Reusing GossipSub from discovery service")
-		log.Println("[INIT] ✅ Topic: 'optimusdb' already joined")
-		log.Println("[INIT] ✅ Subscription already active")
+		logger.Info("[INIT] ✅ Reusing GossipSub from discovery service")
+		logger.Info("[INIT] ✅ Topic: 'optimusdb' already joined")
+		logger.Info("[INIT] ✅ Subscription already active")
 	} else {
 		// Fallback: Create new GossipSub if discovery didn't create one
-		log.Println("[INIT] Creating new GossipSub instance (discovery not using pubsub)...")
+		logger.Info("[INIT] Creating new GossipSub instance (discovery not using pubsub)...")
 
 		messageIDFunc := func(pmsg *pubsub_pb.Message) string {
 			h := sha256.New()
@@ -444,31 +455,31 @@ func main() {
 		if trace := os.Getenv("GOSSIPSUB_TRACE"); trace != "" {
 			if tr, err := pubsub.NewJSONTracer(trace); err == nil {
 				psOpts = append(psOpts, pubsub.WithEventTracer(tr))
-				log.Printf("[TRACE] GossipSub trace enabled: %s", trace)
+				logger.Debug("[ELECTION] GossipSub trace enabled: %s", trace)
 			}
 		}
 
 		ps, err = pubsub.NewGossipSub(termCtx, hostMain, psOpts...)
 		if err != nil {
-			log.Fatalf("[FATAL] Failed to initialize GossipSub: %v", err)
+			logger.Error("[ERROR] Failed to initialize GossipSub for ELECTION: %v", err)
 		}
 
-		log.Println("[INIT] ✅ GossipSub initialized successfully")
-		log.Printf("[INIT] ✅ Configuration: D=%d, Dlo=%d, Dhi=%d, Heartbeat=%v",
+		logger.Debug("[ELECTION] ✅ GossipSub initialized successfully")
+		logger.Debug("[ELECTION] ✅ Configuration: D=%d, Dlo=%d, Dhi=%d, Heartbeat=%v",
 			gparams.D, gparams.Dlo, gparams.Dhi, gparams.HeartbeatInterval)
-		log.Println("[INIT] ✅ FloodPublish=true, PeerExchange=true")
+		logger.Debug("[ELECTION] ✅ FloodPublish=true, PeerExchange=true")
 
 		electionTopic, err = ps.Join("optimusdb")
 		if err != nil {
-			log.Fatalf("[FATAL] Failed to join election topic: %v", err)
+			logger.Error("[ERROR] Failed to join election topic: %v", err)
 		}
-		log.Println("[INIT] ✅ Joined election topic 'optimusdb'")
+		logger.Info("[ELECTION] ✅ Joined election topic 'optimusdb'")
 
 		electionSub, err = electionTopic.Subscribe()
 		if err != nil {
-			log.Fatalf("[FATAL] Failed to subscribe to election topic: %v", err)
+			logger.Error("[ELECTION] Failed to subscribe to election topic: %v", err)
 		}
-		log.Println("[INIT] ✅ Subscribed to election topic")
+		logger.Info("[ELECTION] ✅ Subscribed to election topic")
 	}
 
 	// Store in knowledgeBaseDB for election to use
@@ -476,7 +487,7 @@ func main() {
 	knowledgeBaseDB.ElectionSub = electionSub
 	knowledgeBaseDB.PubSub = ps
 
-	log.Println("[INIT] ✅ Election topic and subscription ready")
+	logger.Info("[ELECTION] ✅ Election topic and subscription ready")
 
 	// ===============================
 	// START MESH MONITORING
@@ -486,36 +497,37 @@ func main() {
 	// ===============================
 	// START ELECTION CONTROLLER
 	// ===============================
-	log.Println("[INIT] Waiting for GossipSub mesh to stabilize...")
+	logger.Info("[ELECTION] Waiting for GossipSub mesh to stabilize...")
 	time.Sleep(5 * time.Second)
 
 	//log.Println("[INIT] Starting Election Controller...")
 	//go election.RunFullNode(termCtx, hostMain, ps, &knowledgeBaseDB)
-	log.Println("[INIT] Starting Election Controller...")
+	logger.Info("[ELECTION] Starting Election Controller...")
 	electionNode := election.RunFullNode(termCtx, hostMain, ps, &knowledgeBaseDB)
-	if app.GlobalLoggerDB != nil {
-		_ = app.GlobalLoggerDB.AddToOptimusLog("ELECTION", fmt.Sprintf("ELECTION Results: %v", electionNode), runtime.GOOS)
-	}
-	log.Printf("[INIT] ✅ Election node initialized and stored globally")
+	//if app.GlobalLoggerDB != nil {
+	//	_ = app.GlobalLoggerDB.AddToOptimusLog("ELECTION", fmt.Sprintf("ELECTION Results: %v", electionNode), runtime.GOOS)
+	//}
+	logger.Info("[ELECTION] ELECTION Results: %v", electionNode)
+	logger.Info("[ELECTION] ✅ Election node initialized and stored globally")
 
 	// ===============================
 	// START BACKGROUND METADATA ENRICHER
 	// ===============================
 	if metadataEnricher != nil {
-		log.Println("[METADATA] Starting background metadata enricher...")
+		logger.Info("[METADATA] Starting background metadata enricher...")
 		metadataEnricher.Start()
 
 		// Trigger initial scan after cluster stabilizes
 		go func() {
 			time.Sleep(30 * time.Second) // Wait for cluster to stabilize
-			log.Println("[METADATA] Triggering initial enrichment scan...")
+			logger.Info("[METADATA] Triggering initial enrichment scan...")
 			metadataEnricher.EnrichNow()
 		}()
 
-		log.Println("[METADATA] ✅ Background enricher started")
-		if app.GlobalLoggerDB != nil {
-			_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", "Background metadata enricher started", runtime.GOOS)
-		}
+		logger.Info("[METADATA] ✅ Background enricher started")
+		//if app.GlobalLoggerDB != nil {
+		//	_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", "Background metadata enricher started", runtime.GOOS)
+		//}
 	}
 
 	// Register shutdown handler
@@ -527,15 +539,15 @@ func main() {
 	if metadataEnricher != nil {
 		go func() {
 			<-termCtx.Done()
-			log.Println("[SHUTDOWN] Stopping metadata enricher...")
+			logger.Info("[METADATA] Stopping metadata enricher...")
 			metadataEnricher.Stop()
-			log.Println("[SHUTDOWN] Metadata enricher stopped")
+			logger.Info("[METADATA] Metadata enricher stopped")
 		}()
 	}
 
 	// Await termination
 	<-termCtx.Done()
-	fmt.Printf("\n[SHUTDOWN] Shutting down OptimusDB node...\n")
+	logger.Info("[SHUTDOWN] Shutting down OptimusDB node...")
 
 	// Persist config & benchmark
 	config.SaveStructAsJSON(knowledgeBaseDB.Config, *config.FlagRepo+"_config")
@@ -548,6 +560,7 @@ func main() {
 	}
 
 	log.Println("[SHUTDOWN] Complete")
+	logger.Info("[SHUTDOWN] Shutting down OptimusDB node...Complete")
 }
 
 func printSwarmchestrate() {
@@ -555,19 +568,22 @@ func printSwarmchestrate() {
 	var font *figletlib.Font
 
 	if _, err := os.Stat(fontsDir); os.IsNotExist(err) {
-		fmt.Println("Directory does not exist:", fontsDir)
+		//fmt.Println("Directory does not exist:", fontsDir)
+		logger.Debug("Directory does not exist:%v and it will be created", fontsDir)
 		fontsDir = figletlib.GuessFontsDirectory()
 		f, err := figletlib.GetFontByName(fontsDir, "standard")
 		if err != nil {
 			fmt.Println("Error loading font:", err)
+			logger.Error("Error loading font:", err)
 			return
 		}
 		font = f
 	} else {
-		fmt.Println("Directory exists:", fontsDir)
+		logger.Info("Directory exists: %v", fontsDir)
 		f, err := figletlib.GetFontByName(fontsDir, "standard")
 		if err != nil {
 			fmt.Println("Error loading font:", err)
+			logger.Error("Error loading font:", err)
 			return
 		}
 		font = f
@@ -582,22 +598,23 @@ func handleShutdown(service *api.Service, knowledgeBaseDB *app.KnowledgeBaseDB, 
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	<-sigChan
-	log.Println("[SHUTDOWN] Received shutdown signal...")
-
+	//log.Println("[SHUTDOWN] Received shutdown signal...")
+	logger.Info("[SHUTDOWN] Received shutdown signal...")
 	if service != nil {
 		service.StopDiscovery()
-		log.Println("[SHUTDOWN] Peer Discovery stopped.")
+		//log.Println("[SHUTDOWN] Peer Discovery stopped.")
+		logger.Info("[SHUTDOWN] Peer Discovery stopped.")
 	}
 
 	if knowledgeBaseDB != nil && knowledgeBaseDB.Orbit != nil {
 		(*knowledgeBaseDB.Orbit).Close()
-		log.Println("[SHUTDOWN] OrbitDB instance closed.")
+		logger.Info("[SHUTDOWN] OrbitDB instance closed.")
 	}
 
 	if err := h.Close(); err != nil {
-		log.Println("[ERROR] Error while closing LibP2P host:", err)
+		logger.Error("[ERROR] Error while closing LibP2P host: %v", err)
 	} else {
-		log.Println("[SHUTDOWN] LibP2P host shut down successfully.")
+		logger.Info("[SHUTDOWN] LibP2P host shut down successfully.")
 	}
 
 	os.Exit(0)

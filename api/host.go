@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"optimusdb/config"
-	"os"
+	"optimusdb/logger"
 	"strings"
 
 	libp2p "github.com/libp2p/go-libp2p"
@@ -26,18 +26,12 @@ func StartHost(ctx context.Context) error {
 	}()
 
 	// Print the host's ID and addresses
-	//fmt.Println("################")
-	//fmt.Println("Swarmchetrate Env, searching for KB Lead Agent  or   Swarm Agents")
-	fmt.Fprintf(os.Stdout, "Swarmchetrate Env, searching for KB Lead Agent  or   Swarm Agents ~ AutoDiscovery is enabled", nil)
+	logger.Info("[INFO] Swarmchetrate Env, searching for KB Lead Agent  or   Swarm Agents ~ AutoDiscovery is enabled")
 
 	if *config.FlagCoordinator {
-		//fmt.Println("Agent is a KB Coordinator, swarm Lead Agent ID: ", host.ID())
-		fmt.Fprintf(os.Stdout, "Agent is a KB Coordinator, swarm Lead Agent ID: ", host.ID())
-		//fmt.Fprintf(os.Stdout, "Agent Reference ID:  ", host.ID())
-
-		//    /ip4/192.168.2.13/tcp/4001/QmbDQb8vB22cbxqYHEyXrcZ3YWF1pqgaBr76cndta99ER9
+		logger.Info("[ELECTION] Agent is a KB Coordinator, swarm AgentID: %v", host.ID())
 	} else {
-		fmt.Println("Agent is a KB follower, swarm Agent ID: ", host.ID())
+		logger.Info("[ELECTION] Agent is a KB Follower, swarm AgentID: %v", host.ID())
 	}
 	fmt.Println("Agent Listening on:")
 	for _, addr := range host.Addrs() {
@@ -48,13 +42,6 @@ func StartHost(ctx context.Context) error {
 		}
 
 	}
-
-	// Create a discovery service
-	//_, err = NewService(ctx, host)
-	//if err != nil {
-	//	return fmt.Errorf("failed to create discovery service: %w", err)
-	//}
-
 	// Keep the program running
 	select {}
 }

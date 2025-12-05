@@ -7,7 +7,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"log"
+	"optimusdb/logger"
 	"time"
 )
 
@@ -27,7 +27,8 @@ func RegisterQueryStreamHandler(hostNode host.Host, db *KnowledgeBaseDB) {
 	hostNode.SetStreamHandler("/query/1.0.0", func(stream network.Stream) {
 		handleQueryStream(stream, db)
 	})
-	log.Println("[INFO] ✓ Registered query stream handler for /query/1.0.0")
+	logger.Info("[QUERY] ✓ Registered query stream handler for /query/1.0.0")
+	//log.Println("[INFO] ✓ Registered query stream handler for /query/1.0.0")
 }
 
 // runtime options parsed from inbound payload
@@ -78,7 +79,7 @@ func handleQueryStream(stream network.Stream, db *KnowledgeBaseDB) {
 	self := fmt.Sprintf("%s", db.Node.Identity)
 
 	if contains(tracePath, self) { // loop prevention
-		log.Printf("[PEER-QUERY] loop prevented id=%s path=%v", traceID, tracePath)
+		logger.Info("[QUERY] PEER-QUERY loop prevented id=%s path=%v", traceID, tracePath)
 		_ = json.NewEncoder(stream).Encode([]map[string]interface{}{})
 		return
 	}
@@ -98,8 +99,7 @@ func handleQueryStream(stream network.Stream, db *KnowledgeBaseDB) {
 			opts.IncludeLocal = true
 		}
 	}
-
-	log.Printf("[PEER-QUERY] recv trace=%s strat=%s force_remote=%v incl_local=%v budget=%dms max_peers=%d quorum=%d path=%v",
+	logger.Info("[QUERY] recv trace=%s strat=%s force_remote=%v incl_local=%v budget=%dms max_peers=%d quorum=%d path=%v",
 		zero8(traceID), opts.Strategy, opts.ForceRemote, opts.IncludeLocal, opts.TimeBudgetMs, opts.MaxPeers, opts.QuorumN, tracePath)
 
 	// ---- run according to strategy ----
@@ -112,6 +112,7 @@ func handleQueryStream(stream network.Stream, db *KnowledgeBaseDB) {
 	switch opts.Strategy {
 	case "REMOTE_ONLY":
 		results, err = queryPeersLimited(ctx, db, criteria, traceID, tracePath, opts)
+		logger.Info("[QUERY] Default Strategy REMOTE_ONLY peer_id:%v path:%v", self, tracePath)
 	case "PARALLEL_MERGE":
 		// query local and remote concurrently; merge + dedupe
 		type chunk struct{ rows []map[string]interface{} }
@@ -140,6 +141,7 @@ func handleQueryStream(stream network.Stream, db *KnowledgeBaseDB) {
 		l := (<-ch).rows
 		r := (<-ch).rows
 		results = dedupeByID(append(l, r...))
+		logger.Info("[QUERY] Default Strategy PARALLEL_MERGE peer_id:%v path:%v", self, tracePath)
 
 	case "QUORUM":
 		// query peers until quorum satisfied; local may be included
@@ -154,6 +156,7 @@ func handleQueryStream(stream network.Stream, db *KnowledgeBaseDB) {
 		}
 		remote, _ := queryPeersUntilQuorum(ctx, db, criteria, traceID, tracePath, opts)
 		results = dedupeByID(append(local, remote...))
+		logger.Info("[QUERY] Default Strategy QUORUM peer_id:%v path:%v", self, tracePath)
 
 	case "LOCAL_THEN_REMOTE_MERGE":
 		var local []map[string]interface{}
@@ -171,6 +174,7 @@ func handleQueryStream(stream network.Stream, db *KnowledgeBaseDB) {
 		} else {
 			results = local
 		}
+		logger.Info("[QUERY] Default Strategy LOCAL_THEN_REMOTE_MERGE peer_id:%v path:%v", self, tracePath)
 
 	default: // "LOCAL_ONLY" and any unknown strategy
 		if opts.IncludeLocal {
@@ -180,17 +184,16 @@ func handleQueryStream(stream network.Stream, db *KnowledgeBaseDB) {
 				"peer_id": self,
 				"path":    tracePath,
 			}, traceID, tracePath)
+			logger.Info("[QUERY] Default Strategy LOCAL_ONLY  peer_id:%v path:%v", self, tracePath)
 		}
 	}
-
 	if err != nil {
-		log.Printf("[PEER-QUERY] error: %v", err)
+		logger.Error("[ERROR] error in Query mechanism: %v", err)
 	}
-
 	if err := json.NewEncoder(stream).Encode(results); err != nil {
-		log.Printf("[PEER-QUERY] send error: %v", err)
+		logger.Info("[ERROR] error in SEND Query mechanism: %v", err)
 	}
-	log.Printf("[PEER-QUERY] responded trace=%s rows=%d", zero8(traceID), len(results))
+	logger.Info("[QUERY] responded trace=%s rows=%d", zero8(traceID), len(results))
 }
 
 func parseOptions(msg map[string]interface{}) qOptions {
@@ -342,17 +345,17 @@ func queryPeersLimited(
 	}
 
 	if len(allPeers) == 0 {
-		log.Printf("[QUERY] No peers available for fan-out (trace=%s)", traceID)
+		//log.Printf("[QUERY] No peers available for fan-out (trace=%s)", traceID)
+		logger.Info("[QUERY] No peers available for fan-out (trace=%s)", traceID)
 		return nil, nil
 	}
-
 	// --- 2️⃣ Enforce optional MaxPeers limit ---
 	peers := allPeers
 	if opts.MaxPeers > 0 && opts.MaxPeers < len(allPeers) {
 		peers = allPeers[:opts.MaxPeers]
 	}
-
-	log.Printf("[QUERY] Fan-out start trace=%s → %d peers (limit=%d)", traceID, len(peers), opts.MaxPeers)
+	//log.Printf("[QUERY] Fan-out start trace=%s → %d peers (limit=%d)", traceID, len(peers), opts.MaxPeers)
+	logger.Info("[QUERY] Fan-out start trace=%s → %d peers (limit=%d)", traceID, len(peers), opts.MaxPeers)
 
 	type peerChunk struct {
 		rows []map[string]interface{}
@@ -371,7 +374,8 @@ func queryPeersLimited(
 
 			// skip if not already connected (we don't have address info for discovered peers)
 			if db.Node.PeerHost.Network().Connectedness(p) != network.Connected {
-				log.Printf("[QUERY] Skipping unconnected peer %s (no address info)", string(p)) //Pretty()
+				logger.Info("[QUERY] Skipping unconnected peer %s (no address info)", string(p)) //Pretty()
+
 				ch <- peerChunk{nil, nil}
 				return
 			}
@@ -436,12 +440,12 @@ func queryPeersLimited(
 				merged = append(merged, c.rows...)
 			}
 		case <-ctx.Done():
-			log.Printf("[QUERY] Fan-out trace=%s timed out after %v peers=%d", traceID, ctx.Err(), len(merged))
+			logger.Info("[QUERY] Fan-out trace=%s timed out after %v peers=%d", traceID, ctx.Err(), len(merged))
 			return merged, nil
 		}
 	}
 
-	log.Printf("[QUERY] Fan-out completed trace=%s → merged %d rows", traceID, len(merged))
+	logger.Info("[QUERY] Fan-out completed trace=%s → merged %d rows", traceID, len(merged))
 	return merged, nil
 }
 

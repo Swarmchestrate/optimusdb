@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"optimusdb/logger"
 	"os"
 	"path/filepath"
 
@@ -22,16 +22,19 @@ func setupPlugins(externalPluginsPath string) error {
 	// Load any external plugins if available on externalPluginsPath
 	plugins, err := loader.NewPluginLoader(filepath.Join(externalPluginsPath, "plugins"))
 	if err != nil {
-		return fmt.Errorf("error loading plugins: %s", err)
+		logger.Error("[ERROR] setting up plugins for IPFS: %s", err)
+		return fmt.Errorf("error setting up plugins: %s", err)
 	}
 
 	// Load preloaded and external plugins
 	if err := plugins.Initialize(); err != nil {
+		logger.Error("[ERROR] initializing plugins for IPFS: %s", err)
 		return fmt.Errorf("error initializing plugins: %s", err)
 	}
 
 	if err := plugins.Inject(); err != nil {
-		return fmt.Errorf("error initializing plugins: %s", err)
+		logger.Error("[ERROR] injecting plugins for IPFS: %s", err)
+		return fmt.Errorf("error injecting plugins: %s", err)
 	}
 
 	return nil
@@ -131,10 +134,10 @@ func createDatabase(temporary bool) (string, error) {
 	// Create the repo with the config
 	err = fsrepo.Init(repoPath, cfg)
 	if err != nil {
+		logger.Error("[ERROR] IPFS repository on the current OptimusDB Agent was not initialized %v", err)
 		return "", fmt.Errorf("failed to init ephemeral node: %+v", err)
 	}
-	log.Printf("Path of the IPFS repository on the Swarm Agent (LSA/SA): %s\n", repoPath)
-
+	logger.Info("[INFO] Path of the IPFS repository on the current OptimusDB Agent: %s", repoPath)
 	return repoPath, nil
 }
 
@@ -189,11 +192,9 @@ func SpawnEphemeral(ctx context.Context) (*core.IpfsNode, error) {
 		return nil, err
 	}
 	IdentStr := fmt.Sprintf("%s", node.Identity)
-	log.Printf("node ident string :%s\n", IdentStr)
-	log.Printf("IPFS swarm communication (peer-to-peer connections)\n")
+	logger.Info("[INFO] IPFS Node on current OptimusDB Agent ident string :%s ", IdentStr)
 	for _, addr := range node.DHT.LAN.Host().Addrs() {
-		log.Printf("Listening on %s\n", addr)
+		logger.Info("[INFO] IPFS swarm communication (peer-to-peer connections) Listening on %s", addr)
 	}
-
 	return node, nil
 }

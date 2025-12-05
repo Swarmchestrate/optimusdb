@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"github.com/ipfs/kubo/core"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
-	"log"
 	"optimusdb/config"
+	"optimusdb/logger"
 	"optimusdb/mq"
 	"optimusdb/queryengine"
 
@@ -153,13 +153,13 @@ type LoggerSQLite struct {
 // InitSQLite initializes the SQLite database and ensures tables exist
 func InitSQLite(dbPath string) (*KnowledgeBaseSQLite, error) {
 
-	log.Printf("[INFO] Initializing RDBMS KnowledgeBase : %v\n", dbPath)
-	GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Initializing RDBMS KnowledgeBase : %v"), runtime.GOOS)
+	logger.Info("[INFO] Initializing RDBMS KnowledgeBase : %v", dbPath)
+	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Initializing RDBMS KnowledgeBase : %v"), runtime.GOOS)
 	// Open SQLite Database
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		log.Fatalf("[ERROR] Failed to connect to SQLite database: %v", err)
-		GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Failed to connect to SQLite database: %v", err), runtime.GOOS)
+		logger.Error("[ERROR] Failed to connect to SQLite database: %v", err)
+		//GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Failed to connect to SQLite database: %v", err), runtime.GOOS)
 		return nil, err
 	}
 
@@ -169,31 +169,31 @@ func InitSQLite(dbPath string) (*KnowledgeBaseSQLite, error) {
 	// Create tables
 	err = GlobalKBSQLite.createDataCatalog()
 	if err != nil {
-		log.Fatalf("[ERROR] Main Table creation failed for DataCatalog: %v", err)
-		GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Main Table creation failed for DataCatalog: %v", err), runtime.GOOS)
+		logger.Error("[ERROR] Main Table creation failed for DataCatalog: %v", err)
+		//GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Main Table creation failed for DataCatalog: %v", err), runtime.GOOS)
 		return nil, err
 	}
 	err = GlobalKBSQLite.createDataCatalogSchemas()
 	if err != nil {
-		log.Fatalf("[ERROR] Tables creation failed for DataCatalog: %v", err)
-		GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Tables creation failed for DataCatalog: %v", err), runtime.GOOS)
+		logger.Error("[ERROR] Tables creation failed for DataCatalog: %v", err)
+		//GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Tables creation failed for DataCatalog: %v", err), runtime.GOOS)
 		return nil, err
 	}
 	err = GlobalKBSQLite.createTOSCAMetadataTable()
 	if err != nil {
-		log.Fatalf("[ERROR] Table creation failed for TOSCA Metadata: %v", err)
-		GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Table creation failed for TOSCA Metadata: %v", err), runtime.GOOS)
+		logger.Error("[ERROR] Table creation failed for TOSCA Metadata: %v", err)
+		//GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Table creation failed for TOSCA Metadata: %v", err), runtime.GOOS)
 		return nil, err
 	}
 	err = GlobalKBSQLite.CreateMetadataCatalogTable()
 	if err != nil {
-		log.Fatalf("[ERROR] Table creation failed for Contextual Metadata: %v", err)
-		GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Table creation failed for Contextual Metadata: %v", err), runtime.GOOS)
+		logger.Error("[ERROR] Table creation failed for Contextual Metadata: %v", err)
+		//GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Table creation failed for Contextual Metadata: %v", err), runtime.GOOS)
 		return nil, err
 	}
 
-	log.Println("[INFO] SQLite Database Ready at:", dbPath)
-	GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("SQLite Database Ready at: %v", dbPath), runtime.GOOS)
+	logger.Info("[INFO] SQLite Database Ready at:", dbPath)
+	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("SQLite Database Ready at: %v", dbPath), runtime.GOOS)
 	return GlobalKBSQLite, nil
 }
 
@@ -212,7 +212,7 @@ func InitLog() (*LoggerSQLite, error) {
 	// Open SQLite Database
 	db, err := sql.Open("sqlite3", rdbmsCache)
 	if err != nil {
-		log.Fatalf("[ERROR] Failed to connect to SQLite database: %v", err)
+		logger.Error("[ERROR] Failed to connect to SQLite database: %v", err)
 		return nil, err
 	}
 
@@ -221,20 +221,20 @@ func InitLog() (*LoggerSQLite, error) {
 
 	err = GlobalLoggerDB.createLogTable()
 	if err != nil {
-		log.Fatalf("[ERROR] Table creation failed for Optimus Logger: %v", err)
+		logger.Error("[ERROR] Table creation failed for Optimus Logger: %v", err)
 		return nil, err
 	}
 
 	//Create the EMS table events
 	err = GlobalLoggerDB.createEMSEventsTable() // EMS
 	if err != nil {
-		log.Fatalf("[ERROR] Table creation failed for EMS events under the Optimus Logger: %v", err)
+		logger.Error("[ERROR] Table creation failed for EMS events under the Optimus Logger: %v", err)
 		return nil, err
 	}
 
 	//
-	log.Println("[INFO] SQLite Database Ready at:", rdbmsCache)
-	GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("SQLite Database Ready at: %v", rdbmsCache), runtime.GOOS)
+	logger.Info("[INFO] SQLite Database Ready at:", rdbmsCache)
+	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("SQLite Database Ready at: %v", rdbmsCache), runtime.GOOS)
 	return GlobalLoggerDB, nil
 }
 
@@ -267,8 +267,8 @@ func (kb *KnowledgeBaseSQLite) createDataCatalog() error {
 	if err != nil {
 		return err
 	}
-	//log.Println("[INFO] Table `datacatalog` created or already exists.")
-	GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Table `datacatalog` created or already exists."), runtime.GOOS)
+	logger.Info("[INFO] Table `datacatalog` created or already exists.")
+	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Table `datacatalog` created or already exists."), runtime.GOOS)
 	return nil
 }
 
@@ -313,7 +313,8 @@ func (kb *KnowledgeBaseSQLite) CreateMetadataCatalogTable() error {
 	if err != nil {
 		return err
 	}
-	GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Table `metadata_catalog` created or already exists."), runtime.GOOS)
+	logger.Info("[INFO] Table `metadata_catalog` created or already exists.")
+	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Table `metadata_catalog` created or already exists."), runtime.GOOS)
 	return nil
 }
 
@@ -339,8 +340,8 @@ func (kb *KnowledgeBaseSQLite) createTOSCAMetadataTable() error {
 	if err != nil {
 		return err
 	}
-	//log.Println("[INFO] Table `toscametadata` created or already exists.")
-	GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Table `toscametadata` created or already exists"), runtime.GOOS)
+	logger.Info("[INFO] Table `toscametadata` created or already exists.")
+	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Table `toscametadata` created or already exists"), runtime.GOOS)
 
 	return nil
 }
@@ -365,8 +366,8 @@ func (kb *LoggerSQLite) createLogTable() error {
 	if err != nil {
 		return err
 	}
-	//log.Println("[INFO] Table `optimusLogger` created or already exists.")
-	GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Table `optimusLogger` created or already exists."), runtime.GOOS)
+	logger.Info("[INFO] Table `optimusLogger` created or already exists.")
+	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Table `optimusLogger` created or already exists."), runtime.GOOS)
 	return nil
 }
 
@@ -680,18 +681,21 @@ func (kb *KnowledgeBaseSQLite) createDataCatalogSchemas() error {
 	if err != nil {
 		return fmt.Errorf("failed to create datacatalog schemas: %w", err)
 	}
+	logger.Info("[INFO] Catalog schemas created or already exist.")
 
-	GlobalLoggerDB.AddToOptimusLog("INFO", "Catalog schemas created or already exist.", runtime.GOOS)
+	//GlobalLoggerDB.AddToOptimusLog("INFO", "[INFO] Catalog schemas created or already exist.", runtime.GOOS)
 
 	// Insert default badges
 	err = kb.insertDefaultBadges()
 	if err != nil {
+		logger.Error("[ERROR] failed to insert default badges: %w", err)
 		return fmt.Errorf("failed to insert default badges: %w", err)
 	}
 
 	// Insert default test user
 	err = kb.insertDefaultUser()
 	if err != nil {
+		logger.Error("[ERROR] failed to insert default user: %w", err)
 		return fmt.Errorf("failed to insert default user: %w", err)
 	}
 
@@ -713,10 +717,11 @@ func (kb *KnowledgeBaseSQLite) insertDefaultBadges() error {
 	`
 	_, err := kb.DB.Exec(stmt)
 	if err != nil {
+		logger.Error("failed to insert default badges: %w", err)
 		return fmt.Errorf("failed to insert default badges: %w", err)
 	}
-
-	GlobalLoggerDB.AddToOptimusLog("INFO", "Default badges inserted.", runtime.GOOS)
+	logger.Info("[INFO] Default badges inserted.")
+	//GlobalLoggerDB.AddToOptimusLog("INFO", "Default badges inserted.", runtime.GOOS)
 	return nil
 }
 
@@ -733,10 +738,11 @@ func (kb *KnowledgeBaseSQLite) insertDefaultUser() error {
 	`
 	_, err := kb.DB.Exec(stmt)
 	if err != nil {
+		logger.Error("failed to insert default user: %w", err)
 		return fmt.Errorf("failed to insert default user: %w", err)
 	}
-
-	GlobalLoggerDB.AddToOptimusLog("INFO", "Default test user inserted.", runtime.GOOS)
+	logger.Info("[INFO] Default test user inserted.")
+	//GlobalLoggerDB.AddToOptimusLog("INFO", "Default test user inserted.", runtime.GOOS)
 	return nil
 }
 
@@ -872,10 +878,11 @@ func (kb *KnowledgeBaseSQLite) InsertSampleData() error {
 
 	_, err := kb.DB.Exec(stmt)
 	if err != nil {
+		logger.Error("failed to insert sample data: %w", err)
 		return fmt.Errorf("failed to insert sample data: %w", err)
 	}
-
-	GlobalLoggerDB.AddToOptimusLog("INFO", "Sample data inserted successfully.", runtime.GOOS)
+	logger.Info("Sample data inserted successfully.")
+	//GlobalLoggerDB.AddToOptimusLog("INFO", "Sample data inserted successfully.", runtime.GOOS)
 	return nil
 }
 
@@ -916,13 +923,15 @@ func (kb *KnowledgeBaseSQLite) InsertTOSCAMetadata(
 		uploader, sourcePod, sourceIP,
 	)
 	if err == nil {
-		GlobalLoggerDB.AddToOptimusLog("INFO",
-			fmt.Sprintf("Inserted/updated record for TOSCAMetadata table: template_id=%s, filename=%s", templateID, filename),
-			runtime.GOOS)
+		//GlobalLoggerDB.AddToOptimusLog("INFO",
+		//	fmt.Sprintf("Inserted/updated record for TOSCAMetadata table: template_id=%s, filename=%s", templateID, filename),
+		//	runtime.GOOS)
+		logger.Info("Inserted/updated record for TOSCAMetadata table: template_id=%s, filename=%s", templateID, filename)
 	} else {
-		GlobalLoggerDB.AddToOptimusLog("ERROR",
-			fmt.Sprintf("Failed to insert/update TOSCAMetadata: %v", err),
-			runtime.GOOS)
+		logger.Error("Failed to insert/update TOSCAMetadata: %v", err)
+		//GlobalLoggerDB.AddToOptimusLog("ERROR",
+		//	fmt.Sprintf("Failed to insert/update TOSCAMetadata: %v", err),
+		//	runtime.GOOS)
 	}
 	return err
 }
@@ -952,6 +961,23 @@ func (kb *LoggerSQLite) AddToOptimusLog(level, message, source string) error {
 
 	_, err = stmt.Exec(timestamp, date, hour, level, message, source)
 	return err
+}
+
+// ///// :Log examples
+// OptimusLog("INFO", "[METADATA] ✅ Background enricher started")
+// OptimusLog("ERROR", "[METADATA] ❌ Failed to process metadata")
+// OptimusLog logs a message to both stdout and database with automatic source detection
+func OptimusLog(level, message string) {
+	logger.Info(message)
+	if GlobalLoggerDB != nil {
+		var source string
+		if _, file, line, ok := runtime.Caller(1); ok {
+			source = fmt.Sprintf("%s:%d", filepath.Base(file), line)
+		} else {
+			source = runtime.GOOS
+		}
+		_ = GlobalLoggerDB.AddToOptimusLog(level, message, source)
+	}
 }
 
 // Get Logs per Hr
@@ -993,7 +1019,8 @@ func (kb *KnowledgeBaseSQLite) SqlDML(stmt string, logChan chan Log) (interface{
 		// Execute SELECT query and fetch results
 		rows, err := kb.DB.Query(stmt)
 		if err != nil {
-			logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("ERROR: Problem executing SELECT statement: %v", err)}
+			//logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("ERROR: Problem executing SELECT statement: %v", err)}
+			logger.Error("[ERROR] Problem executing SELECT statement: %v", err)
 			return nil, err
 		}
 		defer rows.Close()
@@ -1035,7 +1062,8 @@ func (kb *KnowledgeBaseSQLite) SqlDML(stmt string, logChan chan Log) (interface{
 	// If it's an INSERT, UPDATE, DELETE statement
 	result, err := kb.DB.Exec(stmt)
 	if err != nil {
-		logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("ERROR: Problem executing DML statement: %v", err)}
+		//logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("ERROR: Problem executing DML statement: %v", err)}
+		logger.Error("[ERROR] Problem executing DML statement: %v", err)
 		return nil, err
 	}
 
@@ -1044,8 +1072,8 @@ func (kb *KnowledgeBaseSQLite) SqlDML(stmt string, logChan chan Log) (interface{
 	if err != nil {
 		return nil, err
 	}
-
-	GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("SQL statement executed successfully, affected rows: %d", rowsAffected), runtime.GOOS)
+	logger.Info("SQL statement executed successfully, affected rows: %d", rowsAffected)
+	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("SQL statement executed successfully, affected rows: %d", rowsAffected), runtime.GOOS)
 	// Return success response
 	return fmt.Sprintf("SQL statement executed successfully, affected rows: %d", rowsAffected), nil
 }
@@ -1055,11 +1083,11 @@ func (kb *KnowledgeBaseSQLite) Close() {
 	if kb.DB != nil {
 		err := kb.DB.Close()
 		if err != nil {
-			log.Println("[ERROR] Problem closing SQLite database:", err)
-			GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Problem closing SQLite database: %v", err), runtime.GOOS)
+			logger.Error("[ERROR] Problem closing SQLite database:", err)
+			//GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Problem closing SQLite database: %v", err), runtime.GOOS)
 		} else {
-			log.Println("[INFO] SQLite database connection closed successfully.")
-			GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("SQLite database connection closed successfully."), runtime.GOOS)
+			logger.Info("[INFO] SQLite database connection closed successfully.")
+			//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("SQLite database connection closed successfully."), runtime.GOOS)
 		}
 	}
 }
@@ -1107,7 +1135,8 @@ func (db *KnowledgeBaseDB) publishEvent(ev Event) {
 
 	b, err := json.Marshal(ev)
 	if err != nil {
-		GlobalLoggerDB.AddToOptimusLog("ERROR", "MQ publish marshal failed: "+err.Error(), "mq")
+		//GlobalLoggerDB.AddToOptimusLog("ERROR", "MQ publish marshal failed: "+err.Error(), "mq")
+		logger.Error("[ERROR] MQ publish marshal failed: %v", err)
 		return
 	}
 

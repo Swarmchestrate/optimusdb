@@ -18,9 +18,9 @@ import (
 	"net/http"
 	"optimusdb/config"
 	"optimusdb/ipfs"
+	"optimusdb/logger"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 )
 
@@ -36,15 +36,15 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	conf, err := config.LoadConfig() // load persistent config
 
 	if err != nil {
-		//logger.Error("Couldn't load config: %+v", err)
-		logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("Couldn't load config : %+v", err)}
+		logger.Error("Couldn't load config: %+v", err)
+		//logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("Couldn't load config : %+v", err)}
 		return err
 	}
 
 	node, err := ipfs.SpawnEphemeral(ctx) // start ipfs node
 	if err != nil {
-		//logger.Error("IPFS Node could not start: %+v", err)
-		logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("IPFS Node could not started  : %+v", err)}
+		logger.Error("IPFS Node could not start: %+v", err)
+		//logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("IPFS Node could not started  : %+v", err)}
 		return err
 	}
 	//conf.PeerID = node.Identity.String()
@@ -55,7 +55,8 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	//logger.Info("OptimusDB peer initialized with PeerID: %s", conf.PeerID)
 	coreAPI, err := coreapi.NewCoreAPI(node)
 	if err != nil {
-		logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("Instantiation of Package coreapi which provides direct access to the core commands  in IPFS resulted to a problem : %+v", err)}
+		logger.Error("Instantiation of Package coreapi which provides direct access to the core commands  in IPFS resulted to a problem : %+v", err)
+		//logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("Instantiation of Package coreapi which provides direct access to the core commands  in IPFS resulted to a problem : %+v", err)}
 		return err
 	}
 
@@ -63,8 +64,8 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	if *config.FlagDevLogs {
 		devLog, err = zap.NewDevelopment()
 		if err != nil {
-			//logger.Error("Development Flag resulted to a problem : %+v", err)
-			logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("Development Flag resulted to a problem : %+v", err)}
+			logger.Error("Development Flag resulted to a problem : %+v", err)
+			//logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("Development Flag resulted to a problem : %+v", err)}
 			return err
 		}
 	}
@@ -87,7 +88,8 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	}
 	if conf.PeerID != "" {
 		orbitopts.ID = &conf.PeerID
-		logChan <- Log{Type: Info, Data: fmt.Sprintf("PeerID: store and set Identity as non-string : %+v", orbitopts.ID)}
+		logger.Info("PeerID: store and set Identity as non-string : %+v", orbitopts.ID)
+		//logChan <- Log{Type: Info, Data: fmt.Sprintf("PeerID: store and set Identity as non-string : %+v", orbitopts.ID)}
 	}
 
 	//log.Println("####################################################################")
@@ -96,8 +98,8 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	orbit, err = orbitdb.NewOrbitDB(ctx, coreAPI, orbitopts)
 
 	if err != nil {
-		//logger.Error("New OptimusDB instance creation failed: %+v", err)
-		logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("New OptimusDB instance is not created : %+v", err)}
+		logger.Error("New OptimusDB instance creation failed: %+v", err)
+		//logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("New OptimusDB instance is not created : %+v", err)}
 		return err
 	}
 	knowledgeBaseDB.Orbit = &orbit
@@ -107,14 +109,12 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	Knowledge Base, immutable
 	*/
 	///////////////////////////////////////////////////////////////////////////////////////
-
 	docstoreOpt := documentstore.DefaultStoreOptsForMap("path")
 	cacheStore := filepath.Join(cache, *config.Flagcontributions)
-	log.Println("DEBUG : OptimusDB instance eventlog")
-	log.Printf("DEBUG : eventlog cache %s\n", cache)
-	log.Printf("DEBUG : eventlog contributions Cache %s\n", cacheStore)
+	logger.Debug("[DEBUG] : OptimusDB instance eventlog")
+	logger.Debug("[DEBUG] : eventlog cache %s ", cache)
+	logger.Debug("[DEBUG] : eventlog contributions Cache %s ", cacheStore)
 	// give write access to all
-
 	///////////////////////////////////////////////////////////////////////////////////////
 	/////////////////// contributions ////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////////////
@@ -167,17 +167,15 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	log.Println("Will check if a persistent store is available for Swarm(Contributions)")
 	store, err := orbit.Open(ctx, conf.ContributionsStoreAddr, &dbopts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\nERROR: TSwarm(Contributions), is not avaialable\n", err)
-		fmt.Fprintf(os.Stderr, "%v\nERROR: Try resolving it by connecting to a peer, ContributionsStoreAddr\n", err)
+		logger.Error("[ERROR]: TSwarm(Contributions), is not avaialable, Try resolving it by connecting to a peer, ContributionsStoreAddr %v", err)
 	} else {
 		db := store.(iface.EventLogStore)
 		db.Load(ctx, -1)
 		knowledgeBaseDB.Contributions = &db
 		//fmt.Fprintf(os.Stdout, "Found database for Swarm: %s \n\n", db.Address().String())
-
 		// persist store address
 		conf.ContributionsStoreAddr = db.Address().String()
-		log.Printf("Found database for Swarm(Contributions): %s \n", conf.ContributionsStoreAddr)
+		logger.Info("[INFO] Found database for Swarm(Contributions): %s ", conf.ContributionsStoreAddr)
 	}
 
 	/////////////////// validations ////////////////////////////////////////////////////
@@ -199,9 +197,9 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	replicate := false // no one else has write access
 	docstoreOpt = documentstore.DefaultStoreOptsForMap("path")
 	validationsCache := filepath.Join(cache, "validations")
-	log.Println("DEBUG : OptimusDB instance validations")
-	log.Printf("DEBUG : validations cache %s\n", cache)
-	log.Printf("DEBUG : docstore validationsCache %s\n", validationsCache)
+	logger.Debug("[DEBUG] : OptimusDB instance validations")
+	logger.Debug("[DEBUG] : validations cache %s ", cache)
+	logger.Debug("[DEBUG] : docstore validationsCache %s ", validationsCache)
 	dbopts = orbitdb.CreateDBOptions{
 		Create:            &create,
 		StoreType:         stringPtr("docstore"),
@@ -215,13 +213,13 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	// see if there is a persisted store available
 	store, err = orbit.Open(ctx, conf.ValidationsStoreAddr, &dbopts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\nTry resolving it by connecting to a peer, ValidationsStoreAddr\n", err)
+		logger.Error("Try resolving it by connecting to a peer, ValidationsStoreAddr %v", err)
 	} else {
 		db := store.(iface.DocumentStore)
 		db.Load(ctx, -1)
 		knowledgeBaseDB.Validations = &db
 		//fmt.Fprintf(os.Stdout, "Validation Store is available at : %s \n\n", db.Address().String())
-		log.Printf("Found database for Swarm(Validations) : %s \n", db.Address().String())
+		logger.Info("Found database for Swarm(Validations) : %s \n", db.Address().String())
 		// persist store address
 		conf.ValidationsStoreAddr = db.Address().String()
 	}
@@ -234,9 +232,9 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	replicate = true // no one else has write access
 	docstoreOpt = documentstore.DefaultStoreOptsForMap("path")
 	KBdataCache := filepath.Join(cache, "kbdata")
-	log.Println("DEBUG : OptimusDB instance kbdata")
-	log.Printf("DEBUG : kbdata cache %s\n", cache)
-	log.Printf("DEBUG : docstore KBdataCache %s\n", KBdataCache)
+	logger.Debug("[DEBUG] : OptimusDB instance kbdata")
+	logger.Debug("[DEBUG] : kbdata cache %s ", cache)
+	logger.Debug("[DEBUG] : docstore KBdataCache %s ", KBdataCache)
 	dbopts = orbitdb.CreateDBOptions{
 		Create:            &create,
 		StoreType:         stringPtr("docstore"),
@@ -249,14 +247,15 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	// see if there is a persisted store available
 	store, err = orbit.Open(ctx, conf.KMDataStoreAddr, &dbopts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\nTry resolving it by connecting to a peer, KMDataStoreAddr\n", err)
+		logger.Error("Try resolving it by connecting to a peer, KMDataStoreAddr %v", err)
 	} else {
 		db := store.(iface.DocumentStore)
 		db.Load(ctx, -1)
 		knowledgeBaseDB.KBdata = &db
 		//fmt.Fprintf(os.Stdout, "Knowledge Management store for Data  is available at : %s \n\n", db.Address().String())
 		//log.Printf("Knowledge Management store for Data (KBdata): %s \n", db.Address().String())
-		GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Knowledge Management store for Data (KBdata): %v", db.Address().String()), runtime.GOOS)
+		//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Knowledge Management store for Data (KBdata): %v", db.Address().String()), runtime.GOOS)
+		logger.Info("Knowledge Management store for Data (KBdata): %v", db.Address().String())
 		// persist store address
 		conf.KMDataStoreAddr = db.Address().String()
 	}
@@ -277,10 +276,9 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	}
 	docstoreOpt = documentstore.DefaultStoreOptsForMap("_id") ////Here the fiasko
 	KBMetadataCache := filepath.Join(cache, "kbmetadata")
-
-	log.Println("DEBUG : OptimusDB instance kbmetadata")
-	log.Printf("DEBUG : kbmetadata cache %s\n", cache)
-	log.Printf("DEBUG : docstore KBMetadataCache %s\n", KBMetadataCache)
+	logger.Debug("[DEBUG] : OptimusDB instance kbmetadata")
+	logger.Debug("[DEBUG] : kbmetadata cache %s ", cache)
+	logger.Debug("[DEBUG] : docstore KBMetadataCache %s ", KBMetadataCache)
 	/*
 		dbopts = orbitdb.CreateDBOptions{
 			Create:            &create,
@@ -305,13 +303,14 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	}
 	store, err = orbit.Open(ctx, conf.KMMetaDataStoreAddr, &dbopts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\nTry resolving it by connecting to a peer, KMMetaDataStoreAddr\n", err)
+		logger.Error("Try resolving it by connecting to a peer, KMMetaDataStoreAddr %v", err)
 	} else {
 		db := store.(iface.DocumentStore)
 		db.Load(ctx, -1)
 		knowledgeBaseDB.KBMetadata = &db
 		//log.Printf("Knowledge Management store for Data (KBMetadata): %s \n", db.Address().String())
-		GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Knowledge Management store for MetaData (KBMetadata): %v", db.Address().String()), runtime.GOOS)
+		//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Knowledge Management store for MetaData (KBMetadata): %v", db.Address().String()), runtime.GOOS)
+		logger.Info("Knowledge Management store for MetaData (KBMetadata): %v", db.Address().String())
 		conf.KMMetaDataStoreAddr = db.Address().String()
 	}
 	//########################################################################
@@ -338,9 +337,9 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	docstoreOpt = documentstore.DefaultStoreOptsForMap("_id") ////Here the fiasko
 	cacheStore = filepath.Join(cache, *config.Flagdsswres)
 
-	log.Println("DEBUG : OptimusDB instance " + *config.Flagdsswres)
-	log.Printf("DEBUG : cache %s\n", cache)
-	log.Printf("DEBUG : docstore  %s\n", cacheStore)
+	logger.Debug("[DEBUG] : OptimusDB instance " + *config.Flagdsswres)
+	logger.Debug("[DEBUG] : cache %s ", cache)
+	logger.Debug("[DEBUG] : docstore  %s ", cacheStore)
 
 	dbopts = orbitdb.CreateDBOptions{
 		Create:            boolPtr(true),
@@ -355,14 +354,15 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	}
 	store, err = orbit.Open(ctx, conf.DsswresStoreAddr, &dbopts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\nTry resolving it by connecting to a peer, DsswresStoreAddr\n", err)
+		///fmt.Fprintf(os.Stderr, "%v\nTry resolving it by connecting to a peer, DsswresStoreAddr\n", err)
+		logger.Error("[ERROR] Try resolving it by connecting to a peer, DsswresStoreAddr %v", err)
 	} else {
 		db := store.(iface.DocumentStore)
 		db.Load(ctx, -1)
 		knowledgeBaseDB.DsSWres = &db
 		//log.Printf("Knowledge Management store for Data (%s): %s \n", *config.Flagdsswres, db.Address().String())
-		GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Knowledge Management store for Data (%s): %s", *config.Flagdsswres, db.Address().String()), runtime.GOOS)
-
+		//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Knowledge Management store for Data (%s): %s", *config.Flagdsswres, db.Address().String()), runtime.GOOS)
+		logger.Info("[INFO] Knowledge Management store for Data (%s): %s", *config.Flagdsswres, db.Address().String())
 		conf.DsswresStoreAddr = db.Address().String()
 	}
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -373,22 +373,26 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	rdbmsCache := filepath.Join(cache, *config.FlagRDBMSDB+".db")
 	rdbms, err = InitSQLite(rdbmsCache) // Initialize SQLite
 	if err != nil {
-		logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("SQLite Initialization Failed: %+v", err)}
+		//logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("SQLite Initialization Failed: %+v", err)}
+		logger.Error("[ERROR] SQLite Initialization Failed: %+v", err)
 		return err
 	}
 
 	// Ensure `datacatalog` table exists
 
 	if err := rdbms.createDataCatalog(); err != nil {
-		logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("Table Creation Error:  createDataCatalog %+v", err)}
+		//logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("Table Creation Error:  createDataCatalog %+v", err)}
+		logger.Error("[ERROR] Table Creation Error:  createDataCatalog %+v", err)
 		return err
 	}
 	if err := rdbms.createTOSCAMetadataTable(); err != nil {
-		logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("Table Creation Error: createTOSCAMetadataTable  %+v", err)}
+		logger.Error("[ERROR] Table Creation Error: createTOSCAMetadataTable %+v", err)
+		//logChan <- Log{Type: NonRecoverableErr, Data: fmt.Sprintf("Table Creation Error: createTOSCAMetadataTable  %+v", err)}
 		return err
 	}
-	logChan <- Log{Type: Info, Data: "RDBMS database initialized successfully"}
-	GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("RDBMS database initialized successfully"), runtime.GOOS)
+	//logChan <- Log{Type: Info, Data: "RDBMS database initialized successfully"}
+	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("RDBMS database initialized successfully"), runtime.GOOS)
+	logger.Info("RDBMS database initialized successfully")
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -403,9 +407,9 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	docstoreOpt = documentstore.DefaultStoreOptsForMap("_id")
 
 	toscaCache := filepath.Join(cache, "tosca_imported")
-	log.Println("DEBUG : OptimusDB instance tosca_imported")
-	log.Printf("DEBUG : cache %s\n", cache)
-	log.Printf("DEBUG : docstore %s\n", toscaCache)
+	logger.Debug("[DEBUG] : OptimusDB instance tosca_imported")
+	logger.Debug("[DEBUG] : cache %s ", cache)
+	logger.Debug("[DEBUG] : docstore %s ", toscaCache)
 
 	dbopts = orbitdb.CreateDBOptions{
 		Create:            boolPtr(true),
@@ -421,13 +425,15 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 
 	store, err = orbit.Open(ctx, conf.TOSCAImportedStoreAddr, &dbopts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\nTry resolving it by connecting to a peer, TOSCAImportedStoreAddr\n", err)
+		//fmt.Fprintf(os.Stderr, "%v\nTry resolving it by connecting to a peer, TOSCAImportedStoreAddr\n", err)
+		logger.Error("Try resolving it by connecting to a peer, TOSCAImportedStoreAddr %v", err)
 	} else {
 		db := store.(iface.DocumentStore)
 		db.Load(ctx, -1)
 		knowledgeBaseDB.DsTOSCA_Imported = &db
-		GlobalLoggerDB.AddToOptimusLog("INFO",
-			fmt.Sprintf("TOSCA Imported store: %s", db.Address().String()), runtime.GOOS)
+		//GlobalLoggerDB.AddToOptimusLog("INFO",
+		//	fmt.Sprintf("TOSCA Imported store: %s", db.Address().String()), runtime.GOOS)
+		logger.Debug("[DEBUG] TOSCA Imported store: %s", db.Address().String())
 		conf.TOSCAImportedStoreAddr = db.Address().String()
 	}
 
@@ -446,7 +452,7 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 
 	// connect to a bootstrap peer
 	if *config.FlagBootstrap != "" {
-		fmt.Print("\nbootstrap : ", *config.FlagBootstrap, "\n")
+		logger.Debug("[DEBUG] bootstrap Connect to a peer, TOSCAImportedStoreAddr %v", *config.FlagBootstrap)
 		IssueConnectCmd(knowledgeBaseDB, []string{*config.FlagBootstrap})
 	}
 	//##########################################################################3
@@ -471,26 +477,8 @@ func IssueConnectCmd(knowledgeBaseDB *KnowledgeBaseDB, peers []string) {
 			myIP = p
 		}
 		myAddr := "/ip4/" + myIP + "/tcp/" + *config.FlagIPFSPort + "/p2p/" + knowledgeBaseDB.Config.PeerID
-		fmt.Print("\n sending my address : ", myAddr, " to IP ", p, "\n")
-
-		//cmdPath := "http://" + p + ":8089/optimusdb/command"
-
+		logger.Debug("[DEBUG] Sending my address : ", myAddr, " to IP ", p)
 		cmdPath := "http://" + p + ":" + *config.FlagHTTPPort + "/" + *config.FlagContext + "/command"
-
-		//connectReq := Request{CONNECT, []string{myAddr}}
-		//connectReq := Request{CONNECT,peers ,}
-		//connectReq := Request{CONNECT, []string{myAddr}}
-
-		//myAddr
-		/*
-			connectReq := Request{
-			    Method:   CONNECT,
-			    Args:     []string{myAddr},
-			    DSType:   "",
-			    SQL:      "",
-			    Criteria: nil,
-			}
-		*/
 
 		///// incase there is a change in the http payload
 		//connectReq := Request{CONNECT, []string{myAddr}, "", "", nil, nil, nil}
@@ -507,19 +495,19 @@ func IssueConnectCmd(knowledgeBaseDB *KnowledgeBaseDB, peers []string) {
 
 		jsonData, err := json.Marshal(connectReq)
 		if err != nil {
-			fmt.Println("Error marshaling JSON:", err)
+			logger.Error("[ERROR] Error marshaling JSON:", err)
 			return
 		}
 
 		req, err := http.NewRequest("POST", cmdPath, bytes.NewBuffer(jsonData))
 		if err != nil {
-			fmt.Println("Error creating request:", err)
+			logger.Error("[ERROR] Error creating request:", err)
 			continue
 		}
 
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Println("Error sending request:", err)
+			logger.Error("[ERROR] Error sending request:", err)
 			continue
 		}
 		defer resp.Body.Close()
@@ -530,7 +518,7 @@ func GetOwnIP() string {
 	// get the list of network interfaces
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		fmt.Println("Failed to get network interfaces:", err)
+		logger.Error("[ERROR] Failed to get network interfaces:", err)
 		return ""
 	}
 
@@ -541,7 +529,8 @@ func GetOwnIP() string {
 			// get the addresses for the current interface
 			addrs, err := iface.Addrs()
 			if err != nil {
-				fmt.Println("Failed to get addresses for interface", iface.Name, ":", err)
+				logger.Error("[ERROR] Failed to get addresses for interface", iface.Name, ":", err)
+				//fmt.Println("Failed to get addresses for interface", iface.Name, ":", err)
 				continue
 			}
 

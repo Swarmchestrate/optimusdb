@@ -3,7 +3,7 @@ package mq
 //Update 22.09.2025
 import (
 	"fmt"
-	"log"
+	"optimusdb/logger"
 	"sync"
 	"time"
 
@@ -75,7 +75,8 @@ func (s *EMSService) loop() {
 		// If not connected → try to connect
 		if !s.isConnected() {
 			if err := s.connect(); err != nil {
-				log.Printf("[EMS] Connect failed: %v (retry in %s)", err, s.retryDelay)
+				//log.Printf("[EMS] Connect failed: %v (retry in %s)", err, s.retryDelay)
+				logger.Error("[ERROR] EMS Connect failed: %v (retry in %s)", err, s.retryDelay)
 				time.Sleep(s.retryDelay)
 				continue
 			}
@@ -88,7 +89,8 @@ func (s *EMSService) loop() {
 		if s.isConnected() {
 			err := s.Send("/queue/optimusdb-health", "text/plain", []byte("ping"))
 			if err != nil {
-				log.Printf("[EMS] Connection check failed, reconnecting: %v", err)
+				logger.Error("[ERROR] EMS Connection check failed, reconnecting: %v", err)
+				//log.Printf("[EMS] Connection check failed, reconnecting: %v", err)
 				s.disconnect()
 			}
 		}
@@ -113,7 +115,8 @@ func (s *EMSService) connect() error {
 	s.conn = conn
 	s.mu.Unlock()
 
-	log.Printf("[EMS] Connected to STOMP at %s", addr)
+	//log.Printf("[EMS] Connected to STOMP at %s", addr)
+	logger.Info("[INFO] OptimusDB Connected to EMS STOMP at %s", addr)
 	if s.onConnected != nil {
 		s.onConnected()
 	}
@@ -121,6 +124,7 @@ func (s *EMSService) connect() error {
 	if s.cfg.Topic != "" {
 		sub, err := conn.Subscribe(s.cfg.Topic, stomp.AckAuto)
 		if err != nil {
+			logger.Error("[ERROR] OptimusDB failed to subscribe to EMS STOMP at %v", err)
 			return fmt.Errorf("subscribe failed: %w", err)
 		}
 		go func() {

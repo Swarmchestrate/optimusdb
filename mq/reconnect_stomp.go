@@ -3,7 +3,7 @@ package mq
 //Update 22.09.2025
 import (
 	"fmt"
-	"log"
+	"optimusdb/logger"
 	"sync"
 	"time"
 
@@ -76,7 +76,7 @@ func (rc *ReconnectingClient) loop() {
 
 		conn, err := stomp.Dial("tcp", addr, opts...)
 		if err != nil {
-			log.Printf("[EMS] STOMP connect failed: %v (retrying in %s)", err, rc.retryDelay)
+			logger.Error("[ERROR] STOMP connect failed: %v (retrying in %s)", err, rc.retryDelay)
 			select {
 			case <-time.After(rc.retryDelay):
 				continue
@@ -88,12 +88,14 @@ func (rc *ReconnectingClient) loop() {
 		rc.mu.Lock()
 		rc.conn = conn
 		rc.mu.Unlock()
-		log.Printf("[EMS] Connected to STOMP at %s", addr)
+		//log.Printf("[EMS] Connected to STOMP at %s", addr)
+		logger.Info("[INFO] OptimusDB Connected to EMS STOMP at %s", addr)
 
 		// restore subscriptions
 		for dest, ack := range rc.snapshotSubs() {
 			if err := rc.subscribeInternal(dest, ack); err != nil {
-				log.Printf("[EMS] Failed to subscribe %s: %v", dest, err)
+				//log.Printf("[EMS] Failed to subscribe %s: %v", dest, err)
+				logger.Error("[ERROR] OptimusDB Failed to subscribe to EMS %s: %v", dest, err)
 			}
 		}
 
@@ -109,7 +111,8 @@ func (rc *ReconnectingClient) loop() {
 				// Send a lightweight heartbeat message
 				err := rc.Send("/queue/optimusdb-health", "text/plain", []byte("ping"))
 				if err != nil {
-					log.Printf("[EMS] Heartbeat failed, reconnecting: %v", err)
+					//log.Printf("[EMS] Heartbeat failed, reconnecting: %v", err)
+					logger.Error("[ERROR] OptimusDB hearbeat interaction with EMS failed, reconnecting: %v", err)
 					rc.closeConn()
 					time.Sleep(rc.retryDelay)
 					break

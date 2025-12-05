@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/go-stomp/stomp"
 	"golang.org/x/net/context"
+	"optimusdb/logger"
 	"optimusdb/mq"
 	"os"
 	"regexp"
@@ -161,18 +162,20 @@ func (db *KnowledgeBaseDB) StartEMSSubscriber(ctx context.Context) (cleanup func
 		}
 	})
 	service.OnConnected(func() {
-		if GlobalLoggerDB != nil {
-			_ = GlobalLoggerDB.AddToOptimusLog("INFO",
-				fmt.Sprintf("EMS connected (host=%s port=%d topic=%s)", cfg.Host, cfg.Port, cfg.Topic),
-				"ems")
-		}
+		logger.Info("[INFO] EMS connected (host=%s port=%d topic=%s)", cfg.Host, cfg.Port, cfg.Topic)
+		//if GlobalLoggerDB != nil {
+		//	_ = GlobalLoggerDB.AddToOptimusLog("INFO",
+		//		fmt.Sprintf("EMS connected (host=%s port=%d topic=%s)", cfg.Host, cfg.Port, cfg.Topic),
+		//		"ems")
+		//}
 	})
 	service.OnDisconnected(func(err error) {
-		if GlobalLoggerDB != nil {
-			_ = GlobalLoggerDB.AddToOptimusLog("WARN",
-				fmt.Sprintf("EMS disconnected: %v", err),
-				"ems")
-		}
+		logger.Error("[ERROR] EMS disconnected: %v", err)
+		//if GlobalLoggerDB != nil {
+		//	_ = GlobalLoggerDB.AddToOptimusLog("WARN",
+		//		fmt.Sprintf("EMS disconnected: %v", err),
+		//		"ems")
+		//}
 	})
 
 	db.EMSService = service
@@ -221,15 +224,17 @@ func (db *KnowledgeBaseDB) handleEMSMessage(body []byte) error {
 			now, db.HostID, clientID, topic,
 			m.Action, m.Resource, paramsJSON, string(body),
 		)
-
 		// Optional: short line to optimusLogger for quick grep/tail
 		if parseErr != nil {
-			_ = GlobalLoggerDB.AddToOptimusLog("ERROR",
-				"EMS recv (unmarshal failed): "+truncate(string(body), 180), "ems")
+			logger.Error("[ERROR] EMS recv (unmarshal failed): " + truncate(string(body), 180))
+			//_ = GlobalLoggerDB.AddToOptimusLog("ERROR",
+			//	"EMS recv (unmarshal failed): "+truncate(string(body), 180), "ems")
 		} else {
-			_ = GlobalLoggerDB.AddToOptimusLog("INFO",
-				fmt.Sprintf("EMS recv action=%s resource=%s body=%s",
-					m.Action, m.Resource, truncate(string(body), 160)), "ems")
+			logger.Info("EMS recv action=%s resource=%s body=%s",
+				m.Action, m.Resource, truncate(string(body), 160))
+			//_ = GlobalLoggerDB.AddToOptimusLog("INFO",
+			//	fmt.Sprintf("EMS recv action=%s resource=%s body=%s",
+			//		m.Action, m.Resource, truncate(string(body), 160)), "ems")
 		}
 	}
 
