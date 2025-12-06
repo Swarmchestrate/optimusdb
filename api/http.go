@@ -600,8 +600,8 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 		role, currentLeader, currentTerm, leadershipCount := election.GetNodeStatus()
 
 		// Determine if this node is the coordinator
-		isCoordinator := *config.FlagCoordinator
-		isCurrentLeader := (role == "Leader" || role == "leader")
+		isCoordinator := (role == "Coordinator") // Election state
+		isCurrentLeader := (role == "Coordinator" && selfPeerID == currentLeader)
 
 		// Get self reputation/health metrics
 		selfReputation, _ := election.GetPeerReputation(selfPeerID)
@@ -777,7 +777,7 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 			}
 		}
 		// Add self to counts
-		if isCoordinator || isCurrentLeader {
+		if role == "Coordinator" { //  Use actual role
 			coordCount++
 		} else {
 			followerCount++

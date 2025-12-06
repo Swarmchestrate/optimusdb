@@ -261,18 +261,86 @@ func (rep *ReputationSQLite) createReputationDB() error {
 
 func calculateReputation(nr NodeReputation) float64 {
 	w := getReputationWeights()
-	cpuScore := 100 - (nr.UserCPU + nr.SystemCPU)
-	memoryScore := nr.MemoryAvailable
-	diskScore := 100 - (nr.AvgReadMBs + nr.AvgWriteMBs)
-	latencyScore := 100 - nr.Latency
 
-	return (w["uptime"] * nr.Uptime) +
-		(w["leadership"] * float64(nr.LeadershipCount)) +
+	// ✅ CPU Score: 0-100 (lower usage = better, cap at 100%)
+	cpuUsage := nr.UserCPU + nr.SystemCPU
+	if cpuUsage > 100 {
+		cpuUsage = 100
+	}
+	cpuScore := 100 - cpuUsage
+
+	// ✅ Memory Score: 0-100 (less used = better, as percentage of system memory)
+	memoryScore := 100.0
+	if nr.MemorySystem > 0 {
+		memoryUsedPct := (nr.MemoryAllocationTotal / nr.MemorySystem) * 100
+		if memoryUsedPct > 100 {
+			memoryUsedPct = 100
+		}
+		memoryScore = 100 - memoryUsedPct
+	}
+
+	// ✅ Disk Score: Normalize with logarithmic scale to handle bursts gracefully
+	// This handles values from 0.1 MB/s (score ~100) to 10,000 MB/s (score ~0)
+	diskIO := nr.AvgReadMBs + nr.AvgWriteMBs
+	diskScore := 100.0
+	if diskIO > 0 {
+		// Log scale: 1 MB/s = 100, 10 MB/s = 75, 100 MB/s = 50, 1000 MB/s = 25, 10000+ MB/s = 0
+		// Formula: 100 - (log10(diskIO) * 25)
+		logDisk := math.Log10(diskIO)
+		diskScore = 100 - (logDisk * 25)
+
+		// Clamp to 0-100
+		if diskScore < 0 {
+			diskScore = 0
+		}
+		if diskScore > 100 {
+			diskScore = 100
+		}
+	}
+
+	// ✅ Latency Score: 0-100 (lower latency = better, assume max 100ms)
+	latency := nr.Latency
+	if latency > 100 {
+		latency = 100
+	}
+	latencyScore := 100 - latency
+
+	// ✅ Uptime Score: Convert 0-1 range to 0-100
+	uptimeScore := nr.Uptime * 100
+	if uptimeScore > 100 {
+		uptimeScore = 100
+	}
+
+	// ✅ Leadership Score: Each past leadership worth 10 points, capped at 100
+	leadershipScore := float64(nr.LeadershipCount) * 10
+	if leadershipScore > 100 {
+		leadershipScore = 100
+	}
+
+	// ✅ Geography Score: Convert 0-1 range to 0-100
+	geographyScore := nr.GeographyScore * 100
+	if geographyScore > 100 {
+		geographyScore = 100
+	}
+
+	// Calculate weighted sum
+	score := (w["uptime"] * uptimeScore) +
+		(w["leadership"] * leadershipScore) +
 		(w["cpu"] * cpuScore) +
 		(w["memory"] * memoryScore) +
 		(w["disk"] * diskScore) +
 		(w["latency"] * latencyScore) +
-		(w["geography_score"] * nr.GeographyScore)
+		(w["geography_score"] * geographyScore)
+
+	// ✅ Final safety clamp (should not be needed, but just in case)
+	if score < 0 {
+		return 0
+	}
+	if score > 100 {
+		return 100
+	}
+
+	return score
 }
 
 // IMPROVED publish with better debugging
@@ -656,18 +724,42 @@ func (n *Node) handleHeartbeat(hb HeartbeatMessage) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 
+	// ✅ Coordinators now detect split-brain
+	if n.role == "Coordinator" {
+		if hb.LeaderID != n.host.ID().String() {
+			// Another coordinator exists!
+			if hb.Term > n.currentTerm {
+				n.stepDownLocked(hb.LeaderID, hb.Term) // ✅ Step down
+			} else if hb.Term == n.currentTerm && hb.LeaderID < n.host.ID().String() {
+				n.stepDownLocked(hb.LeaderID, hb.Term) // ✅ Tiebreaker
+			}
+		}
+		return
+	}
+
+	// Follower logic
 	if n.role == "Follower" {
 		n.lastHeartbeat = time.Now()
 		n.heartbeatMissed = 0
-		// Convert the base58 string back to peer.ID properly
 		leaderPeerID, err := peer.Decode(hb.LeaderID)
 		if err != nil {
-			logger.Info("[ERROR] Failed to decode leader ID: %v", err)
-			n.mutex.Unlock()
 			return
 		}
 		n.leader = leaderPeerID
+		if hb.Term > n.currentTerm {
+			n.currentTerm = hb.Term
+		}
 	}
+}
+
+func (n *Node) stepDownLocked(newLeaderID string, term int) {
+	logger.Info("[ELECTION] ⬇️ STEPPING DOWN from Coordinator to Follower")
+	n.role = "Follower"
+	n.currentTerm = term
+	n.lastHeartbeat = time.Now()
+	n.heartbeatMissed = 0
+	leaderPeerID, _ := peer.Decode(newLeaderID)
+	n.leader = leaderPeerID
 }
 
 func (n *Node) handleAnnouncement(leaderID string, term int) {
@@ -832,11 +924,15 @@ func (n *Node) PeriodicReputationPublisher() {
 			allocMB, totalAllocMB, sysMB := utilities.GetMemoryUsage()
 			avgReadMBs, avgWriteMBs, _ := utilities.GetDiskUsage(5)
 
+			actualLatency := utilities.GetActualLatency(n.host)
+			actualGeoScore := utilities.GetGeographyScore(n.host)
+			actualUptime := utilities.GetActualUptime()
+
 			reputation := NodeReputation{
 				NodeID:                n.host.ID().String(),
-				Uptime:                float64(time.Now().Unix()%1000) / 1000,
+				Uptime:                actualUptime, // ✅ FIXED
 				LeadershipCount:       n.leadershipCount,
-				Latency:               10.0,
+				Latency:               actualLatency, // ✅ FIXED
 				UserCPU:               userCPU,
 				SystemCPU:             systemCPU,
 				IdleCPU:               idleCPU,
@@ -845,7 +941,7 @@ func (n *Node) PeriodicReputationPublisher() {
 				MemorySystem:          sysMB,
 				AvgReadMBs:            avgReadMBs,
 				AvgWriteMBs:           avgWriteMBs,
-				GeographyScore:        0.5,
+				GeographyScore:        actualGeoScore, // ✅ FIXED
 			}
 
 			UpsertReputation(GlobalReputationDB.reputationDB, reputation)

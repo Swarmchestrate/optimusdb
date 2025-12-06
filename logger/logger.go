@@ -21,6 +21,7 @@ const (
 	INFO LogLevel = iota
 	ERROR
 	DEBUG
+	WARN
 )
 
 var (
@@ -73,6 +74,8 @@ func (l *Logger) Log(level LogLevel, message string, args ...interface{}) {
 			prefix = "ERROR"
 		case DEBUG:
 			prefix = "DEBUG"
+		case WARN:
+			prefix = "WARN"
 		default:
 			prefix = "LOG"
 		}
@@ -86,7 +89,7 @@ func (l *Logger) Log(level LogLevel, message string, args ...interface{}) {
 		mutexSync.Unlock()
 
 		// Send log to Loki
-		l.sendToLoki(prefix, fullMessage)
+		//l.sendToLoki(prefix, fullMessage)
 
 		// Persist to database
 		l.persistToDatabase(prefix, formattedMessage, 3)
@@ -197,6 +200,11 @@ func Error(format string, args ...interface{}) {
 // Debug logs a debug-level message
 func Debug(format string, args ...interface{}) {
 	GlobalLogger.Log(DEBUG, format, args...)
+}
+
+// Debug logs a debug-level message
+func Warn(format string, args ...interface{}) {
+	GlobalLogger.Log(WARN, format, args...)
 }
 
 // CheckAndLogError logs the error if it is not nil

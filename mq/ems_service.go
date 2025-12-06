@@ -65,6 +65,13 @@ func (s *EMSService) Start() {
 	}
 */
 func (s *EMSService) loop() {
+	const (
+		initialDelay = 5 * time.Second
+		maxDelay     = 5 * time.Minute
+	)
+
+	retryDelay := initialDelay
+
 	for {
 		select {
 		case <-s.stopped:
@@ -72,30 +79,67 @@ func (s *EMSService) loop() {
 		default:
 		}
 
-		// If not connected → try to connect
+		// -----------------------------
+		// CONNECT PHASE
+		// -----------------------------
 		if !s.isConnected() {
 			if err := s.connect(); err != nil {
-				//log.Printf("[EMS] Connect failed: %v (retry in %s)", err, s.retryDelay)
-				logger.Error("[ERROR] EMS Connect failed: %v (retry in %s)", err, s.retryDelay)
-				time.Sleep(s.retryDelay)
+				logger.Warn("[WARN] EMS connect failed: %v (retry in %s)", err, retryDelay)
+
+				// Backoff before retry
+				time.Sleep(retryDelay)
+
+				// Exponential increase capped at 5 minutes
+				retryDelay = nextDelay(retryDelay, maxDelay)
 				continue
 			}
+
+			// Successful connection → reset delay
+			retryDelay = initialDelay
 		}
 
-		// Sleep between health checks
-		time.Sleep(s.retryDelay)
+		// -----------------------------
+		// HEALTH CHECK
+		// -----------------------------
+		time.Sleep(retryDelay)
 
-		// Try a lightweight "send" as a heartbeat
 		if s.isConnected() {
 			err := s.Send("/queue/optimusdb-health", "text/plain", []byte("ping"))
 			if err != nil {
-				logger.Error("[ERROR] EMS Connection check failed, reconnecting: %v", err)
-				//log.Printf("[EMS] Connection check failed, reconnecting: %v", err)
+				logger.Warn("[ERROR] EMS heartbeat failed → reconnecting: %v", err)
 				s.disconnect()
+
+				// Wait with backoff before reconnect
+				time.Sleep(retryDelay)
+				retryDelay = nextDelay(retryDelay, maxDelay)
 			}
 		}
 	}
 }
+
+/*
+///////Initial retries:
+//
+//5s → 10s → 20s → 40s → 80s → 160s → 5min (cap)
+//
+//After success:
+//
+//Delay resets to 5 seconds for fast health checks.
+//After failure:
+//
+//Delay grows until maximum 5 minutes between attempts.
+*/
+func nextDelay(current, max time.Duration) time.Duration {
+	// Double the delay
+	next := current * 2
+
+	// Cap at max allowed delay
+	if next > max {
+		return max
+	}
+	return next
+}
+
 func (s *EMSService) connect() error {
 	addr := fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
 	opts := []func(*stomp.Conn) error{

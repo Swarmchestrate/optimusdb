@@ -130,7 +130,8 @@ func main() {
 	flag.Parse()
 
 	printSwarmchestrate()
-
+	utilities.InitMetrics()
+	logger.Info("[INFO] Metrics tracking initialized")
 	// Metrics (optional)
 	if *config.FlagMetrics {
 		interval := 2 * time.Second
