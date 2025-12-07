@@ -396,8 +396,8 @@ func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service 
 	}
 	// Start PubSub discovery if enabled
 	if *config.FlagAutodiscoveryipfsPubSub {
-		logger.Info("[INFO] Enabling PubSub-based discovery")
-		app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", "Enabling PubSub-based discovery", runtime.GOOS)
+		logger.Info("[INFO] [DISCOVERY]Enabling PubSub-based discovery")
+		//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", "Enabling PubSub-based discovery", runtime.GOOS)
 
 		ps, err := pubsub.NewGossipSub(context.Background(), h,
 			pubsub.WithPeerExchange(true),

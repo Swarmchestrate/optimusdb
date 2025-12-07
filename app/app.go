@@ -45,7 +45,7 @@ type KnowledgeBaseDB struct {
 	KBdata        *orbitdb.DocumentStore // the store which holds data
 	//CRDTs: For conflict-free data synchronization.
 	KBMetadata    *orbitdb.DocumentStore // the store which holds metadata
-	whoiswhoStore *orbitdb.DocumentStore // the store which holds data
+	WhoiswhoStore *orbitdb.DocumentStore // the store which holds data
 	DsSWres       *orbitdb.DocumentStore // the store which holds data
 	DsSWresaloc   *orbitdb.DocumentStore // the store which holds metadata
 	// TOSCA specific datastores
@@ -142,7 +142,7 @@ type KnowledgeBaseSQLite struct {
 }
 
 type LoggerSQLite struct {
-	theLog *sql.DB
+	TheLog *sql.DB
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -217,7 +217,7 @@ func InitLog() (*LoggerSQLite, error) {
 	}
 
 	// Create the KnowledgeBaseSQLite instance
-	GlobalLoggerDB = &LoggerSQLite{theLog: db}
+	GlobalLoggerDB = &LoggerSQLite{TheLog: db}
 
 	err = GlobalLoggerDB.createLogTable()
 	if err != nil {
@@ -362,7 +362,7 @@ func (kb *LoggerSQLite) createLogTable() error {
 				CREATE INDEX IF NOT EXISTS idx_logs_date_hour ON optimusLogger(date, hour);
 			`
 
-	_, err := kb.theLog.Exec(tableQuery)
+	_, err := kb.TheLog.Exec(tableQuery)
 	if err != nil {
 		return err
 	}
@@ -952,7 +952,7 @@ func (kb *LoggerSQLite) AddToOptimusLog(level, message, source string) error {
 		}
 	}
 
-	stmt, err := kb.theLog.Prepare(`INSERT INTO optimusLogger(timestamp, date, hour, level, message, source)
+	stmt, err := kb.TheLog.Prepare(`INSERT INTO optimusLogger(timestamp, date, hour, level, message, source)
                                 VALUES (?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
@@ -982,7 +982,7 @@ func OptimusLog(level, message string) {
 
 // Get Logs per Hr
 func (kb *LoggerSQLite) GetLogsForHour(date, hour string) ([]map[string]string, error) {
-	rows, err := kb.theLog.Query(`SELECT timestamp, level, message, source FROM optimusLogger
+	rows, err := kb.TheLog.Query(`SELECT timestamp, level, message, source FROM optimusLogger
                            WHERE date = ? AND hour = ? ORDER BY timestamp DESC`, date, hour)
 	if err != nil {
 		return nil, err
@@ -1161,7 +1161,7 @@ func (kb *LoggerSQLite) createEMSEventsTable() error {
 	CREATE INDEX IF NOT EXISTS idx_ems_events_time ON ems_events(received_at);
 	CREATE INDEX IF NOT EXISTS idx_ems_events_act_res ON ems_events(action, resource);
 	`
-	_, err := kb.theLog.Exec(table)
+	_, err := kb.TheLog.Exec(table)
 	return err
 }
 
@@ -1173,7 +1173,7 @@ func (kb *LoggerSQLite) InsertEMSEvent(
 	const q = `
 	INSERT INTO ems_events (received_at, node_id, client_id, topic, action, resource, params_json, raw_json)
 	VALUES (?, ?, ?, ?, ?, ?, ?, ?);`
-	_, err := kb.theLog.Exec(q,
+	_, err := kb.TheLog.Exec(q,
 		receivedAt.UTC().Format(time.RFC3339),
 		nodeID, clientID, topic, action, resource, paramsJSON, rawJSON,
 	)
@@ -1182,10 +1182,10 @@ func (kb *LoggerSQLite) InsertEMSEvent(
 
 // Run a SELECT against the logger DB (optimuslog.db) and return []map[string]interface{}.
 func (kb *LoggerSQLite) SelectAll(stmt string) ([]map[string]interface{}, error) {
-	if kb == nil || kb.theLog == nil {
+	if kb == nil || kb.TheLog == nil {
 		return nil, errors.New("logger DB not initialized")
 	}
-	rows, err := kb.theLog.Query(stmt)
+	rows, err := kb.TheLog.Query(stmt)
 	if err != nil {
 		return nil, err
 	}

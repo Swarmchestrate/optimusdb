@@ -1032,6 +1032,10 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 			json.NewEncoder(w).Encode(map[string]interface{}{"records": rows})
 		})))
 
+	// Register inventory endpoint
+	server.Handle("/"+*config.FlagContext+"/agent/inventory",
+		mw(AgentInventoryHandler(optimusdb, app.GlobalKBSQLite, theLog)))
+
 	// DID Endpoints
 	credentials.SetupCredentialsEndpoints(server, mw, *config.FlagContext, optimusdb, theLog)
 

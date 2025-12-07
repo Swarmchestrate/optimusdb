@@ -31,7 +31,7 @@ var GlobalElectionNode *Node
 var electionNodeMutex sync.RWMutex
 
 type ReputationSQLite struct {
-	reputationDB *sql.DB
+	ReputationDB *sql.DB
 	mu           sync.Mutex
 }
 
@@ -214,7 +214,7 @@ func InitReputationDB() (*ReputationSQLite, error) {
 		logger.Error("[ERROR] Cannot open SQLite DB for Reputation mechanism: %v", err)
 		//log.Fatalf("[FATAL] Cannot open SQLite DB: %v", err)
 	}
-	GlobalReputationDB = &ReputationSQLite{reputationDB: db}
+	GlobalReputationDB = &ReputationSQLite{ReputationDB: db}
 	if err := GlobalReputationDB.createReputationDB(); err != nil {
 		logger.Error("[ERROR] Table creation failed for Reputation DB: %v", err)
 		//log.Fatalf("[ERROR] Table creation failed for Reputation DB: %v", err)
@@ -240,7 +240,7 @@ func (rep *ReputationSQLite) createReputationDB() error {
 		avg_write_mbs REAL,
 		geography_score REAL
 	);`
-	if _, err := rep.reputationDB.Exec(tableQuery); err != nil {
+	if _, err := rep.ReputationDB.Exec(tableQuery); err != nil {
 		return err
 	}
 
@@ -251,7 +251,7 @@ func (rep *ReputationSQLite) createReputationDB() error {
 		term INTEGER,
 		votes_json TEXT
 	);`
-	if _, err := rep.reputationDB.Exec(electionLogQuery); err != nil {
+	if _, err := rep.ReputationDB.Exec(electionLogQuery); err != nil {
 		logger.Error("[ERROR] failed to create election_log table: %w", err)
 		return fmt.Errorf("failed to create election_log table: %w", err)
 	}
@@ -659,7 +659,7 @@ func (n *Node) handleMessage(core CoreMessage, from peer.ID) {
 		hostid := n.host.ID().String() // Use .String() method
 		if rep.NodeID != hostid {
 			logger.Info("[ELECTION] REP-RX From %s, Score: %.2f", rep.NodeID, calculateReputation(rep))
-			UpsertReputation(GlobalReputationDB.reputationDB, rep)
+			UpsertReputation(GlobalReputationDB.ReputationDB, rep)
 		}
 
 	case TypeAnnouncement:
@@ -847,7 +847,7 @@ func (n *Node) sendHeartbeats(term int) {
 }
 
 func (n *Node) fallbackElection() {
-	peers, _ := QueryAllReputations(GlobalReputationDB.reputationDB)
+	peers, _ := QueryAllReputations(GlobalReputationDB.ReputationDB)
 	if len(peers) == 0 {
 		// Use self as fallback
 		n.announceLeader(string(n.host.ID()), n.currentTerm+1)
@@ -899,7 +899,7 @@ func (n *Node) CheckLeaderFailure() {
 
 				if atomic.LoadInt32(&n.isElecting) == 0 {
 					go func() {
-						peers, _ := QueryAllReputations(GlobalReputationDB.reputationDB)
+						peers, _ := QueryAllReputations(GlobalReputationDB.ReputationDB)
 						n.StartElection(peers, 0)
 					}()
 				}
@@ -944,7 +944,7 @@ func (n *Node) PeriodicReputationPublisher() {
 				GeographyScore:        actualGeoScore, // ✅ FIXED
 			}
 
-			UpsertReputation(GlobalReputationDB.reputationDB, reputation)
+			UpsertReputation(GlobalReputationDB.ReputationDB, reputation)
 			n.publishMessage(TypeReputation, reputation)
 			logger.Info("[ELECTION] Reputation Published (score: %.2f)", calculateReputation(reputation))
 
@@ -992,7 +992,7 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	electionNodeMutex.Lock()
 	GlobalElectionNode = node
 	electionNodeMutex.Unlock()
-	defer GlobalReputationDB.reputationDB.Close()
+	defer GlobalReputationDB.ReputationDB.Close()
 
 	logger.Info("[ELECTION] Starting OptimusDB Election Node as FOLLOWER")
 	node.role = "Follower" // Ensure all start as followers
@@ -1074,10 +1074,10 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 		Uptime:         1.0,
 		GeographyScore: 0.5,
 	}
-	UpsertReputation(GlobalReputationDB.reputationDB, selfRep)
+	UpsertReputation(GlobalReputationDB.ReputationDB, selfRep)
 
 	// Query all reputations
-	peers, err := QueryAllReputations(GlobalReputationDB.reputationDB)
+	peers, err := QueryAllReputations(GlobalReputationDB.ReputationDB)
 	if err != nil || len(peers) == 0 {
 		peers = []NodeReputation{selfRep}
 	}
@@ -1190,7 +1190,7 @@ func InsertElectionLog(db *sql.DB, id string, timestamp time.Time, leaderID stri
 func (r *ReputationSQLite) SafeExec(query string, args ...interface{}) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	_, err := r.reputationDB.Exec(query, args...)
+	_, err := r.ReputationDB.Exec(query, args...)
 	return err
 }
 
@@ -1241,7 +1241,7 @@ func GetNodeStatus() (role string, leader string, term int, leadershipCount int)
 
 // GetAllPeersReputation retrieves reputation data for all known peers
 func GetAllPeersReputation() ([]NodeReputation, error) {
-	if GlobalReputationDB == nil || GlobalReputationDB.reputationDB == nil {
+	if GlobalReputationDB == nil || GlobalReputationDB.ReputationDB == nil {
 		return nil, fmt.Errorf("reputation database not initialized")
 	}
 
@@ -1250,7 +1250,7 @@ func GetAllPeersReputation() ([]NodeReputation, error) {
               avg_read_mbs, avg_write_mbs, geography_score 
               FROM reputation ORDER BY node_id`
 
-	rows, err := GlobalReputationDB.reputationDB.Query(query)
+	rows, err := GlobalReputationDB.ReputationDB.Query(query)
 	if err != nil {
 		return nil, err
 	}
@@ -1286,7 +1286,7 @@ func GetAllPeersReputation() ([]NodeReputation, error) {
 
 // GetPeerReputation retrieves reputation for a specific peer
 func GetPeerReputation(peerID string) (*NodeReputation, error) {
-	if GlobalReputationDB == nil || GlobalReputationDB.reputationDB == nil {
+	if GlobalReputationDB == nil || GlobalReputationDB.ReputationDB == nil {
 		return nil, fmt.Errorf("reputation database not initialized")
 	}
 
@@ -1295,7 +1295,7 @@ func GetPeerReputation(peerID string) (*NodeReputation, error) {
               avg_read_mbs, avg_write_mbs, geography_score 
               FROM reputation WHERE node_id = ?`
 
-	row := GlobalReputationDB.reputationDB.QueryRow(query, peerID)
+	row := GlobalReputationDB.ReputationDB.QueryRow(query, peerID)
 
 	var rep NodeReputation
 	err := row.Scan(
@@ -1331,14 +1331,14 @@ func CalculateHealthScore(nr NodeReputation) float64 {
 
 // GetLatestElectionInfo gets the most recent election information
 func GetLatestElectionInfo() (leaderID string, term int, timestamp string, err error) {
-	if GlobalReputationDB == nil || GlobalReputationDB.reputationDB == nil {
+	if GlobalReputationDB == nil || GlobalReputationDB.ReputationDB == nil {
 		return "", 0, "", fmt.Errorf("reputation database not initialized")
 	}
 
 	query := `SELECT leader_id, term, timestamp FROM election_log 
               ORDER BY timestamp DESC LIMIT 1`
 
-	row := GlobalReputationDB.reputationDB.QueryRow(query)
+	row := GlobalReputationDB.ReputationDB.QueryRow(query)
 	err = row.Scan(&leaderID, &term, &timestamp)
 
 	if err == sql.ErrNoRows {
