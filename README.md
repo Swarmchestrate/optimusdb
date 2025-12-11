@@ -59,6 +59,7 @@ Key goals:
 - [TOSCA Testing](docs/OptimusDB_ToscaTesting.md)
 - [TOSCA Scenarios k3s](docs/OptimusDB_ToscaTestingScenarios.md)
 - [TOSCA Scenarios Docker Desktop](docs/OptimusDB_ToscaTestingScenariosDocker.md)
+- [Complete Guide for Uploading & Querying Your TOSCA Files](docs/OptimusDB_ToscaGuideQuery.md)
 - [Configuration](#configuration)
 - [Flags](#flags)
 - [Environment Variables](#environment-variables)
