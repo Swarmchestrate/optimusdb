@@ -103,7 +103,7 @@ func LogsHandler(kb *app.LoggerSQLite) http.HandlerFunc {
 
 /*
 *  dedicated HTTP handler for TOSCA uploads
- */
+
 func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 	type UploadRequest struct {
 		File     string `json:"file"`               // Base64-encoded TOSCA YAML
@@ -221,13 +221,21 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 		})
 	}
 }
+*/
 
-/*
+// =============================================================================
+// COMPLETE REPLACEMENT FOR uploadTOSCAHandler in api/http.go
+// =============================================================================
+// Copy this entire function and replace your existing uploadTOSCAHandler
+// =============================================================================
+
 func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 	type UploadRequest struct {
-		File     string `json:"file"`               // Base64-encoded TOSCA YAML
-		Filename string `json:"filename,omitempty"` // optional
+		File               string `json:"file"`                           // Base64-encoded TOSCA YAML
+		Filename           string `json:"filename,omitempty"`             // optional
+		StoreFullStructure bool   `json:"store_full_structure,omitempty"` // NEW: Enable full structure storage
 	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			sendErrorResponse(w, http.StatusMethodNotAllowed, "Only POST is allowed")
@@ -247,141 +255,237 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 			return
 		}
 
-		// 2) Parse TOSCA
-		tmpl, err := tosca.ParseTOSCA(decoded)
-		if err != nil {
-			sendErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("TOSCA parse error: %v", err))
-			return
-		}
-
-		// 3) Compute IDs / counts
-		templateID := tosca.ComputeTemplateID(decoded)
-		nodeCount := tosca.CountNodeTemplates(tmpl)
-		description := tmpl.Description
-
-		// 4) Persist ORIGINAL YAML to OrbitDB (e.g., DsTOSCA_Imported)
-		if optimusdb.DsTOSCA_Imported == nil {
-			sendErrorResponse(w, http.StatusInternalServerError, "TOSCA store not initialized")
-			return
-		}
 		ctx := r.Context()
-		doc := map[string]interface{}{
-			"_id":         templateID,
-			"type":        "tosca_template",
-			"description": description,
-			"nodeCount":   nodeCount,
-			"yaml":        string(decoded),
-			"createdAt":   time.Now().UTC().Format(time.RFC3339),
-		}
-		if _, err := (*optimusdb.DsTOSCA_Imported).Put(ctx, doc); err != nil {
-			sendErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to persist to OrbitDB: %v", err))
-			return
-		}
-
-		// 5) Index lightweight metadata into SQLite
-		if app.GlobalKBSQLite == nil {
-			sendErrorResponse(w, http.StatusInternalServerError, "SQLite not initialized")
-			return
-		}
-
-		// (B) Also add the raw YAML blob to IPFS to get a stable content path (ipfsPath)
-		var ipfsPath string
-		if optimusdb.Orbit != nil {
-			coreAPI := (*optimusdb.Orbit).IPFS()
-			nd := files.NewBytesFile(decoded)
-			p, err := coreAPI.Unixfs().Add(ctx, nd)
-			if err == nil {
-				ipfsPath = p.String() // e.g., /ipfs/<CID>
-			} // if it fails, we'll just leave ipfsPath empty
-		}
-
+		templateID := tosca.ComputeTemplateID(decoded)
 		filename := req.Filename
 		if filename == "" {
 			filename = "unknown"
 		}
-		filesize := int64(len(decoded))
 
-		// compute sha256
-		sum := sha256.Sum256(decoded)
-		sha := fmt.Sprintf("%x", sum[:])
+		// 2) Determine storage strategy based on request parameter
+		if req.StoreFullStructure {
+			// ============================================================
+			// NEW APPROACH: Store full parsed structure for queryability
+			// ============================================================
 
-		uploader := r.Header.Get("X-User") // optional: caller can set this
-		if uploader == "" {
-			uploader = app.GetAgentName() // fallback to your agent name
+			// Parse TOSCA YAML to complete JSON structure
+			toscaDoc, err := tosca.ParseTOSCAToFullJSON(decoded)
+			if err != nil {
+				sendErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("TOSCA parse error: %v", err))
+				return
+			}
+
+			// Add system fields for tracking and lineage
+			toscaDoc["_id"] = templateID
+			toscaDoc["_original_yaml"] = string(decoded)
+			toscaDoc["_imported_at"] = time.Now().UTC().Format(time.RFC3339)
+			toscaDoc["_filename"] = filename
+			toscaDoc["_storage_type"] = "full_structure"
+
+			// Add lineage metadata
+			uploader := r.Header.Get("X-User")
+			if uploader == "" {
+				uploader = app.GetAgentName()
+			}
+			sourcePod := os.Getenv("POD_NAME")
+			sourceIP, _ := getLocalIPAddress()
+
+			toscaDoc["_lineage"] = map[string]interface{}{
+				"uploader":   uploader,
+				"source_pod": sourcePod,
+				"source_ip":  sourceIP,
+			}
+
+			// Store in dsswres for full queryability
+			if optimusdb.DsSWres == nil {
+				sendErrorResponse(w, http.StatusInternalServerError, "Data store (dsswres) not initialized")
+				return
+			}
+
+			if _, err := (*optimusdb.DsSWres).Put(ctx, toscaDoc); err != nil {
+				sendErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to persist full structure: %v", err))
+				return
+			}
+
+			// Also index in SQLite for fast lookups
+			if app.GlobalKBSQLite != nil {
+				nodeCount := tosca.CountNodeTemplatesFromJSON(toscaDoc)
+				description := extractDescription(toscaDoc)
+
+				// Add to IPFS
+				var ipfsPath string
+				if optimusdb.Orbit != nil {
+					coreAPI := (*optimusdb.Orbit).IPFS()
+					nd := files.NewBytesFile(decoded)
+					p, err := coreAPI.Unixfs().Add(ctx, nd)
+					if err == nil {
+						ipfsPath = p.String()
+					}
+				}
+
+				filesize := int64(len(decoded))
+				sum := sha256.Sum256(decoded)
+				sha := fmt.Sprintf("%x", sum[:])
+
+				app.GlobalKBSQLite.InsertTOSCAMetadata(
+					templateID, description, nodeCount, filename,
+					filesize, sha, ipfsPath, uploader, sourcePod, sourceIP,
+				)
+			}
+
+			// Extract sample queryable fields for response
+			queryableFields := extractQueryableFieldPaths(toscaDoc, "", 50)
+
+			sendSuccessResponse(w, map[string]interface{}{
+				"message":          "TOSCA uploaded with full queryable structure",
+				"template_id":      templateID,
+				"storage_type":     "full_structure",
+				"storage_location": "dsswres",
+				"filename":         filename,
+				"filesize":         len(decoded),
+				"queryable":        true,
+				"sample_fields":    queryableFields,
+				"query_info": map[string]interface{}{
+					"datastore": "dsswres",
+					"query_example": fmt.Sprintf(
+						`{"method":{"cmd":"query"},"dstype":"dsswres","criteria":[{"field":"_id","operator":"==","value":"%s"}]}`,
+						templateID,
+					),
+				},
+			})
+
+		} else {
+			// ============================================================
+			// LEGACY APPROACH: Store minimal metadata + YAML blob
+			// ============================================================
+
+			tmpl, err := tosca.ParseTOSCA(decoded)
+			if err != nil {
+				sendErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("TOSCA parse error: %v", err))
+				return
+			}
+
+			nodeCount := tosca.CountNodeTemplates(tmpl)
+			description := tmpl.Description
+
+			// Store in DsTOSCA_Imported (legacy store)
+			if optimusdb.DsTOSCA_Imported == nil {
+				sendErrorResponse(w, http.StatusInternalServerError, "TOSCA store not initialized")
+				return
+			}
+
+			doc := map[string]interface{}{
+				"_id":         templateID,
+				"type":        "tosca_template",
+				"description": description,
+				"nodeCount":   nodeCount,
+				"yaml":        string(decoded),
+				"createdAt":   time.Now().UTC().Format(time.RFC3339),
+			}
+
+			if _, err := (*optimusdb.DsTOSCA_Imported).Put(ctx, doc); err != nil {
+				sendErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to persist to OrbitDB: %v", err))
+				return
+			}
+
+			// Index in SQLite
+			if app.GlobalKBSQLite != nil {
+				var ipfsPath string
+				if optimusdb.Orbit != nil {
+					coreAPI := (*optimusdb.Orbit).IPFS()
+					nd := files.NewBytesFile(decoded)
+					p, err := coreAPI.Unixfs().Add(ctx, nd)
+					if err == nil {
+						ipfsPath = p.String()
+					}
+				}
+
+				filesize := int64(len(decoded))
+				sum := sha256.Sum256(decoded)
+				sha := fmt.Sprintf("%x", sum[:])
+
+				uploader := r.Header.Get("X-User")
+				if uploader == "" {
+					uploader = app.GetAgentName()
+				}
+				sourcePod := os.Getenv("POD_NAME")
+				sourceIP, _ := getLocalIPAddress()
+
+				app.GlobalKBSQLite.InsertTOSCAMetadata(
+					templateID, description, nodeCount, filename,
+					filesize, sha, ipfsPath, uploader, sourcePod, sourceIP,
+				)
+			}
+
+			sendSuccessResponse(w, map[string]interface{}{
+				"message":          "TOSCA uploaded (legacy mode)",
+				"template_id":      templateID,
+				"storage_type":     "yaml_blob",
+				"storage_location": "tosca_imported",
+				"node_count":       nodeCount,
+				"filename":         filename,
+				"filesize":         len(decoded),
+				"queryable":        false,
+				"note":             "Set store_full_structure:true for queryable fields",
+			})
 		}
-		sourcePod := os.Getenv("POD_NAME") // set by Kubernetes downward API in your manifest
-		sourceIP, _ := getLocalIPAddress() // your helper already exists
-
-		// (D) Insert into SQLite with the new signature
-		if err := app.GlobalKBSQLite.InsertTOSCAMetadata(
-			templateID,
-			description,
-			nodeCount,
-			filename,
-			filesize,
-			sha,
-			ipfsPath,
-			uploader,
-			sourcePod,
-			sourceIP,
-		); err != nil {
-			sendErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to index metadata: %v", err))
-			return
-		}
-
-		// 6) Respond
-		sendSuccessResponse(w, map[string]interface{}{
-			"message":     "TOSCA uploaded successfully",
-			"template_id": templateID,
-			"node_count":  nodeCount,
-			"filename":    filename,
-			"filesize":    filesize,
-			"sha256":      sha,
-		})
 	}
 }
 
-*/
+// =============================================================================
+// HELPER FUNCTIONS - Add these at the end of api/http.go (before ServeHTTP)
+// =============================================================================
 
-/*
-func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
-	type UploadRequest struct {
-		File string `json:"file"` // Base64-encoded TOSCA YAML
+// extractDescription extracts description from parsed TOSCA JSON
+func extractDescription(toscaDoc map[string]interface{}) string {
+	if desc, ok := toscaDoc["description"].(string); ok {
+		return desc
 	}
-
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			sendErrorResponse(w, http.StatusMethodNotAllowed, "Only POST is allowed")
-			return
+	if metadata, ok := toscaDoc["metadata"].(map[string]interface{}); ok {
+		if desc, ok := metadata["template_name"].(string); ok {
+			return desc
 		}
-
-		var req UploadRequest
-		err := json.NewDecoder(r.Body).Decode(&req)
-		if err != nil || req.File == "" {
-			sendErrorResponse(w, http.StatusBadRequest, "Invalid JSON payload")
-			return
-		}
-
-		// Decode base64
-		//decoded, err := base64.StdEncoding.DecodeString(req.File)
-		_, err = base64.StdEncoding.DecodeString(req.File)
-		if err != nil {
-			sendErrorResponse(w, http.StatusBadRequest, "Base64 decoding failed")
-			return
-		}
-
-		// Process TOSCA (parser + OrbitDB + SQLite)
-		//err = HandleTOSCAUpload(decoded, optimusdb)
-		//err = tosca.HandleTOSCAUpload(decoded, optimusdb)
-		//if err != nil {
-		//	sendErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("TOSCA upload failed: %v", err))
-		//	return
-		//}
-
-		sendSuccessResponse(w, map[string]string{"message": "TOSCA uploaded successfully"})
 	}
+	return "No description"
 }
-*/
+
+// extractQueryableFieldPaths extracts sample queryable field paths from TOSCA structure
+func extractQueryableFieldPaths(doc map[string]interface{}, prefix string, limit int) []string {
+	fields := []string{}
+	count := 0
+
+	var extract func(string, interface{})
+	extract = func(path string, obj interface{}) {
+		if count >= limit {
+			return
+		}
+
+		switch v := obj.(type) {
+		case map[string]interface{}:
+			for key, val := range v {
+				newPath := key
+				if path != "" {
+					newPath = path + "." + key
+				}
+				// Skip internal fields except _id
+				if !strings.HasPrefix(key, "_") || key == "_id" {
+					fields = append(fields, newPath)
+					count++
+					if count < limit {
+						extract(newPath, val)
+					}
+				}
+			}
+		case []interface{}:
+			// Show array notation
+			fields = append(fields, path+"[]")
+			count++
+		}
+	}
+
+	extract(prefix, doc)
+	return fields
+}
 
 // gathers all benchmark data from known peers
 func benchmarksHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
