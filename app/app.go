@@ -1020,7 +1020,7 @@ func (kb *KnowledgeBaseSQLite) SqlDML(stmt string, logChan chan Log) (interface{
 		rows, err := kb.DB.Query(stmt)
 		if err != nil {
 			//logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("ERROR: Problem executing SELECT statement: %v", err)}
-			logger.Error("[ERROR] Problem executing SELECT statement: %v", err)
+			logger.Error("[ERROR] Problem executing SELECT statement: %v , statement: %s", err, stmt)
 			return nil, err
 		}
 		defer rows.Close()
@@ -1072,7 +1072,7 @@ func (kb *KnowledgeBaseSQLite) SqlDML(stmt string, logChan chan Log) (interface{
 	if err != nil {
 		return nil, err
 	}
-	logger.Info("SQL statement executed successfully, affected rows: %d", rowsAffected)
+	logger.Info("[INFO] SQL statement executed successfully, affected rows: %d", rowsAffected)
 	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("SQL statement executed successfully, affected rows: %d", rowsAffected), runtime.GOOS)
 	// Return success response
 	return fmt.Sprintf("SQL statement executed successfully, affected rows: %d", rowsAffected), nil

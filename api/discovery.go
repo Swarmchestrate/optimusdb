@@ -128,8 +128,8 @@ func PrintDiscoveredPeers(optimusdb *app.KnowledgeBaseDB) {
 				data := app.Contribution{app.GetAgentName(), optimusdb.Config.PeerID, string(id), time.Now(), app.GetOwnIP(), app.GetPublicIPAddress(), extractIPs(info.Addrs)}
 				dataJSON, err := json.Marshal(data)
 				_, err = (*dbContri).Add(ctx, dataJSON)
-				log.Printf(" - Peer ID: %s | Addresses: %v\n", id, info.Addrs)
-				app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Peer ID: %s | Addresses: %v", id, info.Addrs), runtime.GOOS)
+
+				logger.Info("[DISCOVERY] Peer ID: %s | Addresses: %v", id, info.Addrs)
 				optimusdb.ContributionsMtx.Unlock()
 
 				if err != nil {
@@ -147,7 +147,7 @@ func extractIPs(addrs []multiaddr.Multiaddr) []string {
 	for _, addr := range addrs {
 		ip, err := extractIPFrom(addr)
 		if err != nil {
-			log.Printf("[WARN] Failed to extract IP from %s: %v\n", addr, err)
+			logger.Warn("[WARN] Failed to extract IP from: %s %v ", addr, err)
 			continue
 		}
 		ips = append(ips, ip)
@@ -178,8 +178,8 @@ func convertMultiaddrsToString(addrs []multiaddr.Multiaddr) []string {
 
 // HandlePeerFound is triggered when a new peer is discovered via any method
 func (n *DiscoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
-	logger.Info("[DISCOVERY] Found peer:", pi.ID)
-	app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Found peer: %v", pi.ID), runtime.GOOS)
+	logger.Info("[DISCOVERY] Found peer: %v", pi.ID)
+	//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Found peer: %v", pi.ID), runtime.GOOS)
 
 	// Add to peer tracker for HTTP API
 	TrackPeer(pi)
@@ -198,11 +198,11 @@ func (n *DiscoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 	// Attempt connection
 	err := n.host.Connect(context.Background(), pi)
 	if err != nil {
-		logger.Info("[DISCOVERY] Failed to connect to discovered peer:", err)
-		app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Failed to connect to discovered peer: %v", err), runtime.GOOS)
+		logger.Info("[DISCOVERY] Failed to connect to discovered peer:  %v", err)
+		//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Failed to connect to discovered peer: %v", err), runtime.GOOS)
 	} else {
-		logger.Info("[DISCOVERY] Connected to peer:", pi.ID)
-		app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Connected to peer: %v", pi.ID), runtime.GOOS)
+		logger.Info("[DISCOVERY] Connected to peer:  %v", pi.ID)
+		//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Connected to peer: %v", pi.ID), runtime.GOOS)
 	}
 }
 
@@ -237,15 +237,15 @@ func StartMdnsDiscovery(h host.Host, mdnsServiceName string) *Service {
 		return nil
 	}
 	logger.Info("[INFO] mDNS discovery started successfully:", mdnsService)
-	app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("mDNS discovery started successfully: %v", mdnsService), runtime.GOOS)
+	//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("mDNS discovery started successfully: %v", mdnsService), runtime.GOOS)
 	err := mdnsService.Start()
 	if err != nil {
 		fmt.Println("[ERROR] Failed to start mDNS:", err)
 		return nil
 	}
 
-	logger.Info("[INFO] mDNS discovery started successfully")
-	app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("mDNS discovery started successfully"), runtime.GOOS)
+	logger.Info("[DISCOVERY] mDNS discovery started successfully")
+	//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("mDNS discovery started successfully"), runtime.GOOS)
 	return &Service{
 		host: h,
 		mdns: mdnsService,
@@ -256,8 +256,8 @@ func StartMdnsDiscovery(h host.Host, mdnsServiceName string) *Service {
 func (s *Service) stopMdnsDiscovery() {
 	if s.mdns != nil {
 		s.mdns.Close()
-		fmt.Println("[INFO] mDNS discovery stopped")
-		app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("mDNS discovery stopped"), runtime.GOOS)
+		fmt.Println("[DISCOVERY] mDNS discovery stopped")
+		//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("mDNS discovery stopped"), runtime.GOOS)
 	}
 }
 
@@ -318,8 +318,8 @@ func (s *Service) StopDiscovery() {
 // StartDiscovery initializes all enabled discovery mechanisms
 // func StartDiscovery(h host.Host) *Service {
 func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service {
-	logger.Info("[INFO] Starting enhanced peer discovery")
-	app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Starting enhanced peer discovery"), runtime.GOOS)
+	logger.Info("[DISCOVERY] Starting enhanced peer discovery")
+	//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Starting enhanced peer discovery"), runtime.GOOS)
 	peerHandler := &DiscoveryNotifee{
 		host: h,
 		db:   knowledgeBaseDB,
@@ -329,8 +329,8 @@ func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service 
 
 	// Start mDNS if enabled
 	if *config.FlagAutodiscoveryMDNS {
-		logger.Info("[INFO] Enabling mDNS discovery, Service : optimusdb-mdns")
-		app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Enabling mDNS discovery, Service : optimusdb-mdns"), runtime.GOOS)
+		logger.Info("[DISCOVERY] Enabling mDNS discovery, Service : optimusdb-mdns")
+		//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Enabling mDNS discovery, Service : optimusdb-mdns"), runtime.GOOS)
 		mdnsService := mdns.NewMdnsService(h, "optimusdb-mdns", peerHandler)
 		if err := mdnsService.Start(); err != nil {
 			logger.Info("[ERROR] Failed to start mDNS:", err)
@@ -340,16 +340,16 @@ func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service 
 	}
 
 	if *config.FlagAutodiscoveryDHT {
-		logger.Info("[INFO] Enabling DHT discovery")
-		app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Enabling DHT discovery"), runtime.GOOS)
+		logger.Info("[DISCOVERY] Enabling DHT discovery")
+		//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("Enabling DHT discovery"), runtime.GOOS)
 		// Initialize Kademlia DHT (full routing mode)
 		kademliaDHT, err := dht.New(context.Background(), h, dht.Mode(dht.ModeServer))
 		if err != nil {
 			logger.Info("[ERROR] Failed to initialize DHT:", err)
 		} else {
 			service.dht = kademliaDHT
-			logger.Info("[INFO] DHT routing discovery initialized")
-			app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("DHT routing discovery initialized"), runtime.GOOS)
+			logger.Info("[DISCOVERY] DHT routing discovery initialized")
+			//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("DHT routing discovery initialized"), runtime.GOOS)
 			// Start advertising our presence
 			go func() {
 				for {
@@ -377,7 +377,7 @@ func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service 
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					peerInfo, err := service.dht.FindPeer(ctx, peer.ID("optimusdb-dht"))
 					//app.GlobalLoggerDB.AddToOptimusLog("DISCOVERY", fmt.Sprintf("DHT routing discovery with topic: optimusdb-dht"), runtime.GOOS)
-					logger.Info("DHT routing discovery with topic: optimusdb-dht")
+					logger.Info("[DISCOVERY] DHT routing discovery with topic: optimusdb-dht")
 					cancel()
 
 					if err != nil {
