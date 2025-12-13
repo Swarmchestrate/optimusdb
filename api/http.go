@@ -1261,6 +1261,13 @@ func RegisterMetadataRoutes(router *mux.Router, kb *app.KnowledgeBaseDB) {
 		Cache:   kb.MetadataCache.(*contextualmetadata.MetadataCache),
 	}
 
+	// ============================================================
+	// Create chat handler
+	// ============================================================
+	chatHandler := &contextualmetadata.ChatHandler{
+		KB:      kb,
+		Service: kb.MetadataService.(*contextualmetadata.Service),
+	}
 	// Create API v1 subrouter
 	apiV1 := router.PathPrefix("/api/v1").Subrouter()
 
@@ -1271,6 +1278,9 @@ func RegisterMetadataRoutes(router *mux.Router, kb *app.KnowledgeBaseDB) {
 	apiV1.HandleFunc("/metadata/metrics", metadataHandler.GetMetrics).Methods("GET")
 	apiV1.HandleFunc("/metadata/health", metadataHandler.HealthCheck).Methods("GET")
 	apiV1.HandleFunc("/metadata/cache", metadataHandler.ClearCache).Methods("DELETE")
+	apiV1.HandleFunc("/chat", chatHandler.HandleChat).Methods("POST")
+	// ============================================================
 
-	logger.Info("[API] ✅ Metadata enrichment endpoints registered")
+	logger.Info("[API]  Metadata enrichment endpoints registered")
+	//logger.Info("[API]  Chat endpoint registered at /api/v1/chat")
 }
