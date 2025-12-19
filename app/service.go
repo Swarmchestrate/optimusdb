@@ -12,6 +12,7 @@ import (
 	"optimusdb/config"
 	"optimusdb/datamodel"
 	"optimusdb/ipfs"
+	"optimusdb/logger"
 	"optimusdb/queryengine"
 	"os"
 	"os/user"
@@ -313,29 +314,12 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 			// Execute SQL DML command
 			rspResults, err := SQLDMLWithPeerFallback(req, logChan, knowledgeBaseDB)
 			if err != nil {
-				logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("[ERROR] SQL DML Execution Failed: %v", err)}
+				//logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("[ERROR] SQL DML Execution Failed: %v", err)}
+				logger.Error("[DataStore] SQL DML Execution Failed: %v", err)
 				res = fmt.Sprintf("ERROR! #120 Failed to execute SQL statement: %v", err)
 			} else {
-				// Handle SELECT queries differently
-				/*
-					if records, ok := result.([]map[string]interface{}); ok {
-						deduplicated := DedupSQLResults(records)
-						logChan <- Log{Type: Info, Data: fmt.Sprintf("[INFO] SQL DML: Deduplicated → %v records after deduplication", deduplicated)}
-						logChan <- Log{Type: Info, Data: fmt.Sprintf("[INFO] SQL DML: Retrieved %d → %d records after deduplication", len(records), len(deduplicated))}
-
-						logChan <- Log{Type: Info, Data: fmt.Sprintf("[INFO] SQL DML: Successfully executed with Deduplication %v", req.SQLDML)}
-						res = map[string]interface{}{
-							"message": "OK: Successfully retrieved records",
-							"records": deduplicated,
-						}
-
-					} else {
-						logChan <- Log{Type: Info, Data: fmt.Sprintf("[INFO] SQL DML: Successfully executed %v", req.SQLDML)}
-						res = "OK: SQL statement executed successfully"
-					}
-
-				*/
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("[INFO] SQL DML: Successfully executed %v", req.SQLDML)}
+				//logChan <- Log{Type: Info, Data: fmt.Sprintf("[INFO] SQL DML: Successfully executed %v", req.SQLDML)}
+				logger.Info("[DataStore] SQL DML: Successfully executed %v", req.SQLDML)
 				res = rspResults //"OK: Successfully got records"
 			}
 		/**
@@ -382,12 +366,6 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 				logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully finished %d ", len(resultPut))}
 				res = "OK: Successfully inserted records"
 			}
-			// Generate metadata for each inserted resource
-			//for _, entry := range req.Criteria {
-			//	metadataEntry := datamodel.GenerateMetadataFromResource(entry)
-			//	datamodel.AddMetadata(metadataEntry) // Store metadata
-			//	logChan <- Log{Type: Info, Data: fmt.Sprintf("Metadata generated for resource: %s", metadataEntry.ID)}
-			//}
 
 		case strings.ToLower(CRUDUPDATE.Cmd):
 			logChan <- Log{Info, "Received service request: CRUDUPDATE"}
@@ -427,8 +405,8 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 
 		default:
 			// Default case for unhandled commands
-			logChan <- Log{RecoverableErr, "Received unknown service request: " + req.Method.Cmd}
-			fmt.Printf("\nReceived unknown service request: %s\n", req.Method.Cmd)
+			logger.Warn("[DataStore] Received unknown service request: %v", req.Method.Cmd)
+			//fmt.Printf("\nReceived unknown service request: %s\n", req.Method.Cmd)
 			res = "Unknown command" + req.Method.Cmd + ". Use HELP for the list of available commands."
 
 		}
@@ -850,149 +828,148 @@ func unifiedQueryDocStore(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype s
 	return results, nil
 }
 
-// //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func ConvertCriteriaForCRUDPUT_rev(criteria []map[string]interface{}) ([]map[string]interface{}, error) {
-	// Check if criteria is empty
-	if len(criteria) == 0 {
-		return nil, fmt.Errorf("criteria is empty")
-	}
+// =============================================================================
+// 1. CRUDGET - Query/Retrieve Documents (FIXED - Line ~883)
+// =============================================================================
 
-	// Initialize the list of documents
-	var documents []map[string]interface{}
+func crudGetDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype string,
+	hostCID host.Host, criteria []map[string]interface{}) ([]map[string]interface{}, error) {
 
-	for _, criterion := range criteria {
-		// Ensure the `_id` field exists in each document
-		if _, exists := criterion["_id"]; !exists {
-			return nil, fmt.Errorf("one of the documents is missing the '_id' field: %v", criterion)
+	ctx := context.Background()
+	var dbDocStore iface.DocumentStore
+
+	// Select DocumentStore based on dbtype
+	switch strings.ToLower(dbtype) {
+	case "dsswres":
+		if optimusdb.DsSWres == nil {
+			return nil, fmt.Errorf("DsSWres store not initialized")
 		}
-
-		// Clone the criterion map to avoid modifying the original input
-		document := make(map[string]interface{})
-		for key, value := range criterion {
-			document[key] = value
+		dbDocStore = *optimusdb.DsSWres
+	case "dsswresaloc":
+		if optimusdb.DsSWresaloc == nil {
+			return nil, fmt.Errorf("DsSWresaloc store not initialized")
 		}
-
-		// Append the cloned document to the list
-		documents = append(documents, document)
-	}
-
-	return documents, nil
-}
-
-// ////////////////////
-func crudGetDocStoreRev(
-	optimusdb *KnowledgeBaseDB,
-	logChan chan Log,
-	dbtype string,
-	h host.Host,
-	criteria []map[string]interface{},
-) ([]map[string]interface{}, error) {
-	var StatusError error
-
-	// Initialize the result slice
-	var results []map[string]interface{}
-	dbDocStore := *optimusdb.DsSWres
-	var selectedDBType string
-
-	switch dbtype {
-	case "validations":
-		selectedDBType = "validations"
-		if optimusdb.Validations == nil {
-			return nil, fmt.Errorf("validations store not initialized")
-		}
-		dbDocStore = *optimusdb.Validations
-
-	case "kbdata":
-		selectedDBType = "kbdata"
-		if optimusdb.KBdata == nil {
-			return nil, fmt.Errorf("kbdata store not initialized")
-		}
-		dbDocStore = *optimusdb.KBdata
-
+		dbDocStore = *optimusdb.DsSWresaloc
 	case "kbmetadata":
-		selectedDBType = "kbmetadata"
 		if optimusdb.KBMetadata == nil {
-			return nil, fmt.Errorf("kbmetadata store not initialized")
+			return nil, fmt.Errorf("KBMetadata store not initialized")
 		}
 		dbDocStore = *optimusdb.KBMetadata
-
-	case "tosca_imported":
-		selectedDBType = "tosca_imported"
-		if optimusdb.DsTOSCA_Imported == nil {
-			return nil, fmt.Errorf("tosca_imported store not initialized")
-		}
-		dbDocStore = *optimusdb.DsTOSCA_Imported
-
 	default:
-		selectedDBType = "dsswres"
+		// Default to DsSWres
 		if optimusdb.DsSWres == nil {
-			return nil, fmt.Errorf("dsswres store not initialized")
+			return nil, fmt.Errorf("default DsSWres store not initialized")
 		}
 		dbDocStore = *optimusdb.DsSWres
 	}
 
-	fmt.Println("Selected DB Type:", selectedDBType)
+	var finalResults []map[string]interface{}
 
-	ctx := context.Background()
-	counter := 0
+	// Case 1: Empty criteria - return all documents
+	if len(criteria) == 0 || (len(criteria) == 1 && len(criteria[0]) == 0) {
+		logChan <- Log{Type: Info, Data: "CRUDGET: Empty criteria, retrieving all documents"}
 
-	// Iterate over the criteria
-	for _, criterion := range criteria {
+		allDocs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
+			return true, nil // Include all documents
+		})
+		if err != nil {
+			return nil, fmt.Errorf("query all failed: %w", err)
+		}
 
-		for _, value := range criterion {
-			// Convert the value to a string
-			strValue := fmt.Sprintf("%v", value)
-			logChan <- Log{Type: Info, Data: fmt.Sprintf("DEBUG: Value for Criteria: %v", strValue)}
-			if len(strValue) <= 0 {
-				logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("DEBUG: Invalid strValue: %v", strValue)}
-				return nil, fmt.Errorf("failed to get documents: invalid strValue")
+		// Convert to []map[string]interface{}
+		for _, doc := range allDocs {
+			if docMap, ok := doc.(map[string]interface{}); ok {
+				finalResults = append(finalResults, docMap)
+			}
+		}
+
+		logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Retrieved %d documents (all)", len(finalResults))}
+		return finalResults, nil
+	}
+
+	// Case 2: Query with criteria
+	filterCriteria := criteria[0]
+	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Querying with criteria: %+v", filterCriteria)}
+
+	matchedDocs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
+		record, ok := doc.(map[string]interface{})
+		if !ok {
+			return false, nil
+		}
+
+		// Check if all criteria match
+		for key, value := range filterCriteria {
+			recordValue, exists := record[key]
+			if !exists {
+				return false, nil
 			}
 
-			// Retrieve documents from the document store
-			//docs, err1 := dbDocStore.Get(ctx, strValue, &iface.DocumentStoreGetOptions{PartialMatches: true})
-			docs, err1 := dbDocStore.Get(ctx, strValue, &iface.DocumentStoreGetOptions{PartialMatches: false})
-
-			logChan <- Log{Type: Info, Data: fmt.Sprintf("DEBUG: Attempt to retrieve documents: %d with value: %v", len(docs), strValue)}
-
-			for _, doc := range docs {
-				// Marshal the document into JSON
-				docJSON, err2 := json.MarshalIndent(doc, "", "  ")
-				if err2 != nil {
-					logChan <- Log{Type: Info, Data: fmt.Sprintf("DEBUG: Error marshalling document: %v", err2)}
-					continue
+			// Type-aware comparison
+			switch v := value.(type) {
+			case string:
+				if recordStr, ok := recordValue.(string); ok {
+					if recordStr != v {
+						return false, nil
+					}
+				} else {
+					return false, nil
 				}
-
-				// Convert JSON to map[string]interface{}
-				var docMap map[string]interface{}
-				err3 := json.Unmarshal(docJSON, &docMap)
-				if err3 != nil {
-					logChan <- Log{Type: Info, Data: fmt.Sprintf("DEBUG: Error unmarshalling document JSON: %v", err3)}
-					continue
+			case float64:
+				if recordNum, ok := recordValue.(float64); ok {
+					if recordNum != v {
+						return false, nil
+					}
+				} else if recordInt, ok := recordValue.(int); ok {
+					if float64(recordInt) != v {
+						return false, nil
+					}
+				} else {
+					return false, nil
 				}
-
-				// Append the converted document to results
-				results = append(results, docMap)
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("DEBUG: Document added to results: %v", docMap)}
-				counter++
+			case int:
+				if recordInt, ok := recordValue.(int); ok {
+					if recordInt != v {
+						return false, nil
+					}
+				} else if recordNum, ok := recordValue.(float64); ok {
+					if recordNum != float64(v) {
+						return false, nil
+					}
+				} else {
+					return false, nil
+				}
+			case bool:
+				if recordBool, ok := recordValue.(bool); ok {
+					if recordBool != v {
+						return false, nil
+					}
+				} else {
+					return false, nil
+				}
+			default:
+				// For complex types, use string comparison as fallback
+				if fmt.Sprintf("%v", recordValue) != fmt.Sprintf("%v", value) {
+					return false, nil
+				}
 			}
+		}
 
-			// Log successful retrieval
-			if err1 == nil {
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("Successfully retrieved %d documents", len(docs))}
-			} else {
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("DEBUG: Error retrieving documents: %v", err1)}
-				StatusError = err1
-			}
+		return true, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("query with criteria failed: %w", err)
+	}
+
+	// Convert results
+	for _, doc := range matchedDocs {
+		if docMap, ok := doc.(map[string]interface{}); ok {
+			finalResults = append(finalResults, docMap)
 		}
 	}
 
-	// Final log and return
-	if StatusError == nil {
-		logChan <- Log{Type: Info, Data: fmt.Sprintf("Successfully retrieved %d documents in total", counter)}
-		return results, nil
-	}
-
-	return nil, fmt.Errorf("failed to retrieve documents: %w", StatusError)
+	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Retrieved %d matching documents", len(finalResults))}
+	return finalResults, nil
 }
 
 // ////////////////////
@@ -1114,64 +1091,95 @@ func ConvertMetadataToMap(entry datamodel.MetadataEntry) map[string]interface{} 
 	return metadataMap
 }
 
-/*
- */
-func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype string, criteria []map[string]interface{}) ([]map[string]interface{}, error) {
+// =============================================================================
+// 2. CRUDPUT - Insert Documents (FIXED - Line ~1119)
+// =============================================================================
 
-	parsedRecords, err := ConvertCriteriaForCRUDPUT_rev(criteria)
-
-	// Doc Specific
-	dbDocStore := *optimusdb.DsSWres
-	dbMetaDocStore := *optimusdb.KBMetadata
-
-	dataRecordsAsInterface := make([]interface{}, len(parsedRecords))
-	metadataRecordsAsInterface := make([]interface{}, len(parsedRecords))
-	for i, record := range parsedRecords {
-		dataRecordsAsInterface[i] = record
-		logChan <- Log{Type: Info, Data: fmt.Sprintf("Processing Record: %v ", dataRecordsAsInterface[i])}
-
-		metadataEntry := datamodel.GenerateMetadataFromResource(record)
-		metadataMap := ConvertMetadataToMap(metadataEntry)
-		metadataRecordsAsInterface[i] = metadataMap
-		///logChan <- Log{Type: Info, Data: fmt.Sprintf("Generated Metadata Record: %v", metadataRecordsAsInterface[i])}
-		logChan <- Log{Type: Info, Data: fmt.Sprintf("Generated Metadata Record (as struct): %+v", metadataEntry)}
-	}
+func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
+	dbtype string, criteria []map[string]interface{}) ([]map[string]interface{}, error) {
 
 	ctx := context.Background()
-	//logChan <- Log{Type: Info, Data: fmt.Sprintf("DEBUG:...: %v ", dataRecordsAsInterface)}
-	_, err = dbDocStore.PutAll(ctx, dataRecordsAsInterface)
 
+	// Parse criteria as documents to insert
+	dataRecords, err := ConvertCriteriaForCRUDPUT_rev(criteria)
 	if err != nil {
-		logChan <- Log{Type: Info, Data: fmt.Sprintf("DEBUG: Error putting records: %v", err.Error())}
-		return nil, err
-	} else {
+		return nil, fmt.Errorf("failed to parse criteria: %w", err)
+	}
 
-		logChan <- Log{Type: Info, Data: fmt.Sprintf("DEBUG: Metadata To Be inserted: %v", metadataRecordsAsInterface)}
+	if len(dataRecords) == 0 {
+		return nil, fmt.Errorf("no valid records to insert")
+	}
 
-		// Debug Print Before Metadata Insertion
-		for _, meta := range metadataRecordsAsInterface {
-			logChan <- Log{Type: Info, Data: fmt.Sprintf("DEBUG: Metadata Before Insertion: %v", meta)}
-			if meta.(map[string]interface{})["_id"] == nil {
-				logChan <- Log{Type: RecoverableErr, Data: "ERROR: Metadata is missing _id before insertion!"}
-			}
+	// Select DocumentStore (currently always uses DsSWres)
+	if optimusdb.DsSWres == nil {
+		return nil, fmt.Errorf("DsSWres store not initialized")
+	}
+	dbDocStore := *optimusdb.DsSWres
+
+	// Prepare documents for insertion with auto-generated _id if missing
+	docsToInsert := make([]interface{}, 0, len(dataRecords))
+	metadataRecords := make([]interface{}, 0, len(dataRecords))
+
+	for i, record := range dataRecords {
+		// Ensure _id exists - auto-generate if missing
+		if _, hasID := record["_id"]; !hasID {
+			record["_id"] = fmt.Sprintf("swres_%d_%d", time.Now().UnixNano(), i)
+			logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Auto-generated _id: %s", record["_id"])}
 		}
 
-		_, err = dbMetaDocStore.PutAll(ctx, metadataRecordsAsInterface)
+		// Add timestamp
+		record["_created_at"] = time.Now().UTC().Format(time.RFC3339)
+
+		docsToInsert = append(docsToInsert, record)
+
+		// Generate linked metadata record
+		metadataRecord := map[string]interface{}{
+			"_id":               fmt.Sprintf("meta_%s", record["_id"]),
+			"data_record_id":    record["_id"],
+			"record_type":       "swres_metadata",
+			"created_at":        record["_created_at"],
+			"enrichment_status": "pending",
+		}
+
+		// Copy searchable fields for metadata
+		if name, ok := record["name"].(string); ok {
+			metadataRecord["name"] = name
+		}
+		if recordType, ok := record["type"].(string); ok {
+			metadataRecord["resource_type"] = recordType
+		}
+
+		metadataRecords = append(metadataRecords, metadataRecord)
+	}
+
+	// Insert data documents into DsSWres
+	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Inserting %d data records into DsSWres", len(docsToInsert))}
+
+	_, err = dbDocStore.PutAll(ctx, docsToInsert)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert data records: %w", err)
+	}
+
+	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully inserted %d data records", len(docsToInsert))}
+
+	// Insert metadata records into KBMetadata
+	if optimusdb.KBMetadata != nil && len(metadataRecords) > 0 {
+		metadataStore := *optimusdb.KBMetadata
+		_, err = metadataStore.PutAll(ctx, metadataRecords)
 		if err != nil {
-			logChan <- Log{Type: Info, Data: fmt.Sprintf("Problem in inserting %d MetaData Records", len(parsedRecords))}
-			return nil, err
+			logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("CRUDPUT: Warning - metadata insert failed: %v", err)}
+			// Don't fail the whole operation if metadata fails
 		} else {
-			logChan <- Log{Type: Info, Data: fmt.Sprintf("Successfully inserted %d MetaData Records", len(parsedRecords))}
+			logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully inserted %d metadata records", len(metadataRecords))}
 		}
-
 	}
 
-	if err == nil {
-		logChan <- Log{Type: Info, Data: fmt.Sprintf("Successfully inserted %d records", len(parsedRecords))}
-		return nil, nil
-	}
+	// Note: Metadata records are already created and inserted into KBMetadata above
+	// The MetadataService in this system is designed for database table enrichment,
+	// not individual record enrichment. Background enrichment happens via
+	// the MetadataEnricher worker if enabled in main.go
 
-	return nil, fmt.Errorf("failed to insert documents: %w", err)
+	return dataRecords, nil
 }
 
 /*
@@ -2328,108 +2336,6 @@ func handleQueryRequest(s network.Stream, knowledgeBaseDB *KnowledgeBaseDB) {
 	}
 }
 
-func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]interface{}) (int, error) {
-	ctx := context.Background()
-	dbDocStore := *optimusdb.DsSWres
-	var deletedCount int
-
-	docs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
-		record, ok := doc.(map[string]interface{})
-		if !ok {
-			return false, nil
-		}
-
-		for _, filter := range criteria {
-			match := true
-			for key, value := range filter {
-				if record[key] != value {
-					match = false
-					break
-				}
-			}
-			if match {
-				return true, nil
-			}
-		}
-		return false, nil
-	})
-
-	if err != nil {
-		return 0, fmt.Errorf("query execution failed: %w", err)
-	}
-
-	for _, doc := range docs {
-		docMap, ok := doc.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		// Remove the document
-		_, err := dbDocStore.Delete(ctx, docMap["_id"].(string))
-		if err != nil {
-			return deletedCount, fmt.Errorf("failed to delete document: %w", err)
-		}
-		deletedCount++
-	}
-
-	return deletedCount, nil
-}
-
-func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]interface{}, updateData []map[string]interface{}) (int, error) {
-	ctx := context.Background()
-	dbDocStore := *optimusdb.DsSWres
-	var updatedCount int
-
-	// Query for documents matching criteria
-	docs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
-		record, ok := doc.(map[string]interface{})
-		if !ok {
-			return false, nil
-		}
-
-		for _, filter := range criteria {
-			match := true
-			for key, value := range filter {
-				if record[key] != value {
-					match = false
-					break
-				}
-			}
-			if match {
-				return true, nil
-			}
-		}
-		return false, nil
-	})
-
-	if err != nil {
-		return 0, fmt.Errorf("query execution failed: %w", err)
-	}
-
-	for _, doc := range docs {
-		docMap, ok := doc.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		// Apply updates from all maps in `updateData`
-		for _, updates := range updateData {
-			for key, value := range updates {
-				docMap[key] = value
-			}
-		}
-
-		// Save updated document back to OrbitDB
-		_, err := dbDocStore.Put(ctx, docMap)
-		if err != nil {
-			return updatedCount, fmt.Errorf("failed to update document: %w", err)
-		}
-		updatedCount++
-	}
-
-	return updatedCount, nil
-}
-
 /*
 Both dedupResults and DedupSQLResults now use parallel processing:
 Each item is deduplicated in a separate goroutine.
@@ -2909,4 +2815,282 @@ func queryOnePeer(ctx context.Context, hostNode host.Host, peerID peer.ID, crite
 		return nil, err
 	}
 	return rows, nil
+}
+
+// =============================================================================
+// 3. CRUDDELETE - Delete Documents (FIXED - Line ~2331)
+// =============================================================================
+
+func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]interface{}) (int, error) {
+	ctx := context.Background()
+
+	if optimusdb.DsSWres == nil {
+		return 0, fmt.Errorf("DsSWres store not initialized")
+	}
+	dbDocStore := *optimusdb.DsSWres
+
+	if len(criteria) == 0 {
+		return 0, fmt.Errorf("delete requires criteria")
+	}
+
+	filterCriteria := criteria[0]
+
+	// Query for documents matching criteria
+	matchedDocs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
+		record, ok := doc.(map[string]interface{})
+		if !ok {
+			return false, nil
+		}
+
+		// Check if all criteria match
+		for key, value := range filterCriteria {
+			recordValue, exists := record[key]
+			if !exists {
+				return false, nil
+			}
+
+			if fmt.Sprintf("%v", recordValue) != fmt.Sprintf("%v", value) {
+				return false, nil
+			}
+		}
+
+		return true, nil
+	})
+
+	if err != nil {
+		return 0, fmt.Errorf("query for delete failed: %w", err)
+	}
+
+	if len(matchedDocs) == 0 {
+		return 0, nil // No documents to delete
+	}
+
+	// Delete each matched document
+	deletedCount := 0
+	for _, doc := range matchedDocs {
+		record, ok := doc.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Extract _id field
+		docID, ok := record["_id"]
+		if !ok {
+			continue
+		}
+
+		// Convert _id to string
+		var docIDStr string
+		switch v := docID.(type) {
+		case string:
+			docIDStr = v
+		case float64:
+			docIDStr = fmt.Sprintf("%.0f", v)
+		case int:
+			docIDStr = fmt.Sprintf("%d", v)
+		default:
+			docIDStr = fmt.Sprintf("%v", v)
+		}
+
+		// Delete the document by _id
+		_, err := dbDocStore.Delete(ctx, docIDStr)
+		if err != nil {
+			return deletedCount, fmt.Errorf("failed to delete document %s: %w", docIDStr, err)
+		}
+
+		deletedCount++
+
+		// Also delete corresponding metadata if exists
+		if optimusdb.KBMetadata != nil {
+			metadataStore := *optimusdb.KBMetadata
+			metadataID := fmt.Sprintf("meta_%s", docIDStr)
+			_, _ = metadataStore.Delete(ctx, metadataID) // Ignore errors for metadata deletion
+		}
+	}
+
+	return deletedCount, nil
+}
+
+// =============================================================================
+// 4. CRUDUPDATE - Update Documents (FIXED - Line ~2378)
+// =============================================================================
+
+func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]interface{},
+	updateData []map[string]interface{}) (int, error) {
+
+	ctx := context.Background()
+
+	if optimusdb.DsSWres == nil {
+		return 0, fmt.Errorf("DsSWres store not initialized")
+	}
+	dbDocStore := *optimusdb.DsSWres
+
+	if len(criteria) == 0 {
+		return 0, fmt.Errorf("update requires criteria")
+	}
+
+	if len(updateData) == 0 {
+		return 0, fmt.Errorf("update requires update data")
+	}
+
+	filterCriteria := criteria[0]
+	updates := updateData[0]
+
+	// Query for documents matching criteria
+	matchedDocs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
+		record, ok := doc.(map[string]interface{})
+		if !ok {
+			return false, nil
+		}
+
+		// Check if all criteria match
+		for key, value := range filterCriteria {
+			recordValue, exists := record[key]
+			if !exists {
+				return false, nil
+			}
+
+			if fmt.Sprintf("%v", recordValue) != fmt.Sprintf("%v", value) {
+				return false, nil
+			}
+		}
+
+		return true, nil
+	})
+
+	if err != nil {
+		return 0, fmt.Errorf("query for update failed: %w", err)
+	}
+
+	if len(matchedDocs) == 0 {
+		return 0, nil // No documents to update
+	}
+
+	// Update each matched document using delete-then-insert pattern
+	updatedCount := 0
+	for _, doc := range matchedDocs {
+		record, ok := doc.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Extract and preserve original _id
+		originalID, ok := record["_id"]
+		if !ok {
+			continue
+		}
+
+		var docIDStr string
+		switch v := originalID.(type) {
+		case string:
+			docIDStr = v
+		case float64:
+			docIDStr = fmt.Sprintf("%.0f", v)
+		case int:
+			docIDStr = fmt.Sprintf("%d", v)
+		default:
+			docIDStr = fmt.Sprintf("%v", v)
+		}
+
+		// Create updated document
+		updatedDoc := make(map[string]interface{})
+
+		// Copy all original fields
+		for k, v := range record {
+			updatedDoc[k] = v
+		}
+
+		// Apply updates
+		for k, v := range updates {
+			updatedDoc[k] = v
+		}
+
+		// CRITICAL: Preserve original _id
+		updatedDoc["_id"] = docIDStr
+
+		// Add update timestamp
+		updatedDoc["_updated_at"] = time.Now().UTC().Format(time.RFC3339)
+
+		// STEP 1: Delete old document
+		_, err := dbDocStore.Delete(ctx, docIDStr)
+		if err != nil {
+			return updatedCount, fmt.Errorf("failed to delete old document %s: %w", docIDStr, err)
+		}
+
+		// STEP 2: Insert updated document with same _id
+		_, err = dbDocStore.Put(ctx, updatedDoc)
+		if err != nil {
+			return updatedCount, fmt.Errorf("failed to insert updated document %s: %w", docIDStr, err)
+		}
+
+		updatedCount++
+
+		// Update corresponding metadata if exists
+		if optimusdb.KBMetadata != nil {
+			metadataStore := *optimusdb.KBMetadata
+			metadataID := fmt.Sprintf("meta_%s", docIDStr)
+
+			// Query for existing metadata
+			metadataDocs, _ := metadataStore.Query(ctx, func(doc interface{}) (bool, error) {
+				metaRecord, ok := doc.(map[string]interface{})
+				if !ok {
+					return false, nil
+				}
+				if metaID, ok := metaRecord["_id"].(string); ok {
+					return metaID == metadataID, nil
+				}
+				return false, nil
+			})
+
+			if len(metadataDocs) > 0 {
+				if metaDoc, ok := metadataDocs[0].(map[string]interface{}); ok {
+					// Update metadata fields
+					metaDoc["last_updated"] = time.Now().UTC().Format(time.RFC3339)
+					if name, ok := updatedDoc["name"].(string); ok {
+						metaDoc["name"] = name
+					}
+
+					// Delete old metadata
+					metadataStore.Delete(ctx, metadataID)
+					// Insert updated metadata
+					metadataStore.Put(ctx, metaDoc)
+				}
+			}
+		}
+	}
+
+	return updatedCount, nil
+}
+
+// =============================================================================
+// HELPER FUNCTION - Convert Criteria for CRUDPUT
+// =============================================================================
+
+func ConvertCriteriaForCRUDPUT_rev(criteria []map[string]interface{}) ([]map[string]interface{}, error) {
+	if len(criteria) == 0 {
+		return nil, fmt.Errorf("empty criteria provided")
+	}
+
+	// Each element in criteria is a document to insert
+	records := make([]map[string]interface{}, 0, len(criteria))
+
+	for _, crit := range criteria {
+		if len(crit) == 0 {
+			continue // Skip empty criteria
+		}
+
+		// Each criteria map is a document
+		record := make(map[string]interface{})
+		for key, value := range crit {
+			record[key] = value
+		}
+
+		records = append(records, record)
+	}
+
+	if len(records) == 0 {
+		return nil, fmt.Errorf("no valid records in criteria")
+	}
+
+	return records, nil
 }
