@@ -1,0 +1,118 @@
+﻿OptimusDB End-to-End Test Report
+================================================================================
+
+Test Session: 2025-12-20 17:43:16
+Base URL: http://localhost:18001
+Total Tests: 15
+Passed: 14
+Failed: 
+Duration: 17.9s
+Success Rate: 93.3%
+
+Detailed Results:
+--------------------------------------------------------------------------------
+        1. PASS - Get All TOSCA Templates
+   Description: Retrieve all templates from dsswres
+   Expected: Returns array with 5+ templates
+   Actual: Returned 5 templates
+   Command: POST http://localhost:18001/swarmkb/command
+   Execution Time: 0.022s
+   Timestamp: 2025-12-20T17:43:01Z
+        2. PASS - Find Template by ID
+   Description: Retrieve specific template using its ID
+   Expected: Returns exactly 1 template with matching ID
+   Actual: Returned 1 template(s), ID match: True
+   Command: POST http://localhost:18001/swarmkb/command
+   Execution Time: 0s
+   Timestamp: 2025-12-20T17:43:02Z
+        3. PASS - Find by TOSCA Version
+   Description: Find all templates using tosca_simple_yaml_1_3
+   Expected: Returns 5 templates
+   Actual: Returned 5 templates
+   Command: POST http://localhost:18001/swarmkb/command
+   Execution Time: 0.023s
+   Timestamp: 2025-12-20T17:43:03Z
+        4. PASS - Find Templates with Container Nodes
+   Description: Find all templates containing Container node types
+   Expected: Returns 2+ templates (webapp_adt, deployment_plan)
+   Actual: Found 3 templates with Container nodes (EdgeCluster-CapacityProfile, WebApp-MicroservicesApplication, HybridInfrastructure-SwarmDeployment)
+   Command: POST http://localhost:18001/swarmkb/command (with client-side filtering for Container nodes)
+   Execution Time: 0.026s
+   Timestamp: 2025-12-20T17:43:04Z
+        5. PASS - Find Templates with GPU Resources
+   Description: Find all templates containing GPU nodes or requirements
+   Expected: Returns 2+ templates (capacity_profile, app_requirements)
+   Actual: Found 2 templates with GPU resources (EdgeCluster-CapacityProfile, ApplicationRequirements-MLTrainingWorkload)
+   Command: POST http://localhost:18001/swarmkb/command (with client-side GPU filtering)
+   Execution Time: 0.021s
+   Timestamp: 2025-12-20T17:43:05Z
+        6. PASS - Find Templates with Specific Ports
+   Description: Find templates exposing port 443 (HTTPS)
+   Expected: Returns 1+ templates with HTTPS endpoints
+   Actual: Found 2 templates with port 443
+   Command: POST http://localhost:18001/swarmkb/command (filtering for port 443)
+   Execution Time: 0.015s
+   Timestamp: 2025-12-20T17:43:06Z
+        7. FAIL - Find Templates with Workflows
+   Description: Find templates containing deployment or operational workflows
+   Expected: Returns 1+ templates (deployment_plan with 2 workflows)
+   Actual: Found 0 templates with workflows ()
+   Command: POST http://localhost:18001/swarmkb/command (filtering for workflows)
+   Execution Time: 0.009s
+   Timestamp: 2025-12-20T17:43:07Z
+        8. PASS - Find Templates with Policies
+   Description: Find templates containing scaling, monitoring, or cost policies
+   Expected: Returns 2+ templates with policy definitions
+   Actual: Found 5 templates with policies (EdgeCluster-CapacityProfile: 3 policies; ApplicationRequirements-MLTrainingWorkload: 6 policies; WebApp-MicroservicesApplication: 3 policies; HybridInfrastructure-SwarmDeployment: 3 policies; DeploymentPlan-WebApp-Release-v1.2.3: 3 policies)
+   Command: POST http://localhost:18001/swarmkb/command (filtering for policies)
+   Execution Time: 0.012s
+   Timestamp: 2025-12-20T17:43:08Z
+        9. PASS - Find Templates with High Memory Requirements
+   Description: Find templates requiring nodes with >64 GB memory
+   Expected: Returns 2+ templates (capacity_profile: 128GB, app_requirements: 64-128GB)
+   Actual: Found 2 templates with >64GB memory requirements
+   Command: POST http://localhost:18001/swarmkb/command (filtering for memory >64GB)
+   Execution Time: 0.011s
+   Timestamp: 2025-12-20T17:43:10Z
+        10. PASS - CRUD - INSERT
+   Description: Insert a test renewable energy resource document
+   Expected: Document inserted successfully with confirmation message
+   Actual: Response: OK: Successfully inserted records
+   Command: POST http://localhost:18001/swarmkb/command
+   Execution Time: 0.012s
+   Timestamp: 2025-12-20T17:43:11Z
+        11. PASS - CRUD - QUERY
+   Description: Query the test document we just inserted
+   Expected: Returns exactly 1 document with matching _id
+   Actual: Returned 1 document(s), _id match: True
+   Command: POST /swarmkb/command with crudget, _id: test_solar_farm_20251220174311
+   Execution Time: 0s
+   Timestamp: 2025-12-20T17:43:12Z
+        12. PASS - CRUD - UPDATE
+   Description: Update test document with new values
+   Expected: Document updated successfully, _id preserved
+   Actual: Response: SUCCESS! 1 document(s) updated
+   Command: POST /swarmkb/command with crudupdate, _id: test_solar_farm_20251220174311
+   Execution Time: 0.03s
+   Timestamp: 2025-12-20T17:43:13Z
+        13. PASS - CRUD - VERIFY UPDATE (CRITICAL)
+   Description: Verify update applied correctly and _id was preserved
+   Expected: _id preserved, status='maintenance', capacity_mw=550, has _updated_at
+   Actual: _id preserved: True, status: maintenance, capacity: 550, has _updated_at: True
+   Command: POST /swarmkb/command with crudget, verify _id preserved
+   Execution Time: 0.004s
+   Timestamp: 2025-12-20T17:43:14Z
+        14. PASS - CRUD - DELETE
+   Description: Delete the test document
+   Expected: Document deleted successfully
+   Actual: Response: SUCCESS! 1 document(s) deleted
+   Command: POST /swarmkb/command with cruddelete, _id: test_solar_farm_20251220174311
+   Execution Time: 0.009s
+   Timestamp: 2025-12-20T17:43:15Z
+        15. PASS - CRUD - VERIFY DELETE
+   Description: Verify document was deleted
+   Expected: Query returns empty array (0 results)
+   Actual: Returned 0 document(s)
+   Command: POST /swarmkb/command with crudget, should return empty
+   Execution Time: 0s
+   Timestamp: 2025-12-20T17:43:16Z

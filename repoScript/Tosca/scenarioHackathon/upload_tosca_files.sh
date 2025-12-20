@@ -70,7 +70,7 @@ EOF
         queryable=$(echo "$response" | jq -r '.data.queryable // false')
         storage=$(echo "$response" | jq -r '.data.storage_location // "unknown"')
 
-        echo -e "${GREEN}✅ Uploaded successfully${NC}"
+        echo -e "${GREEN} Uploaded successfully${NC}"
         echo -e "${GRAY}  Template ID: ${template_id}${NC}"
         echo -e "${GRAY}  Queryable: ${queryable}${NC}"
         echo -e "${GRAY}  Storage: ${storage}${NC}"
@@ -132,5 +132,5 @@ rm -f "$TEMP_RESULTS"
 
 if [ $UPLOADED_COUNT -gt 0 ]; then
     echo ""
-    echo -e "${CYAN}ℹ️  Template IDs saved to: uploaded_tosca_ids.json${NC}"
+    echo -e "${CYAN} Template IDs saved to: uploaded_tosca_ids.json${NC}"
 fi

@@ -1,5 +1,5 @@
 # OptimusDB TOSCA Upload and Query Guide
-## Complete Guide with PowerShell and Linux Scripts
+## Complete Guide for development purposes
 
 ---
 
@@ -16,7 +16,20 @@
 
 ---
 
-## 🗂️ TOSCA Files Overview
+## Prerequisites
+
+1. Docker Desktop
+2. Linux OS (for running the shell script) or Windows (for running the commands of powershell)
+
+---
+## Aim
+
+Conduct a  number of scenarios to persist and retrieve tosca information representing repsective use cases for the swarmchestrate ecosystem, anticipated to be handled by OptimusDB as part of a Knowledge Base lifecycle.
+Respective information are in a form of file yaml format representing different scenarios for application deployment, capacity descriptions, openTofu templates etc.
+
+---
+
+## 🗂️ TOSCA Files Overview representing the scenarios
 
 ### Files to Upload
 
@@ -28,7 +41,7 @@
 | deployment_plan.yaml | Deployment Plan | Deployment_Release_Plans | Executable deployment plan |
 | app_requirements.yaml | Requirements | (none specified) | ML training workload specs |
 
-### Key Features in These Files
+### Key context incorporated in the tosca scenarios per file
 
 **webapp_adt.yaml:**
 - 4 Docker containers (frontend, backend, PostgreSQL, Redis)
@@ -64,19 +77,6 @@
 - 64-128 GB memory
 - 1.75 TB storage
 - Performance and cost policies
-
----
-
-## Key Features to Demo
-
-These 5 files demonstrate:
-- ✅ Multi-datastore architecture
-- ✅ Nested field querying
-- ✅ GPU infrastructure (NVIDIA A100)
-- ✅ Deployment workflows (9 steps)
-- ✅ Resource requirements (64-128 GB RAM, 2-4 GPUs)
-- ✅ Kubernetes integration
-- ✅ Cost analysis ($0.05/CPU, $2.50/GPU)
 
 ---
 
@@ -121,7 +121,7 @@ curl -X POST http://localhost:18001/swarmkb/command \
 
 ## 📖 Scenario Guide
 
-The main guide includes **15 query scenarios**:
+The main guide includes **15 query scenarios** based on complexity of attempt and results:
 
 ### Simple (1-4)
 - Find all templates
@@ -150,7 +150,7 @@ The main guide includes **15 query scenarios**:
 
 ---
 
-## Testing Checklist outcomes
+## Testing Checklist outcomes according to the above scenarios
 
 - [ ] All 5 files uploaded successfully
 - [ ] Query returns 5 templates
