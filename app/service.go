@@ -831,6 +831,9 @@ func unifiedQueryDocStore(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype s
 // =============================================================================
 // 1. CRUDGET - Query/Retrieve Documents (FIXED - Line ~883)
 // =============================================================================
+// =============================================================================
+// ENHANCED CRUDGET - Query/Retrieve Documents with Nested Path Support
+// =============================================================================
 
 func crudGetDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype string,
 	hostCID host.Host, criteria []map[string]interface{}) ([]map[string]interface{}, error) {
@@ -855,8 +858,12 @@ func crudGetDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype str
 			return nil, fmt.Errorf("KBMetadata store not initialized")
 		}
 		dbDocStore = *optimusdb.KBMetadata
+	case "kbdata":
+		if optimusdb.KBdata == nil {
+			return nil, fmt.Errorf("KBdata store not initialized")
+		}
+		dbDocStore = *optimusdb.KBdata
 	default:
-		// Default to DsSWres
 		if optimusdb.DsSWres == nil {
 			return nil, fmt.Errorf("default DsSWres store not initialized")
 		}
@@ -870,13 +877,12 @@ func crudGetDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype str
 		logChan <- Log{Type: Info, Data: "CRUDGET: Empty criteria, retrieving all documents"}
 
 		allDocs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
-			return true, nil // Include all documents
+			return true, nil
 		})
 		if err != nil {
 			return nil, fmt.Errorf("query all failed: %w", err)
 		}
 
-		// Convert to []map[string]interface{}
 		for _, doc := range allDocs {
 			if docMap, ok := doc.(map[string]interface{}); ok {
 				finalResults = append(finalResults, docMap)
@@ -887,9 +893,9 @@ func crudGetDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype str
 		return finalResults, nil
 	}
 
-	// Case 2: Query with criteria
+	// Case 2: Query with enhanced criteria (supports nested paths and operators)
 	filterCriteria := criteria[0]
-	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Querying with criteria: %+v", filterCriteria)}
+	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Querying with enhanced criteria: %+v", filterCriteria)}
 
 	matchedDocs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
 		record, ok := doc.(map[string]interface{})
@@ -897,64 +903,8 @@ func crudGetDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype str
 			return false, nil
 		}
 
-		// Check if all criteria match
-		for key, value := range filterCriteria {
-			recordValue, exists := record[key]
-			if !exists {
-				return false, nil
-			}
-
-			// Type-aware comparison
-			switch v := value.(type) {
-			case string:
-				if recordStr, ok := recordValue.(string); ok {
-					if recordStr != v {
-						return false, nil
-					}
-				} else {
-					return false, nil
-				}
-			case float64:
-				if recordNum, ok := recordValue.(float64); ok {
-					if recordNum != v {
-						return false, nil
-					}
-				} else if recordInt, ok := recordValue.(int); ok {
-					if float64(recordInt) != v {
-						return false, nil
-					}
-				} else {
-					return false, nil
-				}
-			case int:
-				if recordInt, ok := recordValue.(int); ok {
-					if recordInt != v {
-						return false, nil
-					}
-				} else if recordNum, ok := recordValue.(float64); ok {
-					if recordNum != float64(v) {
-						return false, nil
-					}
-				} else {
-					return false, nil
-				}
-			case bool:
-				if recordBool, ok := recordValue.(bool); ok {
-					if recordBool != v {
-						return false, nil
-					}
-				} else {
-					return false, nil
-				}
-			default:
-				// For complex types, use string comparison as fallback
-				if fmt.Sprintf("%v", recordValue) != fmt.Sprintf("%v", value) {
-					return false, nil
-				}
-			}
-		}
-
-		return true, nil
+		// Use enhanced matching with nested path support
+		return matchesCriteriaEnhanced(record, filterCriteria), nil
 	})
 
 	if err != nil {
@@ -1092,7 +1042,7 @@ func ConvertMetadataToMap(entry datamodel.MetadataEntry) map[string]interface{} 
 }
 
 // =============================================================================
-// 2. CRUDPUT - Insert Documents (FIXED - Line ~1119)
+// 2. CRUDPUT - Insert Documents (REFINED - Supports All Datastores)
 // =============================================================================
 
 func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
@@ -1110,11 +1060,57 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 		return nil, fmt.Errorf("no valid records to insert")
 	}
 
-	// Select DocumentStore (currently always uses DsSWres)
-	if optimusdb.DsSWres == nil {
-		return nil, fmt.Errorf("DsSWres store not initialized")
+	// Select DocumentStore based on dbtype (matches crudGetDocStoreRev logic)
+	var dbDocStore iface.DocumentStore
+	var storeName string
+
+	switch strings.ToLower(dbtype) {
+	case "dsswres":
+		if optimusdb.DsSWres == nil {
+			return nil, fmt.Errorf("DsSWres store not initialized")
+		}
+		dbDocStore = *optimusdb.DsSWres
+		storeName = "dsswres"
+
+	case "dsswresaloc":
+		if optimusdb.DsSWresaloc == nil {
+			return nil, fmt.Errorf("DsSWresaloc store not initialized")
+		}
+		dbDocStore = *optimusdb.DsSWresaloc
+		storeName = "dsswresaloc"
+
+	case "kbmetadata":
+		if optimusdb.KBMetadata == nil {
+			return nil, fmt.Errorf("KBMetadata store not initialized")
+		}
+		dbDocStore = *optimusdb.KBMetadata
+		storeName = "kbmetadata"
+
+	case "kbdata":
+		if optimusdb.KBdata == nil {
+			return nil, fmt.Errorf("KBdata store not initialized")
+		}
+		dbDocStore = *optimusdb.KBdata
+		storeName = "kbdata"
+
+	case "validations":
+		if optimusdb.Validations == nil {
+			return nil, fmt.Errorf("Validations store not initialized")
+		}
+		dbDocStore = *optimusdb.Validations
+		storeName = "validations"
+
+	default:
+		// Default to DsSWres
+		if optimusdb.DsSWres == nil {
+			return nil, fmt.Errorf("default DsSWres store not initialized")
+		}
+		dbDocStore = *optimusdb.DsSWres
+		storeName = "dsswres"
+		logChan <- Log{Type: Info, Data: "CRUDPUT: No dstype specified, defaulting to DsSWres"}
 	}
-	dbDocStore := *optimusdb.DsSWres
+
+	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Using %s store for insertion", storeName)}
 
 	// Prepare documents for insertion with auto-generated _id if missing
 	docsToInsert := make([]interface{}, 0, len(dataRecords))
@@ -1123,7 +1119,7 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 	for i, record := range dataRecords {
 		// Ensure _id exists - auto-generate if missing
 		if _, hasID := record["_id"]; !hasID {
-			record["_id"] = fmt.Sprintf("swres_%d_%d", time.Now().UnixNano(), i)
+			record["_id"] = fmt.Sprintf("%s_%d_%d", storeName, time.Now().UnixNano(), i)
 			logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Auto-generated _id: %s", record["_id"])}
 		}
 
@@ -1132,37 +1128,46 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 
 		docsToInsert = append(docsToInsert, record)
 
-		// Generate linked metadata record
-		metadataRecord := map[string]interface{}{
-			"_id":               fmt.Sprintf("meta_%s", record["_id"]),
-			"data_record_id":    record["_id"],
-			"record_type":       "swres_metadata",
-			"created_at":        record["_created_at"],
-			"enrichment_status": "pending",
-		}
+		// Generate linked metadata record (skip if inserting into metadata store itself)
+		if storeName != "kbmetadata" && storeName != "validations" {
+			metadataRecord := map[string]interface{}{
+				"_id":               fmt.Sprintf("meta_%s", record["_id"]),
+				"data_record_id":    record["_id"],
+				"record_type":       fmt.Sprintf("%s_metadata", storeName),
+				"source_store":      storeName,
+				"created_at":        record["_created_at"],
+				"enrichment_status": "pending",
+			}
 
-		// Copy searchable fields for metadata
-		if name, ok := record["name"].(string); ok {
-			metadataRecord["name"] = name
-		}
-		if recordType, ok := record["type"].(string); ok {
-			metadataRecord["resource_type"] = recordType
-		}
+			// Copy searchable fields for metadata
+			if name, ok := record["name"].(string); ok {
+				metadataRecord["name"] = name
+			}
+			if recordType, ok := record["type"].(string); ok {
+				metadataRecord["resource_type"] = recordType
+			}
+			if templateName, ok := record["template_name"].(string); ok {
+				metadataRecord["template_name"] = templateName
+			}
+			if docType, ok := record["document_type"].(string); ok {
+				metadataRecord["document_type"] = docType
+			}
 
-		metadataRecords = append(metadataRecords, metadataRecord)
+			metadataRecords = append(metadataRecords, metadataRecord)
+		}
 	}
 
-	// Insert data documents into DsSWres
-	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Inserting %d data records into DsSWres", len(docsToInsert))}
+	// Insert data documents into selected DocumentStore
+	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Inserting %d data records into %s", len(docsToInsert), storeName)}
 
 	_, err = dbDocStore.PutAll(ctx, docsToInsert)
 	if err != nil {
-		return nil, fmt.Errorf("failed to insert data records: %w", err)
+		return nil, fmt.Errorf("failed to insert data records into %s: %w", storeName, err)
 	}
 
-	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully inserted %d data records", len(docsToInsert))}
+	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully inserted %d data records into %s", len(docsToInsert), storeName)}
 
-	// Insert metadata records into KBMetadata
+	// Insert metadata records into KBMetadata (only for data stores, not metadata store itself)
 	if optimusdb.KBMetadata != nil && len(metadataRecords) > 0 {
 		metadataStore := *optimusdb.KBMetadata
 		_, err = metadataStore.PutAll(ctx, metadataRecords)
@@ -1170,7 +1175,7 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 			logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("CRUDPUT: Warning - metadata insert failed: %v", err)}
 			// Don't fail the whole operation if metadata fails
 		} else {
-			logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully inserted %d metadata records", len(metadataRecords))}
+			logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully inserted %d metadata records into KBMetadata", len(metadataRecords))}
 		}
 	}
 
@@ -2002,6 +2007,10 @@ func QueryUsingSQL(optimusdb *KnowledgeBaseDB, sqlQuery *SQLQuery) ([]map[string
 // //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Query local OrbitDB with enhanced filtering logic
+// =============================================================================
+// FIXED queryLocalDB - Now with Nested Path Support
+// =============================================================================
+
 func queryLocalDB(knowledgeBaseDB *KnowledgeBaseDB, criteria []map[string]interface{}) ([]map[string]interface{}, error) {
 	ctx := context.Background()
 	dbDocStore := *knowledgeBaseDB.DsSWres
@@ -2012,53 +2021,42 @@ func queryLocalDB(knowledgeBaseDB *KnowledgeBaseDB, criteria []map[string]interf
 			return false, nil
 		}
 
-		match := false
-
 		// Loop through all criteria (supports OR conditions)
 		for _, filter := range criteria {
-			match = true
+			match := true
 
 			for key, val := range filter {
+				// CRITICAL FIX: Use getNestedValue for nested path support
+				recordValue := getNestedValue(record, key)
+
+				// Handle operator conditions
 				switch condition := val.(type) {
-				case map[string]interface{}: // Handle special cases ($gte, $regex)
-					if gteVal, exists := condition["$gte"]; exists {
-						recordVal, ok := record[key].(float64) // Ensure numeric comparison
-						if !ok {
-							match = false
-							continue
-						}
-						gteFloat, ok := gteVal.(float64)
-						if !ok || recordVal < gteFloat {
-							match = false
-							continue
-						}
-					}
-					if regexPattern, exists := condition["$regex"]; exists {
-						recordStr, ok := record[key].(string)
-						if !ok {
-							match = false
-							continue
-						}
-						regex, err := regexp.Compile(regexPattern.(string))
-						if err != nil || !regex.MatchString(recordStr) {
-							match = false
-							continue
-						}
-					}
-				default:
-					if record[key] != val { // Default AND filter
+				case map[string]interface{}: // Operators like $gte, $regex, $contains, etc.
+					// Use the comprehensive matchesCondition function
+					if !matchesCondition(recordValue, condition) {
 						match = false
-						continue
+						break
 					}
+
+				default: // Direct equality comparison
+					if !reflect.DeepEqual(recordValue, val) {
+						match = false
+						break
+					}
+				}
+
+				if !match {
+					break
 				}
 			}
 
+			// If all conditions in this filter matched, return true
 			if match {
-				return true, nil // At least one condition matched
+				return true, nil
 			}
 		}
 
-		return false, nil // No match found
+		return false, nil // No criteria matched
 	})
 
 	if err != nil {
@@ -3093,4 +3091,226 @@ func ConvertCriteriaForCRUDPUT_rev(criteria []map[string]interface{}) ([]map[str
 	}
 
 	return records, nil
+}
+
+// ============================================================================
+// NESTED JSON QUERY SUPPORT - Add these helper functions
+// ============================================================================
+
+// getNestedValue retrieves a value from a nested path like "capacity_matching.match_score"
+func getNestedValue(data map[string]interface{}, path string) interface{} {
+	keys := strings.Split(path, ".")
+	var current interface{} = data
+
+	for _, key := range keys {
+		switch v := current.(type) {
+		case map[string]interface{}:
+			current = v[key]
+			if current == nil {
+				return nil
+			}
+		default:
+			return nil
+		}
+	}
+
+	return current
+}
+
+// matchesCondition evaluates a value against a condition (supports operators)
+func matchesCondition(value interface{}, condition interface{}) bool {
+	// Handle operator conditions (map with $gte, $lte, etc.)
+	if condMap, ok := condition.(map[string]interface{}); ok {
+		for op, opValue := range condMap {
+			switch op {
+			case "$gte":
+				if !compareNumeric(value, opValue, ">=") {
+					return false
+				}
+			case "$lte":
+				if !compareNumeric(value, opValue, "<=") {
+					return false
+				}
+			case "$gt":
+				if !compareNumeric(value, opValue, ">") {
+					return false
+				}
+			case "$lt":
+				if !compareNumeric(value, opValue, "<") {
+					return false
+				}
+			case "$contains":
+				if !arrayContains(value, opValue) {
+					return false
+				}
+			case "$all":
+				if !arrayContainsAll(value, opValue) {
+					return false
+				}
+			case "$in":
+				if !valueInArray(value, opValue) {
+					return false
+				}
+			case "$regex":
+				if !matchesRegex(value, opValue.(string)) {
+					return false
+				}
+			case "$exists":
+				exists := value != nil
+				if exists != opValue.(bool) {
+					return false
+				}
+			case "$ne":
+				if reflect.DeepEqual(value, opValue) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+
+	// Direct equality comparison
+	return reflect.DeepEqual(value, condition)
+}
+
+// compareNumeric handles numeric comparisons
+func compareNumeric(value, threshold interface{}, operator string) bool {
+	v := toFloat64(value)
+	t := toFloat64(threshold)
+
+	switch operator {
+	case ">=":
+		return v >= t
+	case "<=":
+		return v <= t
+	case ">":
+		return v > t
+	case "<":
+		return v < t
+	default:
+		return false
+	}
+}
+
+// toFloat64 converts various numeric types to float64
+func toFloat64(value interface{}) float64 {
+	switch v := value.(type) {
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case string:
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
+	}
+	return 0
+}
+
+// arrayContains checks if an array contains an item (or substring for strings)
+func arrayContains(array, item interface{}) bool {
+	arr, ok := array.([]interface{})
+	if !ok {
+		// Check if it's a string containing substring
+		if str, ok := array.(string); ok {
+			if itemStr, ok := item.(string); ok {
+				return strings.Contains(str, itemStr)
+			}
+		}
+		return false
+	}
+
+	for _, elem := range arr {
+		if reflect.DeepEqual(elem, item) {
+			return true
+		}
+	}
+	return false
+}
+
+// arrayContainsAll checks if array contains all items in the list
+func arrayContainsAll(array, items interface{}) bool {
+	itemsList, ok := items.([]interface{})
+	if !ok {
+		return false
+	}
+
+	for _, item := range itemsList {
+		if !arrayContains(array, item) {
+			return false
+		}
+	}
+	return true
+}
+
+// valueInArray checks if a value is in an array
+func valueInArray(value, array interface{}) bool {
+	return arrayContains(array, value)
+}
+
+// matchesRegex checks if a string matches a regex pattern
+func matchesRegex(value interface{}, pattern string) bool {
+	str, ok := value.(string)
+	if !ok {
+		return false
+	}
+
+	matched, err := regexp.MatchString(pattern, str)
+	if err != nil {
+		return false
+	}
+	return matched
+}
+
+// matchesCriteriaEnhanced evaluates a document against criteria with nested path support
+func matchesCriteriaEnhanced(doc map[string]interface{}, criteria map[string]interface{}) bool {
+	for path, condition := range criteria {
+		// Handle logical operators
+		if path == "$and" {
+			conditions, ok := condition.([]interface{})
+			if !ok {
+				return false
+			}
+			for _, cond := range conditions {
+				condMap, ok := cond.(map[string]interface{})
+				if !ok || !matchesCriteriaEnhanced(doc, condMap) {
+					return false
+				}
+			}
+			continue
+		}
+
+		if path == "$or" {
+			conditions, ok := condition.([]interface{})
+			if !ok {
+				return false
+			}
+			anyMatch := false
+			for _, cond := range conditions {
+				condMap, ok := cond.(map[string]interface{})
+				if ok && matchesCriteriaEnhanced(doc, condMap) {
+					anyMatch = true
+					break
+				}
+			}
+			if !anyMatch {
+				return false
+			}
+			continue
+		}
+
+		// Get value from nested path (supports "capacity_matching.match_score")
+		value := getNestedValue(doc, path)
+
+		// Check if value matches condition
+		if !matchesCondition(value, condition) {
+			return false
+		}
+	}
+
+	return true
 }

@@ -3,19 +3,6 @@
 
 ---
 
-## 📋 Table of Contents
-
-1. [TOSCA Files Overview](#tosca-files-overview)
-2. [Upload Scripts](#upload-scripts)
-3. [Simple Query Scenarios](#simple-query-scenarios)
-4. [Intermediate Query Scenarios](#intermediate-query-scenarios)
-5. [Advanced Query Scenarios](#advanced-query-scenarios)
-6. [Complex Nested Queries](#complex-nested-queries)
-7. [Analytical Queries](#analytical-queries)
-8. [Troubleshooting](#troubleshooting)
-
----
-
 ## Prerequisites
 
 1. Docker Desktop
@@ -41,7 +28,8 @@ Respective information are in a form of file yaml format representing different 
 | deployment_plan.yaml | Deployment Plan | Deployment_Release_Plans | Executable deployment plan |
 | app_requirements.yaml | Requirements | (none specified) | ML training workload specs |
 
-### Key context incorporated in the tosca scenarios per file
+### Each yaml file represents a custom scenario, anticipated to be performed during the KB lifecycle.
+### The aim is to persist the file representing the use case and search it for certain reasons.
 
 **webapp_adt.yaml:**
 - 4 Docker containers (frontend, backend, PostgreSQL, Redis)
@@ -83,9 +71,13 @@ Respective information are in a form of file yaml format representing different 
 ## Expected Results
 
 **Upload:** 5 templates successfully stored
+
 **Query all:** Returns 5 TOSCA documents
+
 **Find Docker:** 2 templates (webapp_adt, deployment_plan)
+
 **Find GPU:** 2 templates (capacity_profile, app_requirements)
+
 **Find workflows:** 1 template (deployment_plan with 2 workflows)
 
 ---
@@ -121,7 +113,8 @@ curl -X POST http://localhost:18001/swarmkb/command \
 
 ## 📖 Scenario Guide
 
-The main guide includes **15 query scenarios** based on complexity of attempt and results:
+The main guide includes **15 query scenarios** , as depicted in the given scripts. The scenarios are segregated into
+complexity on how the results are searched within optimusDB providing respective results:
 
 ### Simple (1-4)
 - Find all templates
