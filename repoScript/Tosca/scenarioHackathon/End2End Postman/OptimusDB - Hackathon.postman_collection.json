@@ -1,0 +1,2708 @@
+{
+	"info": {
+		"_postman_id": "292ed054-20e9-495d-81b4-77af058f54d8",
+		"name": "OptimusDB - Hackathon",
+		"description": "Complete collection for uploading and querying TOSCA templates in OptimusDB\n\nProject: EU Horizon Europe Grant 101135012 (Swarmchestrate)\nVersion: 1.0\nDate: 2025-12-19\n\n## Features:\n- Upload 5 sample TOSCA files\n- 15 query scenarios (simple to advanced)\n- CRUD operations\n- Analytical queries\n- Resource statistics\n\n## Setup:\n1. Set {{base_url}} variable (default: http://localhost:18001)\n2. Upload TOSCA files first\n3. Run query scenarios\n4. Use environment variables for template IDs",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "40792570"
+	},
+	"item": [
+		{
+			"name": "1. Upload TOSCA Files",
+			"item": [
+				{
+					"name": "Upload WebApp ADT",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Upload successful\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql(200);",
+									"    pm.expect(jsonData.data.queryable).to.eql(true);",
+									"    ",
+									"    // Save template ID for later use",
+									"    pm.environment.set(\"webapp_template_id\", jsonData.data.template_id);",
+									"});",
+									"",
+									"pm.test(\"Template stored in dsswres\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.storage_location).to.eql(\"dsswres\");",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"file\": \"{{webapp_adt_base64}}\",\n  \"filename\": \"webapp_adt.yaml\",\n  \"store_full_structure\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/upload",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"upload"
+							]
+						},
+						"description": "Upload WebApp-MicroservicesApplication TOSCA template\n\n**Contains:**\n- 4 Docker containers (frontend, backend, PostgreSQL, Redis)\n- 4 container runtimes\n- 3 policies (scaling, placement, monitoring)\n- Ports: 80, 443, 5432, 6379, 8080"
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Capacity Profile",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Upload successful\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.queryable).to.eql(true);",
+									"    pm.environment.set(\"capacity_template_id\", jsonData.data.template_id);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"file\": \"{{capacity_profile_base64}}\",\n  \"filename\": \"capacity_profile.yaml\",\n  \"store_full_structure\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/upload",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"upload"
+							]
+						},
+						"description": "Upload EdgeCluster-CapacityProfile TOSCA template\n\n**Contains:**\n- Physical compute: 32 cores, 128 GB RAM\n- NVIDIA A100 GPU (40 GB)\n- 2 TB NVMe SSD\n- 10 Gbps network\n- Kubernetes runtime"
+					},
+					"response": []
+				},
+				{
+					"name": "Upload OpenTofu Hybrid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Upload successful\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.queryable).to.eql(true);",
+									"    pm.environment.set(\"opentofu_template_id\", jsonData.data.template_id);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"file\": \"{{opentofu_hybrid_base64}}\",\n  \"filename\": \"opentofu_hybrid.yaml\",\n  \"store_full_structure\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/upload",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"upload"
+							]
+						},
+						"description": "Upload HybridInfrastructure-SwarmDeployment TOSCA template\n\n**Contains:**\n- Kubernetes namespace\n- Nginx ingress\n- Istio service mesh\n- Prometheus monitoring\n- OpenTofu resource mappings"
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Deployment Plan",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Upload successful\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.queryable).to.eql(true);",
+									"    pm.environment.set(\"deployment_template_id\", jsonData.data.template_id);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"file\": \"{{deployment_plan_base64}}\",\n  \"filename\": \"deployment_plan.yaml\",\n  \"store_full_structure\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/upload",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"upload"
+							]
+						},
+						"description": "Upload DeploymentPlan-WebApp-Release TOSCA template\n\n**Contains:**\n- 5 deployment instructions\n- 9-step deployment workflow\n- 6-step rollback workflow\n- Resource allocation details\n- Health checks"
+					},
+					"response": []
+				},
+				{
+					"name": "Upload App Requirements",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Upload successful\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.queryable).to.eql(true);",
+									"    pm.environment.set(\"requirements_template_id\", jsonData.data.template_id);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"file\": \"{{app_requirements_base64}}\",\n  \"filename\": \"app_requirements.yaml\",\n  \"store_full_structure\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/upload",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"upload"
+							]
+						},
+						"description": "Upload ApplicationRequirements-MLTrainingWorkload TOSCA template\n\n**Contains:**\n- GPU requirements: 2-4 GPUs (A100/H100/V100)\n- Memory: 64-128 GB\n- Storage: 1.75 TB\n- Network: 10-25 Gbps\n- 6 comprehensive policies"
+					},
+					"response": []
+				}
+			],
+			"description": "Upload all 5 sample TOSCA files to OptimusDB.\n\n**Note:** You need to convert YAML files to base64 and set them as environment variables:\n- {{webapp_adt_base64}}\n- {{capacity_profile_base64}}\n- {{opentofu_hybrid_base64}}\n- {{deployment_plan_base64}}\n- {{app_requirements_base64}}\n\nOr use the Pre-request Script in each request to read files."
+		},
+		{
+			"name": "2. TOSCA Queries",
+			"item": [
+				{
+					"name": "Scenario Small",
+					"item": [
+						{
+							"name": "Get All TOSCA Templates",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Returns all templates\", function () {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.data).to.be.an('array');",
+											"    console.log(\"Total templates found:\", jsonData.data.length);",
+											"});"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": []\n}\n\n// Or get all documents in the datastore"
+								},
+								"url": {
+									"raw": "{{base_url}}/{{context}}/command",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"{{context}}",
+										"command"
+									]
+								},
+								"description": "Retrieve all TOSCA templates from the dsswres DocumentStore.\n\n**Expected:** Returns all uploaded TOSCA templates (should be 5 if all uploads succeeded)"
+							},
+							"response": []
+						},
+						{
+							"name": "Find by Template ID",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Found template by ID\", function () {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.data).to.be.an('array');",
+											"    pm.expect(jsonData.data.length).to.be.at.least(1);",
+											"});"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"{{webapp_template_id}}\"\n    }\n  ]\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/{{context}}/command",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"{{context}}",
+										"command"
+									]
+								},
+								"description": "Find a specific template by its _id.\n\n**Uses:** {{webapp_template_id}} environment variable set during upload."
+							},
+							"response": []
+						},
+						{
+							"name": "Find by TOSCA Version",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"tosca_definitions_version\": \"tosca_simple_yaml_1_3\"\n    }\n  ]\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/{{context}}/command",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"{{context}}",
+										"command"
+									]
+								},
+								"description": "Find all templates using TOSCA version 1.3.\n\n**Expected:** All 5 uploaded templates should match."
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Scenario Moderate",
+					"item": [
+						{
+							"name": "INSERT - Test Document : Sample Application Description.yaml",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Insert successful\", function () {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.status).to.eql(200);",
+											"    pm.expect(jsonData.data).to.include(\"Successfully inserted\");",
+											"});"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"method\": {\n        \"argcnt\": 10000,\n        \"cmd\": \"crudput\"\n    },\n    \"args\": [\"tosca_webapp_microservices_v1_0_0\", \"tosca_template\"],\n    \"dstype\": \"kbdata\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n        {\n            \"_id\": \"tosca_webapp_microservices_v1_0_0\",\n            \"document_type\": \"tosca_template\",\n            \"tosca_version\": \"tosca_simple_yaml_1_3\",\n            \"template_name\": \"WebApp-MicroservicesApplication\",\n            \"template_author\": \"Swarmchestrate Orchestrator\",\n            \"template_version\": \"1.0.0\",\n            \"kb_datastore\": \"ADT\",\n            \"creation_timestamp\": \"2025-11-05T10:30:00Z\",\n            \"description\": \"E-commerce web application with frontend, backend API, and database components\",\n            \n            \"components\": {\n                \"web_frontend\": {\n                    \"type\": \"tosca.nodes.Container.Application.Docker\",\n                    \"image\": \"swarmchestrate/webapp-frontend:v1.2.3\",\n                    \"ports\": [\"80:80\", \"443:443\"],\n                    \"environment\": {\n                        \"API_ENDPOINT\": \"http://backend:8080/api\",\n                        \"NODE_ENV\": \"production\"\n                    },\n                    \"endpoint_protocol\": \"http\",\n                    \"endpoint_port\": 80,\n                    \"endpoint_path\": \"/\",\n                    \"dependencies\": [\"api_gateway\"],\n                    \"host\": \"frontend_container_runtime\"\n                },\n                \"api_gateway\": {\n                    \"type\": \"tosca.nodes.Container.Application.Docker\",\n                    \"image\": \"swarmchestrate/api-gateway:v2.1.0\",\n                    \"ports\": [\"8080:8080\"],\n                    \"environment\": {\n                        \"DATABASE_URL\": \"postgresql://dbuser:dbpass@postgres_db:5432/appdb\",\n                        \"REDIS_URL\": \"redis://cache:6379\",\n                        \"JWT_SECRET\": \"encrypted_secret_placeholder\"\n                    },\n                    \"endpoint_protocol\": \"http\",\n                    \"endpoint_port\": 8080,\n                    \"endpoint_path\": \"/api\",\n                    \"dependencies\": [\"postgres_db\", \"redis_cache\"],\n                    \"host\": \"backend_container_runtime\"\n                },\n                \"postgres_db\": {\n                    \"type\": \"tosca.nodes.Database.PostgreSQL\",\n                    \"name\": \"appdb\",\n                    \"port\": 5432,\n                    \"user\": \"dbuser\",\n                    \"password\": \"encrypted_password_placeholder\",\n                    \"endpoint_protocol\": \"postgresql\",\n                    \"endpoint_port\": 5432,\n                    \"host\": \"database_container_runtime\"\n                },\n                \"redis_cache\": {\n                    \"type\": \"tosca.nodes.Database.Redis\",\n                    \"port\": 6379,\n                    \"max_memory\": \"1GB\",\n                    \"eviction_policy\": \"allkeys-lru\",\n                    \"endpoint_protocol\": \"redis\",\n                    \"endpoint_port\": 6379,\n                    \"host\": \"cache_container_runtime\"\n                }\n            },\n            \n            \"container_runtimes\": {\n                \"frontend_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 2,\n                    \"mem_size_gb\": 4\n                },\n                \"backend_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 4,\n                    \"mem_size_gb\": 8\n                },\n                \"database_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 4,\n                    \"mem_size_gb\": 16,\n                    \"disk_size_gb\": 100\n                },\n                \"cache_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 2,\n                    \"mem_size_gb\": 2\n                }\n            },\n            \n            \"resource_totals\": {\n                \"total_cpu_cores\": 12,\n                \"total_memory_gb\": 30,\n                \"total_disk_gb\": 100\n            },\n            \n            \"deployment_tiers\": [\"frontend\", \"backend\", \"data\"],\n            \n            \"groups\": {\n                \"frontend_tier\": [\"web_frontend\"],\n                \"backend_tier\": [\"api_gateway\", \"redis_cache\"],\n                \"data_tier\": [\"postgres_db\"]\n            },\n            \n            \"policies\": {\n                \"scaling\": {\n                    \"enabled\": true,\n                    \"targets\": [\"frontend_tier\", \"backend_tier\"],\n                    \"min_instances\": 2,\n                    \"max_instances\": 10,\n                    \"default_instances\": 3\n                },\n                \"placement\": {\n                    \"enabled\": true,\n                    \"targets\": [\"data_tier\"],\n                    \"constraint\": \"region=eu-central\",\n                    \"anti_affinity\": true,\n                    \"placement_region\": \"eu-central\"\n                },\n                \"monitoring\": {\n                    \"enabled\": true,\n                    \"targets\": [\"web_frontend\", \"api_gateway\", \"postgres_db\"],\n                    \"interval\": \"30s\",\n                    \"metrics\": [\"cpu_utilization\", \"memory_usage\", \"response_time\", \"error_rate\"]\n                }\n            },\n            \n            \"technology_stack\": [\"Docker\", \"PostgreSQL\", \"Redis\", \"Node.js\"],\n            \n            \"node_types\": [\n                \"tosca.nodes.Container.Application.Docker\",\n                \"tosca.nodes.Database.PostgreSQL\",\n                \"tosca.nodes.Database.Redis\",\n                \"tosca.nodes.Container.Runtime.Docker\"\n            ],\n            \n            \"endpoints\": {\n                \"application_endpoint\": \"http://web_frontend:80/\",\n                \"api_endpoint\": \"http://api_gateway:8080/api\"\n            },\n            \n            \"imports\": [\n                \"https://swarmchestrate.eu/tosca/types/nodes.yaml\",\n                \"https://swarmchestrate.eu/tosca/types/relationships.yaml\"\n            ],\n            \n            \"created_at\": \"2025-11-05T10:30:00Z\",\n            \"updated_at\": \"auto-calculate\",\n            \"kbagent\": \"swarmchestrate-orchestrator\",\n            \"kbagent_type\": \"TOSCA\"\n        }\n    ]\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/{{context}}/command",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"{{context}}",
+										"command"
+									]
+								},
+								"description": "Insert a test renewable energy resource document.\n\n**Note:** This demonstrates CRUD operations work correctly."
+							},
+							"response": []
+						},
+						{
+							"name": "Query 1: Find Application Descriptions from ADT Datastore",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Insert successful\", function () {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.status).to.eql(200);",
+											"    pm.expect(jsonData.data).to.include(\"Successfully inserted\");",
+											"});"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"method\": {\n        \"argcnt\": 10000,\n        \"cmd\": \"query\"\n    },\n    \"args\": [\"tosca_webapp_microservices_v1_0_0\", \"tosca_template\"],\n    \"dstype\": \"kbdata\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n        {\n           \"document_type\": \"tosca_template\",\n           \"kb_datastore\": \"ADT\"\n        }\n    ],\n    \"options\": {\n        \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n        \"time_budget_ms\": 1000,\n        \"annotate_source\": true\n    }\n}\n\n//Query 1: Find tosca templates from ADT Datastore"
+								},
+								"url": {
+									"raw": "{{base_url}}/{{context}}/command",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"{{context}}",
+										"command"
+									]
+								},
+								"description": "Insert a test renewable energy resource document.\n\n**Note:** This demonstrates CRUD operations work correctly."
+							},
+							"response": []
+						},
+						{
+							"name": "Query 2: Find Templates by Specific Author",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Insert successful\", function () {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.status).to.eql(200);",
+											"    pm.expect(jsonData.data).to.include(\"Successfully inserted\");",
+											"});"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"method\": {\n        \"argcnt\": 10000,\n        \"cmd\": \"query\"\n    },\n    \"args\": [\"tosca_webapp_microservices_v1_0_0\", \"tosca_template\"],\n    \"dstype\": \"kbdata\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n    {\n      \"document_type\": \"tosca_template\",\n      \"template_author\": \"Swarmchestrate Orchestrator\"\n    }\n    ],\n    \"options\": {\n        \"strategy\": \"LOCAL_ONLY\",\n        \"time_budget_ms\": 500\n    }\n}\n\n//Query 1: Find tosca templates from ADT Datastore"
+								},
+								"url": {
+									"raw": "{{base_url}}/{{context}}/command",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"{{context}}",
+										"command"
+									]
+								},
+								"description": "Insert a test renewable energy resource document.\n\n**Note:** This demonstrates CRUD operations work correctly."
+							},
+							"response": []
+						},
+						{
+							"name": "Query 3: Find Capacity Nodes with Available GPU and High Memory",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Insert successful\", function () {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.status).to.eql(200);",
+											"    pm.expect(jsonData.data).to.include(\"Successfully inserted\");",
+											"});"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"method\": {\n        \"argcnt\": 10000,\n        \"cmd\": \"query\"\n    },\n    \"args\": [\"*\", \"capacity_description\"],\n    \"dstype\": \"kbdata\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n        {\n            \"document_type\": \"capacity_description\",\n            \"metadata_status\": \"available\"\n        }\n    ],\n    \"options\": {\n        \"strategy\": \"PARALLEL_AGGREGATE\",\n        \"time_budget_ms\": 2000,\n        \"annotate_source\": true,\n        \"client_filters\": {\n            \"node_types\": {\n                \"$contains\": \"tosca.nodes.Compute.GPU\"\n            },\n            \"topology.edge_compute_node_01.properties.available_memory\": {\n                \"$regex\": \".*[0-9]{2,}.*GB.*\"\n            }\n        }\n    }\n}\n\n//Returns: EdgeCluster-CapacityProfile (has NVIDIA A100 GPU and 96GB available memory)"
+								},
+								"url": {
+									"raw": "{{base_url}}/{{context}}/command",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"{{context}}",
+										"command"
+									]
+								},
+								"description": "Insert a test renewable energy resource document.\n\n**Note:** This demonstrates CRUD operations work correctly."
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Scenario Complex",
+					"item": [],
+					"description": "Complete collection for inserting TOSCA templates and executing simple, medium, and complex query scenarios\n\nStartFragment\n\n## Collection Structure:\n\n### 📁 **1\\. Setup - Insert Templates** (5 requests)\n\nRun these first to insert test data:\n\n- Insert 1: WebApp Application (ADT datastore)\n    \n- Insert 2: EdgeCluster Capacity (GPU, 24 cores, eu-central-1)\n    \n- Insert 3: HybridInfra Template (K8s, Prometheus, 12 nodes)\n    \n- Insert 4: Deployment Plan (ready, match_score 0.92)\n    \n- Insert 5: ML Requirements (2-4 GPUs, high priority)\n    \n\n### 📁 **2\\. Simple Queries** (3 requests)\n\n- Q2.1: Find ADT Applications\n    \n    - Returns **(1 Record)** search document_type to of smthing AND metadata.kb_datastore (nested) to be of smthing\n        \n- Q2.2: Find Available Capacity in the EU\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find available capacity providers in EU, use of nested fields of metadata\n        \n- Q2.3: Find by Author\n    \n    - Returns **(3 Records)** based on the template author as part of a nested collection named as 'metadata'\n        \n\n### 📁 **3\\. Medium Queries** (5 requests)\n\n- Q3.1: Find GPU Capacity\n    \n    - Return **(1 Record)** Find GPU Capacity with Min 20 CPU Cores\n        \n- Q3.2: Find Available NVIDIA A100 GPUs\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find nodes with available NVIDIA A100 GPUs\n        \n- Q3.3: Find High Priority Appliciations\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find nodes with available NVIDIA A100 GPUs\n        \n- Q3.4: Find ready to deploy plans\n    \n    - Returns **(1 Record)** Deployment Plan template//Use Case: Find deployment plans ready to execute\n        \n- Q3.5: Find successful Deployments with match score\n    \n    - Returns **(1 Record)** Find high-quality deployment matches based on status and match score\n        \n\n### 📁 **4\\. Complex Queries** (2 requests)\n\n- Q4.1: Find ML/GPU Workloads\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template//Use Case: Comprehensive capacity matching - find EU nodes with GPUs and sufficient CPU>20\n        \n- Q4.2: Find K8s with Monitoring\n    \n    - Returns **(1 Record)** OpenTofu Hybrid template//Use Case: Find large active swarm clusters\n        \n\n### 📁 **5\\. Bonus Query** (1 request)\n\n- Q5.1: Capacity Matching\n    \n    - Returns **(1 Record)** Status is \"available\" Region matches \"eu-central\\*\" (eu-central-1, eu-central-2, etc.) Has at least 16 available CPU cores Node types include GPU compute nodes GPU accelerator is available Storage has at least 1TB available (regex matches \"1TB\", \"2TB\", etc.)  \n          \n        \n\nEndFragment"
+				}
+			],
+			"description": "Simple query scenarios for basic template retrieval."
+		},
+		{
+			"name": "3. Agent Queries Strategy",
+			"item": [
+				{
+					"name": "LOCAL_ONLY (baseline local)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"LOCAL_ONLY\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 800\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "REMOTE_ONLY (skip local)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"REMOTE_ONLY\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": false,\n    \"annotate_source\": true,\n    \"max_peers\": 5,\n    \"time_budget_ms\": 1000\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "LOCAL_THEN_REMOTE_MERGE (sequential merge)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 1500\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "PARALLEL_MERGE (hedged)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"PARALLEL_MERGE\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"max_peers\": 5,\n    \"time_budget_ms\": 1800\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "QUORUM (majority peers)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"QUORUM\",\n    \"consistency\": \"QUORUM\",\n    \"quorum_n\": 4,\n    \"min_rows\": 2,\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 2500\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "REMOTE_ONLY + max_peers=2 (limited fanout)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"REMOTE_ONLY\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"max_peers\": 2,\n    \"include_local\": false,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 1200\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "STALE_OK cache (TTL 10s)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"stale_ok_ttl_ms\": 10000,\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 1200\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "FORCE_REMOTE (probe even if local hits)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 2200,\n    \"force_remote\": true\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Consistency=ALL (bounded wait)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"demo-*\"}}],\n  \"trace_id\":  \"99a09e41\",\n    \"options\":  {\n                    \"include_local\":  true,\n                    \"time_budget_ms\":  800,\n                    \"annotate_source\":  true,\n                    \"consistency\":  \"BEST_EFFORT\",\n                    \"strategy\":  \"LOCAL_ONLY\"\n                }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Zero-hit control (query non-existent prefix)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_none}}\"}}],\n  \"options\": {\n    \"strategy\": \"REMOTE_ONLY\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": false,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 1200\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Queries for finding templates by node types (Docker, PostgreSQL, Kubernetes, GPU).\n\n**Note:** These queries require client-side filtering since OrbitDB doesn't support nested field queries directly in criteria. The queries retrieve all templates and you would filter the results."
+		},
+		{
+			"name": "4. CRUD Operations",
+			"item": [
+				{
+					"name": "INSERT - Test Document",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Insert successful\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql(200);",
+									"    pm.expect(jsonData.data).to.include(\"Successfully inserted\");",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudput\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\",\n      \"name\": \"Athens Solar Farm Test\",\n      \"type\": \"solar\",\n      \"capacity_mw\": 500,\n      \"location\": {\n        \"country\": \"Greece\",\n        \"region\": \"Attica\",\n        \"coordinates\": {\n          \"lat\": 37.9838,\n          \"lon\": 23.7275\n        }\n      },\n      \"status\": \"operational\",\n      \"commissioned_date\": \"2024-06-15\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "Insert a test renewable energy resource document.\n\n**Note:** This demonstrates CRUD operations work correctly."
+					},
+					"response": []
+				},
+				{
+					"name": "QUERY#1 - Test Document",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Found test document\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data).to.be.an('array');",
+									"    pm.expect(jsonData.data.length).to.eql(1);",
+									"    pm.expect(jsonData.data[0]._id).to.eql(\"test_solar_farm_001\");",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "Query the test document we just inserted."
+					},
+					"response": []
+				},
+				{
+					"name": "QUERY#2 - Complex Filter Query",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"query\",\n    \"argcnt\": 0\n  },\n  \"criteria\": [\n    {\n      \"type\": \"solar\",\n      \"status\": \"operational\",\n      \"capacity_mw\": {\"$gte\": 500}   /// experiment with other value as well\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"time_budget_ms\": 1500,\n    \"annotate_source\": true\n  }\n}\n\n/*\n\n\ncriteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\",\n      \"name\": \"Athens Solar Farm Test\",\n      \"type\": \"solar\",\n      \"capacity_mw\": 500,\n      \"location\": {\n        \"country\": \"Greece\",\n        \"region\": \"Attica\",\n        \"coordinates\": {\n          \"lat\": 37.9838,\n          \"lon\": 23.7275\n        }\n      },\n      \"status\": \"operational\",\n      \"commissioned_date\": \"2024-06-15\"\n      */"
+						},
+						"url": {
+							"raw": "http://localhost:18001/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18001",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "**Query with advanced filtering operators.**\n\n### Supported Operators:\n\n**Comparison:**\n- `{\"$gte\": value}` - Greater than or equal\n- `{\"$gt\": value}` - Greater than\n- `{\"$lte\": value}` - Less than or equal\n- `{\"$lt\": value}` - Less than\n- `{\"$ne\": value}` - Not equal\n\n**Pattern Matching:**\n- `{\"$regex\": \"pattern\"}` - Regular expression match\n\n**Example:**\n```json\n{\n  \"price\": {\"$gte\": 100, \"$lte\": 1000},\n  \"name\": {\"$regex\": \"^Gaming.*\"},\n  \"category\": \"Electronics\"\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "QUERY#3 - Complex Filter Query Copy",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"query\",\n    \"argcnt\": 0\n  },\n  \"criteria\": [\n    {\n      \"location.country\": \"Greece\"\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"time_budget_ms\": 1500,\n    \"annotate_source\": true\n  }\n}\n\n/*\n\n\ncriteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\",\n      \"name\": \"Athens Solar Farm Test\",\n      \"type\": \"solar\",\n      \"capacity_mw\": 500,\n      \"location\": {\n        \"country\": \"Greece\",\n        \"region\": \"Attica\",\n        \"coordinates\": {\n          \"lat\": 37.9838,\n          \"lon\": 23.7275\n        }\n      },\n      \"status\": \"operational\",\n      \"commissioned_date\": \"2024-06-15\"\n      */"
+						},
+						"url": {
+							"raw": "http://localhost:18001/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18001",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "**Query with advanced filtering operators.**\n\n### Supported Operators:\n\n**Comparison:**\n- `{\"$gte\": value}` - Greater than or equal\n- `{\"$gt\": value}` - Greater than\n- `{\"$lte\": value}` - Less than or equal\n- `{\"$lt\": value}` - Less than\n- `{\"$ne\": value}` - Not equal\n\n**Pattern Matching:**\n- `{\"$regex\": \"pattern\"}` - Regular expression match\n\n**Example:**\n```json\n{\n  \"price\": {\"$gte\": 100, \"$lte\": 1000},\n  \"name\": {\"$regex\": \"^Gaming.*\"},\n  \"category\": \"Electronics\"\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "UPDATE - Test Document",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Update successful\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data).to.include(\"updated\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudupdate\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ],\n  \"UpdateData\": [\n    {\n      \"status\": \"maintenance\",\n      \"maintenance_reason\": \"Scheduled panel cleaning\",\n      \"capacity_mw\": 550\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/swarmkb/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "Update the test document.\n\n**Critical:** This should preserve the _id field!"
+					},
+					"response": []
+				},
+				{
+					"name": "VERIFY UPDATE - Check _id Preserved",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"_id preserved after update\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data[0]._id).to.eql(\"test_solar_farm_001\");",
+									"});",
+									"",
+									"pm.test(\"Update applied correctly\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data[0].status).to.eql(\"maintenance\");",
+									"    pm.expect(jsonData.data[0].capacity_mw).to.eql(550);",
+									"    pm.expect(jsonData.data[0].maintenance_reason).to.eql(\"Scheduled panel cleaning\");",
+									"});",
+									"",
+									"pm.test(\"Has update timestamp\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data[0]._updated_at).to.exist;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/swarmkb/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "Verify the update was applied correctly and _id was preserved.\n\n**This is the critical test for the UPDATE fix!**"
+					},
+					"response": []
+				},
+				{
+					"name": "DELETE - Test Document",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Delete successful\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data).to.include(\"deleted\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/swarmkb/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "Delete the test document."
+					},
+					"response": []
+				},
+				{
+					"name": "DELETE - Bulk Delete",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"status\": \"maintenance\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "http://localhost:18001/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18001",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "Delete multiple documents matching a criteria."
+					},
+					"response": []
+				},
+				{
+					"name": "VERIFY DELETE",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Document deleted\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data).to.be.an('array');",
+									"    pm.expect(jsonData.data.length).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/swarmkb/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "Verify the document was deleted."
+					},
+					"response": []
+				}
+			],
+			"description": "Complete CRUD operation testing sequence:\n1. INSERT a test document\n2. QUERY to verify it exists\n3. UPDATE with new values\n4. VERIFY update (especially _id preservation)\n5. DELETE the document\n6. VERIFY deletion"
+		},
+		{
+			"name": "5. Batch Operations",
+			"item": [
+				{
+					"name": "Batch INSERT - Multiple Resources",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Batch insert successful\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data).to.include(\"Successfully inserted\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudput\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"batch_wind_001\",\n      \"name\": \"Crete Wind Farm\",\n      \"type\": \"wind\",\n      \"capacity_mw\": 300,\n      \"location\": {\"country\": \"Greece\", \"region\": \"Crete\"},\n      \"status\": \"operational\"\n    },\n    {\n      \"_id\": \"batch_hydro_001\",\n      \"name\": \"Pindus Hydroelectric\",\n      \"type\": \"hydro\",\n      \"capacity_mw\": 150,\n      \"location\": {\"country\": \"Greece\", \"region\": \"Epirus\"},\n      \"status\": \"operational\"\n    },\n    {\n      \"_id\": \"batch_geothermal_001\",\n      \"name\": \"Thessaloniki Geothermal\",\n      \"type\": \"geothermal\",\n      \"capacity_mw\": 80,\n      \"location\": {\"country\": \"Greece\", \"region\": \"Central Macedonia\"},\n      \"status\": \"under_construction\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/swarmkb/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "Insert multiple renewable energy resources in a single batch operation."
+					},
+					"response": []
+				},
+				{
+					"name": "Query Batch - By Type",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"type\": \"wind\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/swarmkb/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "Query for wind energy resources."
+					},
+					"response": []
+				},
+				{
+					"name": "Batch DELETE - Cleanup",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"type\": \"wind\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/swarmkb/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "Delete all wind energy resources (cleanup)."
+					},
+					"response": []
+				}
+			],
+			"description": "Test batch operations for inserting and managing multiple documents at once."
+		},
+		{
+			"name": "6. Replication Tests",
+			"item": [
+				{
+					"name": "1. Insert on Agent 1",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// Store timestamp for verification",
+									"pm.environment.set(\"replication_timestamp\", new Date().toISOString());"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"crudput\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"replication_test_{{$timestamp}}\",\n      \"name\": \"Replication Test Product\",\n      \"description\": \"Testing cross-node replication in distributed cluster\",\n      \"node_source\": \"Agent1\",\n      \"test_timestamp\": \"{{$isoTimestamp}}\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "http://localhost:18001/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18001",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "**Step 1:** Insert data on Node 1 to test replication."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Verify on Agent 2 (Wait 3s)",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Wait for replication",
+									"setTimeout(function(){}, 3000);"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"crudget\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ]\n}"
+						},
+						"url": {
+							"raw": "http://localhost:18002/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18002",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "**Step 2:** Query Node 2 to verify replication from Node 1."
+					},
+					"response": []
+				},
+				{
+					"name": "3. Verify on Agent 3",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"crudget\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ]\n}"
+						},
+						"url": {
+							"raw": "http://localhost:18003/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18003",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "**Step 3:** Verify on Node 5 (further from source)."
+					},
+					"response": []
+				},
+				{
+					"name": "4. Distributed Query Test",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"query\", \"argcnt\": 0},\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ],\n  \"options\": {\n    \"strategy\": \"PARALLEL_MERGE\",\n    \"time_budget_ms\": 2000,\n    \"annotate_source\": true\n  }\n}"
+						},
+						"url": {
+							"raw": "http://localhost:18003/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18003",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "**Step 4:** Use distributed query to see which nodes have the data."
+					},
+					"response": []
+				},
+				{
+					"name": "5.DELETE Replication Test",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/swarmkb/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "Cleanup: Delete the replication test document."
+					},
+					"response": []
+				},
+				{
+					"name": "6. Verify on Agent 2 (Wait 3s)",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Wait for replication",
+									"setTimeout(function(){}, 3000);"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\"cmd\": \"crudget\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ]\n}"
+						},
+						"url": {
+							"raw": "http://localhost:18002/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18002",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "**Step 2:** Query Node 2 to verify replication from Node 1."
+					},
+					"response": []
+				}
+			],
+			"description": "Test data replication across the 8-agent cluster:\n1. Insert on Agent 1\n2. Query from Agent 2 (verify replication)\n3. Update on Agent 3\n4. Verify update on Agent 1"
+		},
+		{
+			"name": "7. System Related",
+			"item": [
+				{
+					"name": "Check Agent Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/agent/status",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"agent",
+								"status"
+							]
+						},
+						"description": "StartFragment\n\n### **GET** `/{context}/agent/status`\n\nCluster-wide agent status (leader election, health, peers)\n\nIncludes:\n\n- Coordinator / follower role\n    \n- Health scores\n    \n- Reputation\n    \n- Peer connectivity\n    \n- Election metadata\n    \n\nEndFragment"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Contributions",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"contri\",\n    \"argcnt\": 1\n  },\n  \"criteria\": []\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/swarmkb/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"swarmkb",
+								"command"
+							]
+						},
+						"description": "**Query the Contributions EventLogStore.**\n\n### What are Contributions?\nContributions track peer discovery and file sharing events:\n- Peer discovery records\n- File upload events\n- IPFS content addressing\n- Replication history\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": [\n    {\n      \"agentname\": \"optimusdb-node1\",\n      \"path\": \"QmXXX...\",\n      \"contributor\": \"12D3KooXXX...\",\n      \"creationTS\": \"2025-01-15T10:30:00Z\",\n      \"localip\": \"192.168.1.100\",\n      \"nodeip\": \"203.0.113.50\",\n      \"remoteIPs\": [\"192.168.1.101\", \"192.168.1.102\"]\n    }\n  ]\n}\n```\n\n### Notes:\n- Contributions store is **read-only** via API\n- Automatically populated by peer discovery\n- Stored in OrbitDB EventLog (append-only)"
+					},
+					"response": []
+				},
+				{
+					"name": "Discovered Peers",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/peers",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"peers"
+							]
+						},
+						"description": "StartFragment\n\n### **GET** `/{context}/peers`\n\nReturns discovered peers\n\nEndFragment"
+					},
+					"response": []
+				},
+				{
+					"name": "Retrieve Logs",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/log?date=2025-12-23&hour=17",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"log"
+							],
+							"query": [
+								{
+									"key": "date",
+									"value": "2025-12-23"
+								},
+								{
+									"key": "hour",
+									"value": "17"
+								}
+							]
+						},
+						"description": "StartFragment\n\n### **GET** `/{context}/log`\n\nRetrieve OptimusDB logs\n\n**Query params**\n\n- `date=YYYY-MM-DD`\n    \n- `hour=HH`\n    \n\nThe results are based on UTC\n\nEndFragment"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Benchmarks",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/benchmarks",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"benchmarks"
+							]
+						},
+						"description": "**Gather performance benchmark data from all peers.**\n\n### Requirements:\n- OptimusDB must be started with `-benchmark` flag\n\n### Response:\n```json\n[\n  {\n    \"node_id\": \"12D3KooWXXX...\",\n    \"cpu_usage\": 15.3,\n    \"memory_usage\": 512.5,\n    \"disk_usage\": 2048.7,\n    \"network_rx\": 1024,\n    \"network_tx\": 2048,\n    \"query_latency_ms\": 45,\n    \"replication_lag_ms\": 120\n  }\n]\n```\n\n### Use Cases:\n- Performance monitoring\n- Load balancing decisions\n- Capacity planning"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Benchmark Data",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"benchmark\",\n    \"argcnt\": 0\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "**Get performance benchmark data for this node.**\n\n### Requirements:\n- OptimusDB started with `-benchmark` flag\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"node_id\": \"12D3KooWXXX...\",\n    \"cpu_usage_percent\": 15.3,\n    \"memory_usage_mb\": 512.5,\n    \"disk_usage_mb\": 2048.7,\n    \"uptime_seconds\": 3600,\n    \"queries_processed\": 1250,\n    \"avg_query_latency_ms\": 45\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Cache Stats",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"cachestats\",\n    \"argcnt\": 0\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "**Get query cache statistics.**\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"cache_size\": 1250,\n    \"hit_rate\": 0.65,\n    \"miss_rate\": 0.35,\n    \"total_hits\": 8125,\n    \"total_misses\": 4375,\n    \"evictions\": 250\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Clear Cache",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"clearcache\",\n    \"argcnt\": 0\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "**Clear the query result cache.**\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": \"Cache cleared successfully\"\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Agent Inventory",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/agent/inventory",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"agent",
+								"inventory"
+							]
+						},
+						"description": "StartFragment\n\n### **GET** `/{context}/agent/inventory`\n\nReturns agent inventory (node resources, datasets, services)\n\nReturn the current status of Agent if it is Follower/Coordinator"
+					},
+					"response": []
+				},
+				{
+					"name": "List All uploaded FIles",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "default"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"method\": {\r\n    \"cmd\": \"sqldml\",\r\n    \"argcnt\": 1\r\n  },\r\n  \"sqldml\": \"SELECT id, template_id, filename, filesize_bytes, content_sha256, uploader, source_pod, created_at FROM toscametadata ORDER BY created_at DESC LIMIT 10;\"\r\n}\r\n//### **2. Count Total Files**\r\n\r\n//**Request:**\r\n//Method: POST\r\n//URL: http://localhost:18001/swarmkb/command\r\n//Headers:\r\n // Content-Type: application/json",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:18001/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18001",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "System health and status checks."
+		},
+		{
+			"name": "8.EMS (Event Management)",
+			"item": [
+				{
+					"name": "EMS Info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/ems",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"ems"
+							]
+						},
+						"description": "Get EMS endpoint information"
+					},
+					"response": []
+				},
+				{
+					"name": "Get EMS Logs",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/ems/logs?limit=50&level=ERROR&since_min=60",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"ems",
+								"logs"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50",
+									"description": "Number of logs (1-1000)"
+								},
+								{
+									"key": "level",
+									"value": "ERROR",
+									"description": "INFO|WARN|ERROR|DEBUG"
+								},
+								{
+									"key": "since_min",
+									"value": "60",
+									"description": "Last N minutes (1-1440)"
+								}
+							]
+						},
+						"description": "Retrieve EMS logs with filtering"
+					},
+					"response": []
+				},
+				{
+					"name": "Get EMS Events",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/ems/events?limit=50&since_min=30",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"ems",
+								"events"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50",
+									"description": "Number of events (1-1000)"
+								},
+								{
+									"key": "since_min",
+									"value": "30",
+									"description": "Last N minutes (1-1440)"
+								}
+							]
+						},
+						"description": "Retrieve EMS events from ems_events table"
+					},
+					"response": []
+				},
+				{
+					"name": "Execute EMS SQL (GET)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/ems/sql?q=SELECT * FROM optimusLogger WHERE level='ERROR' LIMIT 10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"ems",
+								"sql"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "SELECT * FROM optimusLogger WHERE level='ERROR' LIMIT 10",
+									"description": "SQL query (URL encoded)"
+								}
+							]
+						},
+						"description": "Execute SQL query on EMS logger database"
+					},
+					"response": []
+				},
+				{
+					"name": "Execute EMS SQL (GET) (Coordinator/Follower)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/ems/sql?q=SELECT leader_id, term, timestamp FROM optimusLogger ORDER BY timestamp DESC LIMIT 1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"ems",
+								"sql"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "SELECT leader_id, term, timestamp FROM optimusLogger ORDER BY timestamp DESC LIMIT 1",
+									"description": "SQL query (URL encoded)"
+								}
+							]
+						},
+						"description": "Execute SQL query on EMS logger database"
+					},
+					"response": []
+				},
+				{
+					"name": "Execute EMS SQL (POST)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sql\": \"SELECT * from ems_events\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/ems/sql",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"ems",
+								"sql"
+							]
+						},
+						"description": "Execute SQL query on EMS database (POST method)"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "9.Credentials (DID)",
+			"item": [
+				{
+					"name": "Store Credential",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"@context\": [\n    \"https://www.w3.org/2018/credentials/v1\"\n  ],\n  \"id\": \"http://example.edu/credentials/3732\",\n  \"type\": [\"VerifiableCredential\"],\n  \"issuer\": \"did:example:issuer123\",\n  \"issuanceDate\": \"2025-01-01T00:00:00Z\",\n  \"credentialSubject\": {\n    \"id\": \"did:example:subject456\",\n    \"name\": \"John Doe\",\n    \"degree\": \"Bachelor of Science\"\n  },\n  \"proof\": {\n    \"type\": \"Ed25519Signature2020\",\n    \"created\": \"2025-01-01T00:00:00Z\",\n    \"verificationMethod\": \"did:example:issuer123#key-1\",\n    \"proofPurpose\": \"assertionMethod\",\n    \"proofValue\": \"z3FXQi...\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/credentials",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"credentials"
+							]
+						},
+						"description": "Store a new W3C Verifiable Credential"
+					},
+					"response": []
+				},
+				{
+					"name": "List All Credentials",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/credentials?limit=50&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"credentials"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50",
+									"description": "Number of credentials per page"
+								},
+								{
+									"key": "offset",
+									"value": "0",
+									"description": "Starting offset"
+								}
+							]
+						},
+						"description": "List all credentials with pagination"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Specific Credential",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/credentials/get/http%3A%2F%2Fexample.edu%2Fcredentials%2F3732",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"credentials",
+								"get",
+								"http%3A%2F%2Fexample.edu%2Fcredentials%2F3732"
+							]
+						},
+						"description": "Get a specific credential by ID (URL encoded)"
+					},
+					"response": []
+				},
+				{
+					"name": "Query Credentials",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"issuer\": \"did:example:issuer123\",\n  \"type\": \"VerifiableCredential\",\n  \"issuedAfter\": \"2025-01-01T00:00:00Z\",\n  \"revoked\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/credentials/query",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"credentials",
+								"query"
+							]
+						},
+						"description": "Advanced credential search with multiple filters"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Credentials by Issuer",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/credentials/issuer/did%3Aexample%3Aissuer123",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"credentials",
+								"issuer",
+								"did%3Aexample%3Aissuer123"
+							]
+						},
+						"description": "Get all credentials issued by specific issuer"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Credentials by Subject",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/{{context}}/credentials/subject/did%3Aexample%3Asubject456",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"credentials",
+								"subject",
+								"did%3Aexample%3Asubject456"
+							]
+						},
+						"description": "Get all credentials for specific subject"
+					},
+					"response": []
+				},
+				{
+					"name": "Revoke Credential",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"credentialId\": \"http://example.edu/credentials/3732\",\n  \"reason\": \"Credential no longer valid\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/credentials/revoke",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"credentials",
+								"revoke"
+							]
+						},
+						"description": "Revoke a credential with reason"
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Credential",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"@context\": [\n    \"https://www.w3.org/2018/credentials/v1\"\n  ],\n  \"id\": \"http://example.edu/credentials/3732\",\n  \"type\": [\"VerifiableCredential\"],\n  \"issuer\": \"did:example:issuer123\",\n  \"issuanceDate\": \"2025-01-01T00:00:00Z\",\n  \"credentialSubject\": {\n    \"id\": \"did:example:subject456\"\n  },\n  \"proof\": {\n    \"type\": \"Ed25519Signature2020\",\n    \"proofValue\": \"z3FXQi...\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/credentials/verify",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"credentials",
+								"verify"
+							]
+						},
+						"description": "Verify authenticity of a credential"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "10.Metadata",
+			"item": [
+				{
+					"name": "Enrich Single Dataset",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"database\": \"renewable_energy\",\n  \"table\": \"solar_telemetry\",\n  \"max_rows\": 200\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/metadata/enrich",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"metadata",
+								"enrich"
+							]
+						},
+						"description": "AI-powered metadata enrichment for a single dataset"
+					},
+					"response": []
+				},
+				{
+					"name": "Enrich Multiple Datasets (Batch)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"datasets\": [\n    {\n      \"database\": \"renewable_energy\",\n      \"table\": \"solar_telemetry\"\n    },\n    {\n      \"database\": \"renewable_energy\",\n      \"table\": \"wind_telemetry\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/metadata/enrich-batch",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"metadata",
+								"enrich-batch"
+							]
+						},
+						"description": "Enrich multiple datasets in parallel"
+					},
+					"response": []
+				},
+				{
+					"name": "Profile Dataset",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/metadata/profile?db=renewable_energy&table=solar_telemetry&max_rows=200",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"metadata",
+								"profile"
+							],
+							"query": [
+								{
+									"key": "db",
+									"value": "renewable_energy",
+									"description": "Database name"
+								},
+								{
+									"key": "table",
+									"value": "solar_telemetry",
+									"description": "Table name"
+								},
+								{
+									"key": "max_rows",
+									"value": "200",
+									"description": "Sample size"
+								}
+							]
+						},
+						"description": "Get statistical profile of a dataset (no AI)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Metadata Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/metadata/metrics",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"metadata",
+								"metrics"
+							]
+						},
+						"description": "Get enrichment service metrics and statistics"
+					},
+					"response": []
+				},
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/metadata/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"metadata",
+								"health"
+							]
+						},
+						"description": "Check metadata service and LLM health"
+					},
+					"response": []
+				},
+				{
+					"name": "Clear Metadata Cache",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/metadata/cache",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"metadata",
+								"cache"
+							]
+						},
+						"description": "Clear all cached metadata (forces re-enrichment)"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "11. SQL Operations",
+			"item": [
+				{
+					"name": "SQL CREATE TABLE",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE, phone TEXT, address TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "Create new table in SQLite database."
+					},
+					"response": []
+				},
+				{
+					"name": "SQL SELECT",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"SELECT * FROM products WHERE price > 1000 ORDER BY price DESC LIMIT 10\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "**Execute SQL SELECT query against local SQLite database.**\n\n### Process:\n1. Execute query on local SQLite\n2. If no results, automatically query remote peers\n3. Deduplicate results from multiple sources\n4. Return merged dataset\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"records\": [\n      {\"id\": 1, \"name\": \"Product A\", \"price\": 1500},\n      {\"id\": 2, \"name\": \"Product B\", \"price\": 1200}\n    ]\n  }\n}\n```\n\n### Features:\n- **Automatic peer fallback**: Queries peers if local DB is empty\n- **Deduplication**: Removes duplicate rows from merged results\n- **Full SQL support**: All SELECT features (JOIN, GROUP BY, etc.)"
+					},
+					"response": []
+				},
+				{
+					"name": "SQL INSERT with Metadata",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"INSERT INTO products (name, description, category, price, stock) VALUES ('Mechanical Keyboard Pro', 'Professional mechanical keyboard with Cherry MX Red switches, RGB per-key backlighting, aluminum frame, USB-C connection, N-key rollover, dedicated media controls', 'Accessories', 179.99, 50)\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "**SQL INSERT with automatic metadata generation.**\n\n### Automatic Metadata Process:\n1. **SQL INSERT** executed in local SQLite\n2. **System metadata** generated:\n   - Unique ID (hash-based)\n   - Timestamps (created_at, updated_at)\n   - Source information (node, IP)\n   - Author/creator tracking\n3. **Contextual metadata** attempted:\n   - TinyLlama generates description summary\n   - Keywords extracted from content\n   - Tags auto-generated\n   - Name/title inference\n4. **Metadata storage**:\n   - **OrbitDB KBMetadata**: Distributed catalog\n   - **SQLite metadata_catalog**: Local index\n5. **Replication**: Metadata synced to cluster\n\n### Generated Metadata Example:\n```json\n{\n  \"id\": \"meta_a1b2c3d4\",\n  \"metadata_type\": \"dataset\",\n  \"component\": \"products\",\n  \"behaviour\": \"transactional\",\n  \"description\": \"Professional mechanical keyboard for gaming and productivity\",\n  \"name\": \"Mechanical Keyboard Pro\",\n  \"tags\": [\"keyboard\", \"mechanical\", \"gaming\", \"rgb\"],\n  \"created_by\": \"optimusdb-node1\",\n  \"created_at\": \"2025-01-15T10:30:00Z\",\n  \"updated_at\": \"2025-01-15T10:30:00Z\"\n}\n```\n\n### Fallback Behavior:\n- If TinyLlama unavailable, basic metadata still generated\n- Description set to fallback message\n- System metadata always created\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"status\": \"success\",\n    \"message\": \"SQL statement executed successfully\"\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "SQL UPDATE",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"UPDATE products SET price = 159.99, stock = 45 WHERE name = 'Mechanical Keyboard Pro'\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "Execute SQL UPDATE statement."
+					},
+					"response": []
+				},
+				{
+					"name": "SQL DELETE",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"DELETE FROM products WHERE stock = 0 AND status = 'discontinued'\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "Execute SQL DELETE statement."
+					},
+					"response": []
+				},
+				{
+					"name": "SQL Complex Query",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"SELECT category, COUNT(*) as count, AVG(price) as avg_price, MIN(price) as min_price, MAX(price) as max_price FROM products WHERE stock > 0 GROUP BY category HAVING COUNT(*) > 5 ORDER BY avg_price DESC\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "Complex aggregation query with GROUP BY and HAVING."
+					},
+					"response": []
+				},
+				{
+					"name": "SQL Query Data Catalog",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "default"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"method\": {\r\n        \"argcnt\": 2,\r\n        \"cmd\": \"sqldml\"\r\n    },\r\n    \"args\": [\"dummy1\", \"dummy2\"],\r\n    \"dstype\": \"dsswres\",\r\n    \"sqldml\": \"select * from datacatalog;\",\r\n    \"graph_traversal\": [{}],\r\n    \"criteria\": []\r\n}\r\n///Indexing the Data Catalog",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:18001/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18001",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SQL Query Insert to Data Catalog",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "default"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"method\": {\r\n        \"argcnt\": 2,\r\n        \"cmd\": \"sqldml\"\r\n    },\r\n    \"args\": [\"dummy1\", \"dummy2\"],\r\n    \"dstype\": \"dsswres\",\r\n    \"sqldml\": \"INSERT INTO datacatalog (_id, author, metadata_type, component, behaviour, relationships, associated_id, name, description, tags, status, created_by, created_at, updated_at, related_ids, priority, scheduling_info, sla_constraints, ownership_details, audit_trail) VALUES ('123776', 'John Doe', 'Type A', 'Component X', 'Passive', 'Relation A', '456789', 'Sample Name', 'Sample Description', 'tag1,tag2', 'Active', 'Admin', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'related-123', 'High', 'Scheduled', 'SLA-001', 'Owner-001', 'Audit Trail Info');\",\r\n    \"graph_traversal\": [{}],\r\n    \"criteria\": []\r\n}\r\n///Puting the Data Catalog",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:18001/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18001",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SQL Query Logging context",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "default"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"method\": {\r\n        \"argcnt\": 2,\r\n        \"cmd\": \"sqldml\"\r\n    },\r\n    \"args\": [\"dummy1\", \"dummy2\"],\r\n    \"dstype\": \"dsswres\",\r\n    \"sqldml\": \"SELECT timestamp, level, message, source FROM optimusLogger WHERE date = 2025-12-04 AND hour = 22 ORDER BY timestamp DESC;\",\r\n    \"graph_traversal\": [{}],\r\n    \"criteria\": []\r\n}\r\n///Puting the Data Catalog",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:18001/swarmkb/command",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "18001",
+							"path": [
+								"swarmkb",
+								"command"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "SQL operations on local SQLite database with automatic peer fallback and metadata generation."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:18001"
+		},
+		{
+			"key": "webapp_template_id",
+			"value": ""
+		},
+		{
+			"key": "capacity_template_id",
+			"value": ""
+		},
+		{
+			"key": "opentofu_template_id",
+			"value": ""
+		},
+		{
+			"key": "deployment_template_id",
+			"value": ""
+		},
+		{
+			"key": "requirements_template_id",
+			"value": ""
+		},
+		{
+			"key": "context",
+			"value": ""
+		},
+		{
+			"key": "dataStore",
+			"value": "",
+			"type": "default"
+		}
+	]
+}
