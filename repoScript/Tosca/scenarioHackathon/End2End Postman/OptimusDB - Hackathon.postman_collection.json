@@ -571,11 +571,490 @@
 				},
 				{
 					"name": "Scenario Complex",
-					"item": [],
-					"description": "Complete collection for inserting TOSCA templates and executing simple, medium, and complex query scenarios\n\nStartFragment\n\n## Collection Structure:\n\n### 📁 **1\\. Setup - Insert Templates** (5 requests)\n\nRun these first to insert test data:\n\n- Insert 1: WebApp Application (ADT datastore)\n    \n- Insert 2: EdgeCluster Capacity (GPU, 24 cores, eu-central-1)\n    \n- Insert 3: HybridInfra Template (K8s, Prometheus, 12 nodes)\n    \n- Insert 4: Deployment Plan (ready, match_score 0.92)\n    \n- Insert 5: ML Requirements (2-4 GPUs, high priority)\n    \n\n### 📁 **2\\. Simple Queries** (3 requests)\n\n- Q2.1: Find ADT Applications\n    \n    - Returns **(1 Record)** search document_type to of smthing AND metadata.kb_datastore (nested) to be of smthing\n        \n- Q2.2: Find Available Capacity in the EU\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find available capacity providers in EU, use of nested fields of metadata\n        \n- Q2.3: Find by Author\n    \n    - Returns **(3 Records)** based on the template author as part of a nested collection named as 'metadata'\n        \n\n### 📁 **3\\. Medium Queries** (5 requests)\n\n- Q3.1: Find GPU Capacity\n    \n    - Return **(1 Record)** Find GPU Capacity with Min 20 CPU Cores\n        \n- Q3.2: Find Available NVIDIA A100 GPUs\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find nodes with available NVIDIA A100 GPUs\n        \n- Q3.3: Find High Priority Appliciations\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find nodes with available NVIDIA A100 GPUs\n        \n- Q3.4: Find ready to deploy plans\n    \n    - Returns **(1 Record)** Deployment Plan template//Use Case: Find deployment plans ready to execute\n        \n- Q3.5: Find successful Deployments with match score\n    \n    - Returns **(1 Record)** Find high-quality deployment matches based on status and match score\n        \n\n### 📁 **4\\. Complex Queries** (2 requests)\n\n- Q4.1: Find ML/GPU Workloads\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template//Use Case: Comprehensive capacity matching - find EU nodes with GPUs and sufficient CPU>20\n        \n- Q4.2: Find K8s with Monitoring\n    \n    - Returns **(1 Record)** OpenTofu Hybrid template//Use Case: Find large active swarm clusters\n        \n\n### 📁 **5\\. Bonus Query** (1 request)\n\n- Q5.1: Capacity Matching\n    \n    - Returns **(1 Record)** Status is \"available\" Region matches \"eu-central\\*\" (eu-central-1, eu-central-2, etc.) Has at least 16 available CPU cores Node types include GPU compute nodes GPU accelerator is available Storage has at least 1TB available (regex matches \"1TB\", \"2TB\", etc.)  \n          \n        \n\nEndFragment"
+					"item": [
+						{
+							"name": "1. Setup - Insert Templates",
+							"item": [
+								{
+									"name": "Insert 1 - WebApp Application",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"crudput\"\n  },\n  \"args\": [\"tosca_webapp_microservicesapplication_v1_0_0\", \"application_description\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"_id\": \"tosca_webapp_microservicesapplication_v1_0_0\",\n      \"document_type\": \"application_description\",\n      \"tosca_version\": \"tosca_simple_yaml_1_3\",\n      \n      \"metadata\": {\n        \"template_name\": \"WebApp-MicroservicesApplication\",\n        \"template_author\": \"Swarmchestrate Orchestrator\",\n        \"template_version\": \"1.0.0\",\n        \"kb_datastore\": \"ADT\",\n        \"creation_timestamp\": \"2025-11-05T10:30:00Z\"\n      },\n      \n      \"description\": \"E-commerce web application with frontend, backend API, and database components\",\n      \n      \"node_types\": [\n        \"tosca.nodes.Container.Application.Docker\",\n        \"tosca.nodes.Database.PostgreSQL\",\n        \"tosca.nodes.Database.Redis\",\n        \"tosca.nodes.Container.Runtime.Docker\"\n      ],\n      \n      \"policy_types\": [\n        \"tosca.policies.Scaling\",\n        \"tosca.policies.Placement\",\n        \"tosca.policies.Monitoring\"\n      ],\n      \n      \"groups\": [\"frontend_tier\", \"backend_tier\", \"data_tier\"],\n      \n      \"created_at\": \"2025-11-05T10:30:00Z\",\n      \"kbagent\": \"swarmchestrate_orchestrator\"\n    }\n  ]\n}\n//1. WebApp MicroservicesApplication (Application Description)"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Insert WebApp-MicroservicesApplication**\n\nE-commerce application with:\n- Docker containers (frontend, API gateway)\n- PostgreSQL database\n- Redis cache\n- Scaling: 2-10 instances\n- Datastore: ADT"
+									},
+									"response": []
+								},
+								{
+									"name": "Insert 2 - EdgeCluster Capacity",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"crudput\"\n  },\n  \"args\": [\"tosca_edgecluster_capacityprofile_v1_0_0\", \"capacity_description\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"_id\": \"tosca_edgecluster_capacityprofile_v1_0_0\",\n      \"document_type\": \"capacity_description\",\n      \"tosca_version\": \"tosca_simple_yaml_1_3\",\n      \n      \"metadata\": {\n        \"template_name\": \"EdgeCluster-CapacityProfile\",\n        \"template_author\": \"Capacity Provider\",\n        \"template_version\": \"1.0.0\",\n        \"kb_datastore\": \"Capacity_Descriptions\",\n        \"region\": \"eu-central-1\",\n        \"status\": \"available\"\n      },\n      \n      \"description\": \"Available capacity at edge location including compute, storage, and network resources\",\n      \n      \"node_types\": [\n        \"tosca.nodes.Compute.Physical\",\n        \"tosca.nodes.Storage.BlockStorage\",\n        \"tosca.nodes.Compute.GPU\",\n        \"tosca.nodes.Container.Runtime.Kubernetes\"\n      ],\n      \n      \"topology\": {\n        \"edge_compute_node_01\": {\n          \"properties\": {\n            \"available_cpu_cores\": 24,\n            \"available_memory\": \"96 GB\"\n          }\n        },\n        \"gpu_accelerator_01\": {\n          \"properties\": {\n            \"gpu_model\": \"NVIDIA A100\",\n            \"gpu_memory\": \"40 GB\",\n            \"available\": true\n          }\n        },\n        \"local_storage_01\": {\n          \"properties\": {\n            \"available_size\": \"1.5 TB\"\n          }\n        }\n      },\n      \n      \"created_at\": \"2025-11-05T10:30:00Z\",\n      \"kbagent\": \"capacity_provider\"\n    }\n  ]\n}\n// EdgeCluster CapacityProfile (Capacity Description)"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Insert EdgeCluster-CapacityProfile**\n\nEdge cluster capacity:\n- CPU: 24 cores available\n- Memory: 96 GB available\n- GPU: NVIDIA A100, 40GB\n- Storage: 1.5 TB NVMe SSD\n- Region: eu-central-1\n- Status: available"
+									},
+									"response": []
+								},
+								{
+									"name": "Insert 3 - HybridInfra Template",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"crudput\"\n  },\n  \"args\": [\"tosca_hybridinfrastructure_swarmdeployment_v1_0_0\", \"opentofu_tosca_template\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"_id\": \"tosca_hybridinfrastructure_swarmdeployment_v1_0_0\",\n      \"document_type\": \"opentofu_tosca_template\",\n      \"tosca_version\": \"tosca_simple_yaml_1_3\",\n      \n      \"metadata\": {\n        \"template_name\": \"HybridInfrastructure-SwarmDeployment\",\n        \"template_author\": \"Swarmchestrate Orchestrator\",\n        \"template_version\": \"1.0.0\",\n        \"kb_datastore\": \"OpenTofu_TOSCA_Templates\",\n        \"creation_timestamp\": \"2025-11-05T10:30:00Z\"\n      },\n      \n      \"description\": \"Hybrid infrastructure template combining TOSCA service descriptions with OpenTofu infrastructure provisioning\",\n      \n      \"node_types\": [\n        \"tosca.nodes.Container.Runtime.Kubernetes.Namespace\",\n        \"tosca.nodes.LoadBalancer.Nginx\",\n        \"tosca.nodes.ServiceMesh.Istio\",\n        \"tosca.nodes.Monitoring.Prometheus\"\n      ],\n      \n      \"groups\": [\"infrastructure_layer\", \"observability_layer\", \"security_layer\"],\n      \n      \"swarm_status\": {\n        \"total_nodes\": 12,\n        \"active_nodes\": 11\n      },\n      \n      \"opentofu_config\": {\n        \"providers\": {\n          \"kubernetes\": {\n            \"source\": \"hashicorp/kubernetes\"\n          }\n        }\n      },\n      \n      \"created_at\": \"2025-11-05T10:30:00Z\",\n      \"kbagent\": \"swarmchestrate_orchestrator\"\n    }\n  ]\n}\n//HybridInfrastructure SwarmDeployment (OpenTofu/TOSCA Template)\n"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Insert HybridInfrastructure-SwarmDeployment**\n\nHybrid infrastructure:\n- Kubernetes namespace\n- Nginx ingress\n- Istio service mesh\n- Prometheus monitoring\n- 12 node swarm cluster\n- OpenTofu compatible"
+									},
+									"response": []
+								},
+								{
+									"name": "Insert 4 - Deployment Plan",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"crudput\"\n  },\n  \"args\": [\"tosca_deploymentplan_webapp_release_v1_0_0\", \"deployment_release_plan\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"_id\": \"tosca_deploymentplan_webapp_release_v1_0_0\",\n      \"document_type\": \"deployment_release_plan\",\n      \"tosca_version\": \"tosca_simple_yaml_1_3\",\n      \n      \"metadata\": {\n        \"template_name\": \"DeploymentPlan-WebApp-Release\",\n        \"template_author\": \"Swarmchestrate Orchestrator\",\n        \"template_version\": \"1.0.0\",\n        \"execution_status\": \"ready_for_deployment\"\n      },\n      \n      \"description\": \"Executable deployment plan with specific resource assignments and orchestration instructions\",\n      \n      \"capacity_matching\": {\n        \"status\": \"successful\",\n        \"match_score\": 0.92\n      },\n      \n      \"workflows\": [\"deployment_workflow\", \"rollback_workflow\"],\n      \n      \"created_at\": \"2025-11-05T10:30:45Z\",\n      \"kbagent\": \"swarmchestrate_orchestrator\"\n    }\n  ]\n}\n//DeploymentPlan WebApp Release (Deployment/Release Plan)"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Insert DeploymentPlan-WebApp-Release**\n\nDeployment plan:\n- Status: ready_for_deployment\n- Match score: 0.92\n- Workflows: deployment + rollback\n- Resources: 12 CPU, 30GB RAM\n- Nodes: 3 allocated"
+									},
+									"response": []
+								},
+								{
+									"name": "Insert 5 - ML Requirements",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"crudput\"\n  },\n  \"args\": [\"tosca_applicationrequirements_mltrainingworkload_v1_0_0\", \"application_requirements\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"_id\": \"tosca_applicationrequirements_mltrainingworkload_v1_0_0\",\n      \"document_type\": \"application_requirements\",\n      \"tosca_version\": \"tosca_simple_yaml_1_3\",\n      \n      \"metadata\": {\n        \"template_name\": \"ApplicationRequirements-MLTrainingWorkload\",\n        \"template_author\": \"Application Owner\",\n        \"template_version\": \"1.0.0\",\n        \"priority\": \"high\",\n        \"sla_tier\": \"gold\"\n      },\n      \n      \"description\": \"Machine Learning training workload requirements for computer vision model\",\n      \n      \"node_types\": [\n        \"tosca.nodes.Application.Requirements\",\n        \"tosca.nodes.Compute.GPU.Requirements\",\n        \"tosca.nodes.Storage.Requirements\"\n      ],\n      \n      \"policy_types\": [\n        \"tosca.policies.Placement.Requirements\",\n        \"tosca.policies.Performance.Requirements\"\n      ],\n      \n      \"topology\": {\n        \"gpu_requirements\": {\n          \"properties\": {\n            \"gpu_count_min\": 2,\n            \"gpu_memory_min\": \"32 GB\"\n          }\n        },\n        \"placement_constraints\": {\n          \"properties\": {\n            \"geographical_region\": [\"eu-central\", \"eu-west\"]\n          }\n        }\n      },\n      \n      \"created_at\": \"2025-11-05T09:45:00Z\",\n      \"kbagent\": \"application_owner\"\n    }\n  ]\n}\n//ApplicationRequirements MLTrainingWorkload (Application Requirements)"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Insert ApplicationRequirements-MLTrainingWorkload**\n\nML training requirements:\n- Priority: high\n- GPU: 2-4 units, 32-40GB each\n- CPU: 16-32 cores\n- Memory: 64-128 GB\n- Region: eu-central or eu-west\n- Tensor cores required"
+									},
+									"response": []
+								}
+							],
+							"description": "Insert all 5 TOSCA templates before running queries"
+						},
+						{
+							"name": "2. Simple Queries",
+							"item": [
+								{
+									"name": "Q2.1 - Find ADT Applications",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"query\"\n  },\n  \"args\": [\"*\", \"application_description\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"document_type\": \"application_description\",\n      \"metadata.kb_datastore\": \"ADT\"\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"time_budget_ms\": 1000,\n    \"annotate_source\": true\n  }\n}\n// 1 Result search document_type to of smthing AND metadata.kb_datastore (nested) to be of smthing"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Query 1: Find Application Descriptions from ADT Datastore**\n\n**Type:** Simple (2 criteria)\n\n**Criteria:**\n- document_type = application_description\n- metadata_kb_datastore = ADT\n\n**Expected:** 1 result (WebApp-MicroservicesApplication)"
+									},
+									"response": []
+								},
+								{
+									"name": "Q2.2: Find Available Capacity in EU Region",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"metadata.region\": \"eu-central-1\",\n      \"metadata.status\": \"available\"\n    }\n  ]\n}\n//Returns (1 record)  EdgeCluster Capacity template, Find available capacity providers in EU, use of nested fields of metadata\n"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Query 1: Find Application Descriptions from ADT Datastore**\n\n**Type:** Simple (2 criteria)\n\n**Criteria:**\n- document_type = application_description\n- metadata_kb_datastore = ADT\n\n**Expected:** 1 result (WebApp-MicroservicesApplication)"
+									},
+									"response": []
+								},
+								{
+									"name": "Q2.3 - Find by Author",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"query\"\n  },\n  \"args\": [\"*\", \"tosca_template\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"metadata.template_author\": \"Swarmchestrate Orchestrator\"\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_ONLY\",\n    \"time_budget_ms\": 500\n  }\n}\n// Returns 1 record based on the template author as part of a nested collection named as 'metadata'"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Query 2: Find Templates by Author**\n\n**Type:** Simple (1 criteria)\n\n**Criteria:**\n- metadata_template_author = Swarmchestrate Orchestrator\n\n**Expected:** 3 results (WebApp, HybridInfra, DeploymentPlan)"
+									},
+									"response": []
+								}
+							],
+							"description": "Simple queries with basic equality matching"
+						},
+						{
+							"name": "3. Medium Queries",
+							"item": [
+								{
+									"name": "Q3.1 - Find GPU Capacity",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"document_type\": \"capacity_description\",\n      \"metadata.status\": \"available\",\n      \"node_types\": {\n        \"$contains\": \"tosca.nodes.Compute.GPU\"\n      },\n      \"topology.edge_compute_node_01.properties.available_cpu_cores\": {\n        \"$gte\": 20\n      }\n    }\n  ]\n}\n//Return (1 Record) Find GPU Capacity with Min 20 CPU Cores\n"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Query 3: Find Available GPU Capacity**\n\n**Type:** Medium (4 criteria with operators)\n\n**Criteria:**\n- document_type = capacity_description\n- metadata_status = available\n- node_types contains GPU ($contains)\n- available_cpu_cores >= 20 ($gte)\n\n**Expected:** 1 result (EdgeCluster with NVIDIA A100, 24 CPU cores)"
+									},
+									"response": []
+								},
+								{
+									"name": "Q3.2 - Find Available NVIDIA A100 GPUs",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"topology.gpu_accelerator_01.properties.available\": true,\n      \"topology.gpu_accelerator_01.properties.gpu_model\": \"NVIDIA A100\"\n    }\n  ]\n}\n//Returns (1 Record) EdgeCluster Capacity template, Find nodes with available NVIDIA A100 GPUs"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Query 3: Find Available GPU Capacity**\n\n**Type:** Medium (4 criteria with operators)\n\n**Criteria:**\n- document_type = capacity_description\n- metadata_status = available\n- node_types contains GPU ($contains)\n- available_cpu_cores >= 20 ($gte)\n\n**Expected:** 1 result (EdgeCluster with NVIDIA A100, 24 CPU cores)"
+									},
+									"response": []
+								},
+								{
+									"name": "Q3.3 - Find High Priority Applications",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"document_type\": \"application_requirements\",\n      \"metadata.priority\": \"high\"\n    }\n  ]\n}\n//Expected Result: ML Training Requirements template\n//Use Case: Find all high-priority application requests"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Query 3: Find Available GPU Capacity**\n\n**Type:** Medium (4 criteria with operators)\n\n**Criteria:**\n- document_type = capacity_description\n- metadata_status = available\n- node_types contains GPU ($contains)\n- available_cpu_cores >= 20 ($gte)\n\n**Expected:** 1 result (EdgeCluster with NVIDIA A100, 24 CPU cores)"
+									},
+									"response": []
+								},
+								{
+									"name": "Q3.4 - Find Ready-to-Deploy Plans",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"document_type\": \"deployment_release_plan\",\n      \"metadata.execution_status\": \"ready_for_deployment\"\n    }\n  ]\n}\n//Expected Result: Deployment Plan template\n//Use Case: Find deployment plans ready to execute"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Query 3: Find Available GPU Capacity**\n\n**Type:** Medium (4 criteria with operators)\n\n**Criteria:**\n- document_type = capacity_description\n- metadata_status = available\n- node_types contains GPU ($contains)\n- available_cpu_cores >= 20 ($gte)\n\n**Expected:** 1 result (EdgeCluster with NVIDIA A100, 24 CPU cores)"
+									},
+									"response": []
+								},
+								{
+									"name": "Q3.5 - Find Successful Deployments with High Match Score",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"capacity_matching.status\": \"successful\",\n      \"capacity_matching.match_score\": {\n        \"$gte\": 0.9\n      }\n    }\n  ]\n}\n//Expected Result: Deployment Plan template\n//Use Case: Find high-quality deployment matches"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Query 3: Find Available GPU Capacity**\n\n**Type:** Medium (4 criteria with operators)\n\n**Criteria:**\n- document_type = capacity_description\n- metadata_status = available\n- node_types contains GPU ($contains)\n- available_cpu_cores >= 20 ($gte)\n\n**Expected:** 1 result (EdgeCluster with NVIDIA A100, 24 CPU cores)"
+									},
+									"response": []
+								}
+							],
+							"description": "Medium queries with operator-based filtering"
+						},
+						{
+							"name": "4. Complex Queries",
+							"item": [
+								{
+									"name": "Q4.1 - Complex - Available EU Capacity with GPU",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"$and\": [\n        {\n          \"document_type\": \"capacity_description\"\n        },\n        {\n          \"metadata.status\": \"available\"\n        },\n        {\n          \"metadata.region\": {\n            \"$regex\": \"eu-.*\"\n          }\n        },\n        {\n          \"topology.gpu_accelerator_01.properties.available\": true\n        },\n        {\n          \"topology.edge_compute_node_01.properties.available_cpu_cores\": {\n            \"$gte\": 20\n          }\n        }\n      ]\n    }\n  ]\n}\n\n//Expected Result: EdgeCluster Capacity template\n//Use Case: Comprehensive capacity matching - find EU nodes with GPUs and sufficient CPU>20"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Query 6: Find K8s Infrastructure with Monitoring**\n\n**Type:** Complex (5+ criteria with $and/$or)\n\n**Criteria:**\n- document_type = opentofu_tosca_template ($and)\n- node_types has BOTH K8s AND Prometheus ($all)\n- Either total_nodes >= 10 OR has kubernetes provider ($or)\n- groups contains observability_layer ($contains)\n- created >= 2025-01-01 ($gte)\n\n**Expected:** 1 result (HybridInfrastructure with 12 nodes, K8s, Prometheus)"
+									},
+									"response": []
+								},
+								{
+									"name": "Q4.2 - Find Large Swarm Clusters",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"swarm_status.total_nodes\": {\n        \"$gte\": 10\n      },\n      \"swarm_status.active_nodes\": {\n        \"$gte\": 10\n      }\n    }\n  ]\n}\n//Expected Result: OpenTofu Hybrid template\n//Use Case: Find large active swarm clusters"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Query 6: Find K8s Infrastructure with Monitoring**\n\n**Type:** Complex (5+ criteria with $and/$or)\n\n**Criteria:**\n- document_type = opentofu_tosca_template ($and)\n- node_types has BOTH K8s AND Prometheus ($all)\n- Either total_nodes >= 10 OR has kubernetes provider ($or)\n- groups contains observability_layer ($contains)\n- created >= 2025-01-01 ($gte)\n\n**Expected:** 1 result (HybridInfrastructure with 12 nodes, K8s, Prometheus)"
+									},
+									"response": []
+								}
+							],
+							"description": "Complex queries with multiple operators and logical conditions"
+						},
+						{
+							"name": "5. Bonus Query",
+							"item": [
+								{
+									"name": "Q5.1 - Capacity Matching",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"query\"\n  },\n  \"args\": [\"*\", \"capacity_description\"],\n  \"dstype\": \"kbdata\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"document_type\": \"capacity_description\",\n      \"metadata.status\": \"available\",\n      \"metadata.region\": {\n        \"$regex\": \"eu-central.*\"\n      },\n      \"topology.edge_compute_node_01.properties.available_cpu_cores\": {\n        \"$gte\": 16\n      },\n      \"node_types\": {\n        \"$contains\": \"tosca.nodes.Compute.GPU\"\n      },\n      \"topology.gpu_accelerator_01.properties.available\": true,\n      \"topology.local_storage_01.properties.available_size\": {\n        \"$regex\": \".*[1-9].*TB.*\"\n      }\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"PARALLEL_AGGREGATE\",\n    \"time_budget_ms\": 2500,\n    \"annotate_source\": true\n  }\n}\n\n\n//Finds capacity descriptions that match ALL of these criteria:\n/*\nDocument type is \"capacity_description\"\n Status is \"available\"\n Region matches \"eu-central*\" (eu-central-1, eu-central-2, etc.)\n Has at least 16 available CPU cores\n Node types include GPU compute nodes\n GPU accelerator is available\n Storage has at least 1TB available (regex matches \"1TB\", \"2TB\", etc.)\n\nExpected Result: 1 Record\n*/"
+										},
+										"url": {
+											"raw": "{{base_url}}/{{context}}/command",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"{{context}}",
+												"command"
+											]
+										},
+										"description": "**Query 7: Find Capacity Matching ML Requirements**\n\n**Type:** Bonus - Capacity Matching (7 criteria)\n\n**Purpose:** Find capacity that satisfies ML workload from Q5\n\n**Criteria:**\n- document_type = capacity_description\n- metadata_status = available\n- metadata_region matches eu-central* ($regex)\n- available_cpu_cores >= 16 ($gte)\n- node_types contains GPU ($contains)\n- gpu available = true\n- storage >= 1TB ($regex)\n\n**Expected:** 1 result (EdgeCluster: 24 CPU, 96GB RAM, A100 GPU, 1.5TB storage)\n\n**Matches ML Requirement:**\n- CPU: 24 >= 16 ✓\n- Memory: 96GB (within 64-128GB) ✓\n- GPU: A100 40GB ✓\n- Storage: 1.5TB >= 1TB ✓\n- Region: eu-central-1 ✓"
+									},
+									"response": []
+								}
+							],
+							"description": "Capacity matching query combining application requirements with available resources"
+						}
+					],
+					"description": "Complete collection for inserting TOSCA templates and executing simple, medium, and complex query scenarios\n\nStartFragment\n\n## Collection Structure:\n\n### 📁 **1\\. Setup - Insert Templates** (5 requests)\n\nRun these first to insert test data:\n\n- Insert 1: WebApp Application (ADT datastore)\n    \n- Insert 2: EdgeCluster Capacity (GPU, 24 cores, eu-central-1)\n    \n- Insert 3: HybridInfra Template (K8s, Prometheus, 12 nodes)\n    \n- Insert 4: Deployment Plan (ready, match_score 0.92)\n    \n- Insert 5: ML Requirements (2-4 GPUs, high priority)\n    \n\n### 📁 **2\\. Simple Queries** (3 requests)\n\n- Q2.1: Find ADT Applications\n    \n    - Returns **(1 Record)** search document_type to of smthing AND metadata.kb_datastore (nested) to be of smthing\n        \n- Q2.2: Find Available Capacity in the EU\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find available capacity providers in EU, use of nested fields of metadata\n        \n- Q2.3: Find by Author\n    \n    - Returns **(3 Records)** based on the template author as part of a nested collection named as 'metadata'\n        \n\n### 📁 **3\\. Medium Queries** (5 requests)\n\n- Q3.1: Find GPU Capacity\n    \n    - Return **(1 Record)** Find GPU Capacity with Min 20 CPU Cores\n        \n- Q3.2: Find Available NVIDIA A100 GPUs\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find nodes with available NVIDIA A100 GPUs\n        \n- Q3.3: Find High Priority Appliciations\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find nodes with available NVIDIA A100 GPUs\n        \n- Q3.4: Find ready to deploy plans\n    \n    - Returns **(1 Record)** Deployment Plan template//Use Case: Find deployment plans ready to execute\n        \n- Q3.5: Find successful Deployments with match score\n    \n    - Returns **(1 Record)** Find high-quality deployment matches based on status and match score\n        \n\n### 📁 **4\\. Complex Queries** (2 requests)\n\n- Q4.1: Find ML/GPU Workloads\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template//Use Case: Comprehensive capacity matching - find EU nodes with GPUs and sufficient CPU>20\n        \n- Q4.2: Find K8s with Monitoring\n    \n    - Returns **(1 Record)** OpenTofu Hybrid template//Use Case: Find large active swarm clusters\n        \n\n### 📁 **5\\. Bonus Query** (1 request)\n\n- Q5.1: Capacity Matching\n    \n    - Returns **(1 Record)** Status is \"available\" Region matches \"eu-central\\*\" (eu-central-1, eu-central-2, etc.) Has at least 16 available CPU cores Node types include GPU compute nodes GPU accelerator is available Storage has at least 1TB available (regex matches \"1TB\", \"2TB\", etc.)\n        \n\nEndFragment"
 				}
 			],
-			"description": "Simple query scenarios for basic template retrieval."
+			"description": "Complete collection for inserting TOSCA templates and executing simple, medium, and complex query scenarios\n\nStartFragment\n\n## Collection Structure:\n\n### 📁 **1\\. Setup - Insert Templates** (5 requests)\n\nRun these first to insert test data:\n\n- Insert **1**: WebApp Application (ADT datastore)\n    \n- Insert 2: EdgeCluster Capacity (GPU, 24 cores, eu-central-1)\n    \n- Insert 3: HybridInfra Template (K8s, Prometheus, 12 nodes)\n    \n- Insert 4: Deployment Plan (ready, match_score 0.92)\n    \n- Insert 5: ML Requirements (2-4 GPUs, high priority)\n    \n\n### 📁 **2\\. Simple Queries** (3 requests)\n\n- Q2.1: Find ADT Applications\n    \n    - Returns **(1 Record)** search document_type to of smthing AND metadata.kb_datastore (nested) to be of smthing\n        \n- Q2.2: Find Available Capacity in the EU\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find available capacity providers in EU, use of nested fields of metadata\n        \n- Q2.3: Find by Author\n    \n    - Returns **(3 Records)** based on the template author as part of a nested collection named as 'metadata'\n        \n\n### 📁 **3\\. Medium Queries** (5 requests)\n\n- Q3.1: Find GPU Capacity\n    \n    - Return **(1 Record)** Find GPU Capacity with Min 20 CPU Cores\n        \n- Q3.2: Find Available NVIDIA A100 GPUs\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find nodes with available NVIDIA A100 GPUs\n        \n- Q3.3: Find High Priority Appliciations\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template, Find nodes with available NVIDIA A100 GPUs\n        \n- Q3.4: Find ready to deploy plans\n    \n    - Returns **(1 Record)** Deployment Plan template//Use Case: Find deployment plans ready to execute\n        \n- Q3.5: Find successful Deployments with match score\n    \n    - Returns **(1 Record)** Find high-quality deployment matches based on status and match score\n        \n\n### 📁 **4\\. Complex Queries** (2 requests)\n\n- Q4.1: Find ML/GPU Workloads\n    \n    - Returns **(1 Record)** EdgeCluster Capacity template//Use Case: Comprehensive capacity matching - find EU nodes with GPUs and sufficient CPU>20\n        \n- Q4.2: Find K8s with Monitoring\n    \n    - Returns **(1 Record)** OpenTofu Hybrid template//Use Case: Find large active swarm clusters\n        \n\n### 📁 **5\\. Bonus Query** (1 request)\n\n- Q5.1: Capacity Matching\n    \n    - Returns **(1 Record)** Status is \"available\" Region matches \"eu-central\\*\" (eu-central-1, eu-central-2, etc.) Has at least 16 available CPU cores Node types include GPU compute nodes GPU accelerator is available Storage has at least 1TB available (regex matches \"1TB\", \"2TB\", etc.)\n        \n\nEndFragment"
 		},
 		{
 			"name": "3. Agent Queries Strategy",
@@ -962,14 +1441,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"query\",\n    \"argcnt\": 0\n  },\n  \"criteria\": [\n    {\n      \"type\": \"solar\",\n      \"status\": \"operational\",\n      \"capacity_mw\": {\"$gte\": 500}   /// experiment with other value as well\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"time_budget_ms\": 1500,\n    \"annotate_source\": true\n  }\n}\n\n/*\n\n\ncriteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\",\n      \"name\": \"Athens Solar Farm Test\",\n      \"type\": \"solar\",\n      \"capacity_mw\": 500,\n      \"location\": {\n        \"country\": \"Greece\",\n        \"region\": \"Attica\",\n        \"coordinates\": {\n          \"lat\": 37.9838,\n          \"lon\": 23.7275\n        }\n      },\n      \"status\": \"operational\",\n      \"commissioned_date\": \"2024-06-15\"\n      */"
 						},
 						"url": {
-							"raw": "http://localhost:18001/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18001",
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -992,14 +1469,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"query\",\n    \"argcnt\": 0\n  },\n  \"criteria\": [\n    {\n      \"location.country\": \"Greece\"\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"time_budget_ms\": 1500,\n    \"annotate_source\": true\n  }\n}\n\n/*\n\n\ncriteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\",\n      \"name\": \"Athens Solar Farm Test\",\n      \"type\": \"solar\",\n      \"capacity_mw\": 500,\n      \"location\": {\n        \"country\": \"Greece\",\n        \"region\": \"Attica\",\n        \"coordinates\": {\n          \"lat\": 37.9838,\n          \"lon\": 23.7275\n        }\n      },\n      \"status\": \"operational\",\n      \"commissioned_date\": \"2024-06-15\"\n      */"
 						},
 						"url": {
-							"raw": "http://localhost:18001/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18001",
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1019,7 +1494,9 @@
 									"    pm.expect(jsonData.data).to.include(\"updated\");",
 									"});"
 								],
-								"type": "text/javascript"
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
 							}
 						}
 					],
@@ -1036,12 +1513,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudupdate\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ],\n  \"UpdateData\": [\n    {\n      \"status\": \"maintenance\",\n      \"maintenance_reason\": \"Scheduled panel cleaning\",\n      \"capacity_mw\": 550\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/swarmkb/command",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1073,7 +1550,9 @@
 									"    pm.expect(jsonData.data[0]._updated_at).to.exist;",
 									"});"
 								],
-								"type": "text/javascript"
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
 							}
 						}
 					],
@@ -1090,12 +1569,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/swarmkb/command",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1115,7 +1594,9 @@
 									"    pm.expect(jsonData.data).to.include(\"deleted\");",
 									"});"
 								],
-								"type": "text/javascript"
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
 							}
 						}
 					],
@@ -1132,12 +1613,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/swarmkb/command",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1160,14 +1641,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"status\": \"maintenance\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "http://localhost:18001/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18001",
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1188,7 +1667,9 @@
 									"    pm.expect(jsonData.data.length).to.eql(0);",
 									"});"
 								],
-								"type": "text/javascript"
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
 							}
 						}
 					],
@@ -1205,12 +1686,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/swarmkb/command",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1236,7 +1717,9 @@
 									"    pm.expect(jsonData.data).to.include(\"Successfully inserted\");",
 									"});"
 								],
-								"type": "text/javascript"
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
 							}
 						}
 					],
@@ -1253,12 +1736,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudput\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"batch_wind_001\",\n      \"name\": \"Crete Wind Farm\",\n      \"type\": \"wind\",\n      \"capacity_mw\": 300,\n      \"location\": {\"country\": \"Greece\", \"region\": \"Crete\"},\n      \"status\": \"operational\"\n    },\n    {\n      \"_id\": \"batch_hydro_001\",\n      \"name\": \"Pindus Hydroelectric\",\n      \"type\": \"hydro\",\n      \"capacity_mw\": 150,\n      \"location\": {\"country\": \"Greece\", \"region\": \"Epirus\"},\n      \"status\": \"operational\"\n    },\n    {\n      \"_id\": \"batch_geothermal_001\",\n      \"name\": \"Thessaloniki Geothermal\",\n      \"type\": \"geothermal\",\n      \"capacity_mw\": 80,\n      \"location\": {\"country\": \"Greece\", \"region\": \"Central Macedonia\"},\n      \"status\": \"under_construction\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/swarmkb/command",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1281,12 +1764,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"type\": \"wind\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/swarmkb/command",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1309,12 +1792,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"type\": \"wind\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/swarmkb/command",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1357,14 +1840,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"crudput\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"replication_test_{{$timestamp}}\",\n      \"name\": \"Replication Test Product\",\n      \"description\": \"Testing cross-node replication in distributed cluster\",\n      \"node_source\": \"Agent1\",\n      \"test_timestamp\": \"{{$isoTimestamp}}\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "http://localhost:18001/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18001",
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1401,14 +1882,13 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"crudget\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ]\n}"
 						},
 						"url": {
-							"raw": "http://localhost:18002/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/optimusdb2/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18002",
 							"path": [
-								"swarmkb",
+								"optimusdb2",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1431,14 +1911,13 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"crudget\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ]\n}"
 						},
 						"url": {
-							"raw": "http://localhost:18003/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/optimusdb3/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18003",
 							"path": [
-								"swarmkb",
+								"optimusdb3",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1461,14 +1940,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\", \"argcnt\": 0},\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ],\n  \"options\": {\n    \"strategy\": \"PARALLEL_MERGE\",\n    \"time_budget_ms\": 2000,\n    \"annotate_source\": true\n  }\n}"
 						},
 						"url": {
-							"raw": "http://localhost:18003/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18003",
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1491,12 +1968,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/swarmkb/command",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1533,14 +2010,13 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"crudget\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ]\n}"
 						},
 						"url": {
-							"raw": "http://localhost:18002/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/optimusdb2/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18002",
 							"path": [
-								"swarmkb",
+								"optimusdb2",
+								"{{context}}",
 								"command"
 							]
 						},
@@ -1589,13 +2065,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"contri\",\n    \"argcnt\": 1\n  },\n  \"criteria\": []\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/swarmkb/command",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
 								"{{context}}",
-								"swarmkb",
 								"command"
 							]
 						},
@@ -1628,7 +2103,7 @@
 						"method": "POST",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/log?date=2025-12-23&hour=17",
+							"raw": "{{base_url}}/{{context}}/log?date=2025-12-25&hour=04",
 							"host": [
 								"{{base_url}}"
 							],
@@ -1639,11 +2114,11 @@
 							"query": [
 								{
 									"key": "date",
-									"value": "2025-12-23"
+									"value": "2025-12-25"
 								},
 								{
 									"key": "hour",
-									"value": "17"
+									"value": "04"
 								}
 							]
 						},
@@ -1795,14 +2270,12 @@
 							}
 						},
 						"url": {
-							"raw": "http://localhost:18001/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18001",
 							"path": [
-								"swarmkb",
+								"{{context}}",
 								"command"
 							]
 						}
@@ -2676,10 +3149,6 @@
 			"value": "http://localhost:18001"
 		},
 		{
-			"key": "webapp_template_id",
-			"value": ""
-		},
-		{
 			"key": "capacity_template_id",
 			"value": ""
 		},
@@ -2696,13 +3165,16 @@
 			"value": ""
 		},
 		{
+			"key": "webapp_template_id",
+			"value": ""
+		},
+		{
 			"key": "context",
 			"value": ""
 		},
 		{
 			"key": "dataStore",
-			"value": "",
-			"type": "default"
+			"value": ""
 		}
 	]
 }

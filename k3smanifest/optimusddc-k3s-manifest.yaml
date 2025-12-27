@@ -1,0 +1,1083 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: optimusddc
+---
+# ==================== OPTIMUSDB CONFIG ====================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: optimusdb-config
+  namespace: optimusddc
+data:
+  OPTIMUSDB_API_PORT: "8089"
+  OPTIMUSDB_P2P_PORT: "4001"
+  OPTIMUSDB_GATEWAY_PORT: "5001"
+  OPTIMUSDB_LOG_LEVEL: "info"
+  OPTIMUSDB_CONTEXT: "swarmkb"
+  OPTIMUSDB_BENCHMARK: "true"
+---
+# ==================== OPTIMUSDB NODE 1 ====================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: optimusdb1-data
+  namespace: optimusddc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: optimusdb1
+  namespace: optimusddc
+spec:
+  type: ClusterIP
+  selector:
+    app: optimusdb
+    node: "1"
+  ports:
+    - name: api
+      port: 8089
+      targetPort: 8089
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: optimusdb1-nodeport
+  namespace: optimusddc
+  labels:
+    app: optimusdb
+    node: "1"
+spec:
+  type: NodePort
+  selector:
+    app: optimusdb
+    node: "1"
+  ports:
+    - name: api
+      port: 8089
+      targetPort: 8089
+      nodePort: 30001
+      protocol: TCP
+    - name: p2p
+      port: 4001
+      targetPort: 4001
+      nodePort: 30011
+      protocol: TCP
+    - name: gateway
+      port: 5001
+      targetPort: 5001
+      nodePort: 30021
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: optimusdb1
+  namespace: optimusddc
+  labels:
+    app: optimusdb
+    node: "1"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: optimusdb
+      node: "1"
+  template:
+    metadata:
+      labels:
+        app: optimusdb
+        node: "1"
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: optimusdb
+          image: ghcr.io/georgegeorgakakos/optimusdb:latest
+          imagePullPolicy: Always
+          ports:
+            - name: api
+              containerPort: 8089
+              protocol: TCP
+            - name: p2p
+              containerPort: 4001
+              protocol: TCP
+            - name: gateway
+              containerPort: 5001
+              protocol: TCP
+          env:
+            - name: POD_NAME
+              value: "optimusdb1"
+            - name: NODE_ID
+              value: "1"
+            - name: NODE_NAME
+              value: "optimusdb1"
+            - name: OPTIMUSDB_API_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_API_PORT
+            - name: OPTIMUSDB_P2P_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_P2P_PORT
+            - name: OPTIMUSDB_GATEWAY_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_GATEWAY_PORT
+            - name: OPTIMUSDB_LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_LOG_LEVEL
+            - name: OPTIMUSDB_CONTEXT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_CONTEXT
+            - name: OPTIMUSDB_BENCHMARK
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_BENCHMARK
+          startupProbe:
+            tcpSocket:
+              port: 8089
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: 8089
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 8089
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/optimusdb
+          resources:
+            limits:
+              memory: "768Mi"
+              cpu: "500m"
+            requests:
+              memory: "384Mi"
+              cpu: "100m"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: optimusdb1-data
+---
+# ==================== OPTIMUSDB NODE 2 ====================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: optimusdb2-data
+  namespace: optimusddc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: optimusdb2
+  namespace: optimusddc
+spec:
+  type: ClusterIP
+  selector:
+    app: optimusdb
+    node: "2"
+  ports:
+    - name: api
+      port: 8089
+      targetPort: 8089
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: optimusdb2-nodeport
+  namespace: optimusddc
+  labels:
+    app: optimusdb
+    node: "2"
+spec:
+  type: NodePort
+  selector:
+    app: optimusdb
+    node: "2"
+  ports:
+    - name: api
+      port: 8089
+      targetPort: 8089
+      nodePort: 30002
+      protocol: TCP
+    - name: p2p
+      port: 4001
+      targetPort: 4001
+      nodePort: 30012
+      protocol: TCP
+    - name: gateway
+      port: 5001
+      targetPort: 5001
+      nodePort: 30022
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: optimusdb2
+  namespace: optimusddc
+  labels:
+    app: optimusdb
+    node: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: optimusdb
+      node: "2"
+  template:
+    metadata:
+      labels:
+        app: optimusdb
+        node: "2"
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: optimusdb
+          image: ghcr.io/georgegeorgakakos/optimusdb:latest
+          imagePullPolicy: Always
+          ports:
+            - name: api
+              containerPort: 8089
+              protocol: TCP
+            - name: p2p
+              containerPort: 4001
+              protocol: TCP
+            - name: gateway
+              containerPort: 5001
+              protocol: TCP
+          env:
+            - name: POD_NAME
+              value: "optimusdb2"
+            - name: NODE_ID
+              value: "2"
+            - name: NODE_NAME
+              value: "optimusdb2"
+            - name: OPTIMUSDB_API_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_API_PORT
+            - name: OPTIMUSDB_P2P_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_P2P_PORT
+            - name: OPTIMUSDB_GATEWAY_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_GATEWAY_PORT
+            - name: OPTIMUSDB_LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_LOG_LEVEL
+            - name: OPTIMUSDB_CONTEXT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_CONTEXT
+            - name: OPTIMUSDB_BENCHMARK
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_BENCHMARK
+          startupProbe:
+            tcpSocket:
+              port: 8089
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: 8089
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 8089
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/optimusdb
+          resources:
+            limits:
+              memory: "768Mi"
+              cpu: "500m"
+            requests:
+              memory: "384Mi"
+              cpu: "100m"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: optimusdb2-data
+---
+# ==================== OPTIMUSDB NODE 3 ====================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: optimusdb3-data
+  namespace: optimusddc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: optimusdb3
+  namespace: optimusddc
+spec:
+  type: ClusterIP
+  selector:
+    app: optimusdb
+    node: "3"
+  ports:
+    - name: api
+      port: 8089
+      targetPort: 8089
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: optimusdb3-nodeport
+  namespace: optimusddc
+  labels:
+    app: optimusdb
+    node: "3"
+spec:
+  type: NodePort
+  selector:
+    app: optimusdb
+    node: "3"
+  ports:
+    - name: api
+      port: 8089
+      targetPort: 8089
+      nodePort: 30003
+      protocol: TCP
+    - name: p2p
+      port: 4001
+      targetPort: 4001
+      nodePort: 30013
+      protocol: TCP
+    - name: gateway
+      port: 5001
+      targetPort: 5001
+      nodePort: 30023
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: optimusdb3
+  namespace: optimusddc
+  labels:
+    app: optimusdb
+    node: "3"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: optimusdb
+      node: "3"
+  template:
+    metadata:
+      labels:
+        app: optimusdb
+        node: "3"
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: optimusdb
+          image: ghcr.io/georgegeorgakakos/optimusdb:latest
+          imagePullPolicy: Always
+          ports:
+            - name: api
+              containerPort: 8089
+              protocol: TCP
+            - name: p2p
+              containerPort: 4001
+              protocol: TCP
+            - name: gateway
+              containerPort: 5001
+              protocol: TCP
+          env:
+            - name: POD_NAME
+              value: "optimusdb3"
+            - name: NODE_ID
+              value: "3"
+            - name: NODE_NAME
+              value: "optimusdb3"
+            - name: OPTIMUSDB_API_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_API_PORT
+            - name: OPTIMUSDB_P2P_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_P2P_PORT
+            - name: OPTIMUSDB_GATEWAY_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_GATEWAY_PORT
+            - name: OPTIMUSDB_LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_LOG_LEVEL
+            - name: OPTIMUSDB_CONTEXT
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_CONTEXT
+            - name: OPTIMUSDB_BENCHMARK
+              valueFrom:
+                configMapKeyRef:
+                  name: optimusdb-config
+                  key: OPTIMUSDB_BENCHMARK
+          startupProbe:
+            tcpSocket:
+              port: 8089
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: 8089
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 8089
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/optimusdb
+          resources:
+            limits:
+              memory: "768Mi"
+              cpu: "500m"
+            requests:
+              memory: "384Mi"
+              cpu: "100m"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: optimusdb3-data
+---
+# ==================== OPTIMUSDB HEADLESS SERVICE ====================
+apiVersion: v1
+kind: Service
+metadata:
+  name: optimusdb-headless
+  namespace: optimusddc
+spec:
+  clusterIP: None
+  selector:
+    app: optimusdb
+  ports:
+    - name: api
+      port: 8089
+      targetPort: 8089
+    - name: p2p
+      port: 4001
+      targetPort: 4001
+    - name: gateway
+      port: 5001
+      targetPort: 5001
+---
+# ==================== CATALOG SEARCH ====================
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalogsearch
+  namespace: optimusddc
+spec:
+  type: ClusterIP
+  selector:
+    app: catalogsearch
+  ports:
+    - name: http
+      port: 5013
+      targetPort: 5013
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogsearch
+  namespace: optimusddc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalogsearch
+  template:
+    metadata:
+      labels:
+        app: catalogsearch
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: catalogsearch
+          image: ghcr.io/georgegeorgakakos/optimusddc/catalogsearch:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 5013
+          env:
+            - name: OPTIMUSDB
+              value: "search_service.proxy.optimusdb_search.OptimusDBSearchProxy"
+            - name: OPTIMUSDB_API_URL
+              value: "http://optimusdb1:8089"
+            - name: SEARCH_SVC_CONFIG_MODULE_CLASS
+              value: "search_service.config.LocalConfig"
+          command:
+            - gunicorn
+            - "-w"
+            - "2"
+            - "--bind"
+            - ":5013"
+            - "--timeout"
+            - "120"
+            - "search_service.search_wsgi"
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 5013
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 5013
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+# ==================== CATALOG METADATA ====================
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalogmetadata
+  namespace: optimusddc
+spec:
+  type: ClusterIP
+  selector:
+    app: catalogmetadata
+  ports:
+    - name: http
+      port: 5014
+      targetPort: 5014
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogmetadata
+  namespace: optimusddc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalogmetadata
+  template:
+    metadata:
+      labels:
+        app: catalogmetadata
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: catalogmetadata
+          image: ghcr.io/georgegeorgakakos/optimusddc/catalogmetadata:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 5014
+          env:
+            - name: ES_PROXY_CLIENT
+              value: "OPTIMUSDB"
+            - name: OPTIMUSDB_API_URL
+              value: "http://optimusdb1:8089"
+            - name: PROXY_CLIENT
+              value: "metadata_service.proxy.optimusdb_proxy.OptimusDBProxy"
+            - name: METADATA_SVC_CONFIG_MODULE_CLASS
+              value: "metadata_service.config.LocalConfig"
+          command:
+            - gunicorn
+            - "-w"
+            - "2"
+            - "--bind"
+            - ":5014"
+            - "--timeout"
+            - "120"
+            - "metadata_service.metadata_wsgi"
+          resources:
+            limits:
+              memory: "768Mi"
+              cpu: "500m"
+            requests:
+              memory: "384Mi"
+              cpu: "100m"
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 5014
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 5014
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+# ==================== CATALOG FRONTEND ====================
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalogfrontend
+  namespace: optimusddc
+spec:
+  type: ClusterIP
+  selector:
+    app: catalogfrontend
+  ports:
+    - name: http
+      port: 5015
+      targetPort: 5015
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogfrontend
+  namespace: optimusddc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalogfrontend
+  template:
+    metadata:
+      labels:
+        app: catalogfrontend
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: catalogfrontend
+          image: ghcr.io/georgegeorgakakos/optimusddc/catalogfrontend:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 5015
+              protocol: TCP
+          env:
+            - name: SEARCHSERVICE_BASE
+              value: "http://catalogsearch:5013"
+            - name: METADATASERVICE_BASE
+              value: "http://catalogmetadata:5014"
+            - name: FRONTEND_SVC_CONFIG_MODULE_CLASS
+              value: "amundsen_application.config.TestConfig"
+          command:
+            - gunicorn
+            - "-w"
+            - "2"
+            - "--bind"
+            - ":5015"
+            - "--timeout"
+            - "120"
+            - "amundsen_application.wsgi"
+          resources:
+            limits:
+              memory: "768Mi"
+              cpu: "500m"
+            requests:
+              memory: "384Mi"
+              cpu: "100m"
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 5015
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 5015
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+---
+# ==============================================================================
+# TRAEFIK MIDDLEWARES
+# ==============================================================================
+
+# Strip /optimusdb1 prefix
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: optimusdb1-stripprefix
+  namespace: optimusddc
+spec:
+  stripPrefix:
+    prefixes:
+      - /optimusdb1
+---
+# Strip /optimusdb2 prefix
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: optimusdb2-stripprefix
+  namespace: optimusddc
+spec:
+  stripPrefix:
+    prefixes:
+      - /optimusdb2
+---
+# Strip /optimusdb3 prefix
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: optimusdb3-stripprefix
+  namespace: optimusddc
+spec:
+  stripPrefix:
+    prefixes:
+      - /optimusdb3
+---
+# ==============================================================================
+# TRAEFIK INGRESSROUTES - OPTION 4: HYBRID APPROACH
+# ==============================================================================
+# Strategy:
+# 1. BACKWARD COMPATIBILITY: /swarmkb/command → node 1 only
+# 2. LOAD-BALANCED: Other /swarmkb/* endpoints → round-robin all nodes
+# 3. NODE-SPECIFIC: /optimusdbX/* → specific node
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# BACKWARD COMPATIBILITY ROUTE (Highest Priority)
+# ------------------------------------------------------------------------------
+# Route: /swarmkb/command → OptimusDB Node 1 ONLY
+# This maintains backward compatibility with existing code that expects
+# /swarmkb/command to go to the primary node
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: optimusdb-command-compat
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/swarmkb/command`)
+      kind: Rule
+      priority: 100  # Highest priority to match before load-balanced route
+      services:
+        - name: optimusdb1
+          port: 8089
+---
+# ------------------------------------------------------------------------------
+# LOAD-BALANCED ROUTES (Medium Priority)
+# ------------------------------------------------------------------------------
+# These routes distribute requests across ALL healthy OptimusDB nodes
+# using Traefik's built-in round-robin load balancing
+# ------------------------------------------------------------------------------
+
+# Route: /swarmkb/agent/status → Load-balanced across all nodes
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: optimusdb-agent-status-lb
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/swarmkb/agent/status`)
+      kind: Rule
+      priority: 50
+      services:
+        - name: optimusdb1
+          port: 8089
+        - name: optimusdb2
+          port: 8089
+        - name: optimusdb3
+          port: 8089
+---
+# Route: /swarmkb/agent/inventory → Load-balanced across all nodes
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: optimusdb-agent-inventory-lb
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/swarmkb/agent/inventory`)
+      kind: Rule
+      priority: 50
+      services:
+        - name: optimusdb1
+          port: 8089
+        - name: optimusdb2
+          port: 8089
+        - name: optimusdb3
+          port: 8089
+---
+# Route: /swarmkb/log → Load-balanced across all nodes
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: optimusdb-log-lb
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/swarmkb/log`)
+      kind: Rule
+      priority: 50
+      services:
+        - name: optimusdb1
+          port: 8089
+        - name: optimusdb2
+          port: 8089
+        - name: optimusdb3
+          port: 8089
+---
+# Route: /swarmkb/* (Catch-all) → Load-balanced across all nodes
+# This catches any other /swarmkb endpoints not explicitly routed above
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: optimusdb-swarmkb-lb
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/swarmkb`)
+      kind: Rule
+      priority: 10  # Lower priority so specific routes match first
+      services:
+        - name: optimusdb1
+          port: 8089
+        - name: optimusdb2
+          port: 8089
+        - name: optimusdb3
+          port: 8089
+---
+# ------------------------------------------------------------------------------
+# NODE-SPECIFIC ROUTES (Low Priority)
+# ------------------------------------------------------------------------------
+# These routes allow the frontend to target specific nodes when needed
+# (e.g., ClusterTopologyPage querying a specific node's status)
+# ------------------------------------------------------------------------------
+
+# Route: /optimusdb1/* → OptimusDB Node 1
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: optimusdb-node-1
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/optimusdb1`)
+      kind: Rule
+      priority: 5
+      middlewares:
+        - name: optimusdb1-stripprefix
+      services:
+        - name: optimusdb1
+          port: 8089
+---
+# Route: /optimusdb2/* → OptimusDB Node 2
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: optimusdb-node-2
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/optimusdb2`)
+      kind: Rule
+      priority: 5
+      middlewares:
+        - name: optimusdb2-stripprefix
+      services:
+        - name: optimusdb2
+          port: 8089
+---
+# Route: /optimusdb3/* → OptimusDB Node 3
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: optimusdb-node-3
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/optimusdb3`)
+      kind: Rule
+      priority: 5
+      middlewares:
+        - name: optimusdb3-stripprefix
+      services:
+        - name: optimusdb3
+          port: 8089
+---
+# ------------------------------------------------------------------------------
+# CATALOG SERVICES ROUTES
+# ------------------------------------------------------------------------------
+
+# Route: /api/v1/metadata/* → CatalogMetadata
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: catalogmetadata-api
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/api/v1/metadata`)
+      kind: Rule
+      services:
+        - name: catalogmetadata
+          port: 5014
+---
+# Route: /api/v1/search/* → CatalogSearch
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: catalogsearch-api
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/api/v1/search`)
+      kind: Rule
+      services:
+        - name: catalogsearch
+          port: 5013
+---
+# Route: / → CatalogFrontend (Amundsen UI - default/root)
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: catalogfrontend-root
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/`)
+      kind: Rule
+      priority: 1
+      services:
+        - name: catalogfrontend
+          port: 5015
+
+# ==============================================================================
+# ROUTING SUMMARY
+# ==============================================================================
+#
+# BACKWARD COMPATIBILITY (Priority 100):
+#   /swarmkb/command → optimusdb1 ONLY
+#
+# LOAD-BALANCED (Priority 50):
+#   /swarmkb/agent/status → round-robin [optimusdb1, optimusdb2, optimusdb3]
+#   /swarmkb/agent/inventory → round-robin [optimusdb1, optimusdb2, optimusdb3]
+#   /swarmkb/log → round-robin [optimusdb1, optimusdb2, optimusdb3]
+#
+# CATCH-ALL LOAD-BALANCED (Priority 10):
+#   /swarmkb/* → round-robin [optimusdb1, optimusdb2, optimusdb3]
+#
+# NODE-SPECIFIC (Priority 5):
+#   /optimusdb1/* → optimusdb1 (stripprefix /optimusdb1)
+#   /optimusdb2/* → optimusdb2 (stripprefix /optimusdb2)
+#   /optimusdb3/* → optimusdb3 (stripprefix /optimusdb3)
+#
+# CATALOG SERVICES:
+#   /api/v1/metadata/* → catalogmetadata
+#   /api/v1/search/* → catalogsearch
+#   / → catalogfrontend
+#
+# USAGE EXAMPLES:
+#
+# Backward compatible command:
+#   POST /swarmkb/command → Always goes to node 1
+#
+# Load-balanced status check:
+#   GET /swarmkb/agent/status → Distributed across all nodes
+#
+# Query specific node:
+#   GET /optimusdb2/swarmkb/agent/status → Always goes to node 2
+#
+# ==============================================================================
