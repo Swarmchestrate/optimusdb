@@ -38,14 +38,7 @@ func (me *MetadataExtractor) ExtractMetadata(
 	dstype string,
 ) (*DocumentMetadata, error) {
 
-	meta := &DocumentMetadata{
-		RawDocument:     doc,
-		SourceDatastore: dstype,
-		Tags:            []string{},
-		Statistics:      make(map[string]interface{}),
-	}
-
-	// Detect content type
+	// Detect content type and delegate to appropriate extractor
 	if isTOSCA(doc) {
 		return me.extractTOSCAMetadata(doc, dstype)
 	} else if isSQL(doc) {
