@@ -85,6 +85,7 @@ type KnowledgeBaseDB struct {
 	// Metadata enrichment
 	MetadataService MetadataServicePort
 	MetadataCache   MetadataCachePort
+	Interceptor     *PersistenceInterceptor //Lineage support
 }
 
 // ============================================================================

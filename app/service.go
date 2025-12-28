@@ -194,25 +194,29 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 		switch strings.ToLower(req.Method.Cmd) {
 		case strings.ToLower(GET.Cmd):
 			ipfsPath := req.Args[0]
-			logChan <- Log{Info, "Received service request: GET"}
+			//logChan <- Log{Info, "Received service request: GET"}
+			logger.Info("[INFO] Received service request: %s : ", GET.Cmd)
 			res = get(knowledgeBaseDB, ipfsPath, logChan)
 
 		case strings.ToLower(POST.Cmd):
 			file := req.Args[0]
 			node := files.NewBytesFile([]byte(file))
 			logChan <- Log{Info, "Received service request: POST"}
-			fmt.Printf("\nReceived service request: %s : ", POST.Cmd)
+			logger.Info("[INFO] Received service request: %s : ", POST.Cmd)
+			//fmt.Printf("\nReceived service request: %s : ", POST.Cmd)
 			res = post(knowledgeBaseDB, node, logChan)
 
 		case strings.ToLower(CONNECT.Cmd):
 			// type checking
 			peerId := req.Args[0]
-			logChan <- Log{Info, "Connecting to " + peerId}
+			//logChan <- Log{Info, "Connecting to " + peerId}
+			logger.Info("[INFO] Received service request Connect TO: %v : ", peerId)
 			res = connect(knowledgeBaseDB, peerId, logChan)
 
 		////////////////////////////////
 		case strings.ToLower(QUERY.Cmd):
-			logChan <- Log{Info, "Received service request: QUERY"}
+			logger.Info("[INFO] Received service request : %s : ", QUERY.Cmd)
+			//logChan <- Log{Info, "Received service request: QUERY"}
 
 			// Defaults
 			opt := QueryOptions{
@@ -308,33 +312,39 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 			}
 		////////////////////////////////
 		case strings.ToLower(SQLDML.Cmd):
-			logChan <- Log{Type: Info, Data: "Received service request: SQL.Cmd"}
-			fmt.Printf("\n[INFO] SQL DML received: %v : %v\n", SQLDML.Cmd, req.SQLDML)
+			//logChan <- Log{Type: Info, Data: "Received service request: SQL.Cmd"}
+			//fmt.Printf("\n[INFO] SQL DML received: %v : %v\n", SQLDML.Cmd, req.SQLDML)
+			logger.Info("[INFO] SQL DML received: %v : %v", SQLDML.Cmd, req.SQLDML)
 
 			// Execute SQL DML command
 			rspResults, err := SQLDMLWithPeerFallback(req, logChan, knowledgeBaseDB)
 			if err != nil {
 				//logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("[ERROR] SQL DML Execution Failed: %v", err)}
-				logger.Error("[DataStore] SQL DML Execution Failed: %v", err)
+				//logger.Error("[DataStore] SQL DML Execution Failed: %v", err)
+				logger.Error("[ERROR] SQL DML received: %v ", err)
 				res = fmt.Sprintf("ERROR! #120 Failed to execute SQL statement: %v", err)
 			} else {
 				//logChan <- Log{Type: Info, Data: fmt.Sprintf("[INFO] SQL DML: Successfully executed %v", req.SQLDML)}
-				logger.Info("[DataStore] SQL DML: Successfully executed %v", req.SQLDML)
+				//logger.Info("[DataStore] SQL DML: Successfully executed %v", req.SQLDML)
+				logger.Info("[INFO] SQL DML: Successfully executed %v", req.SQLDML)
 				res = rspResults //"OK: Successfully got records"
 			}
 		/**
 		Use for contribution records - Data Store is read only
 		*/
 		case strings.ToLower(CONTRI.Cmd):
-			logChan <- Log{Type: Info, Data: "Received service request: CONTRI.Cmd"}
+			//logChan <- Log{Type: Info, Data: "Received service request: CONTRI.Cmd"}
+			logger.Info("[INFO] Received service request: %v", CONTRI.Cmd)
 			var test2 error
 			//rspResults, test2 := crudGetDocStoreRev(knowledgeBaseDB, logChan, req.DSType, hostCID, req.Criteria)
 			rspResults, test2 := getContri(knowledgeBaseDB, logChan, req.DSType, req.Criteria)
 			if test2 != nil {
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("CONTRI: ERROR! %v", test2)}
+				//logChan <- Log{Type: Info, Data: fmt.Sprintf("CONTRI: ERROR! %v", test2)}
+				logger.Error("[ERROR] in Contribution getContri commnand: %v ", test2)
 				res = "ERROR! #121 Failed to get Contribution Records"
 			} else {
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("CONTRI: Successfully finished %d ", len(rspResults))}
+				//logChan <- Log{Type: Info, Data: fmt.Sprintf("CONTRI: Successfully finished %d ", len(rspResults))}
+				logger.Info("[INFO] CONTRI: Successfully finished %d ", len(rspResults))
 				res = rspResults //"OK: Successfully got records"
 			}
 
@@ -1165,7 +1175,22 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 		return nil, fmt.Errorf("failed to insert data records into %s: %w", storeName, err)
 	}
 
-	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully inserted %d data records into %s", len(docsToInsert), storeName)}
+	//logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully inserted %d data records into %s", len(docsToInsert), storeName)}
+	logger.Info("[INFO] CRUDPUT: Successfully inserted %d data records into %s", len(docsToInsert), storeName)
+
+	// NEW: Add lineage extraction for all inserted documents
+	if optimusdb.Interceptor != nil {
+		for _, doc := range docsToInsert {
+			if docMap, ok := doc.(map[string]interface{}); ok {
+				if err := optimusdb.Interceptor.OnDocumentPut(docMap, storeName); err != nil {
+					//logChan <- Log{Type: Warning, Data: fmt.Sprintf("Metadata extraction failed for doc %v: %v", docMap["_id"], err)}
+					logger.Warn("[WARN] Metadata extraction failed for doc %v: %v", docMap["_id"], err)
+				}
+			}
+		}
+		logger.Info("[INFO] CRUDPUT: Lineage extraction completed for %d documents", len(docsToInsert))
+		//logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Lineage extraction completed for %d documents", len(docsToInsert))}
+	}
 
 	// Insert metadata records into KBMetadata (only for data stores, not metadata store itself)
 	if optimusdb.KBMetadata != nil && len(metadataRecords) > 0 {
@@ -1176,6 +1201,7 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 			// Don't fail the whole operation if metadata fails
 		} else {
 			logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully inserted %d metadata records into KBMetadata", len(metadataRecords))}
+			logger.Info("[INFO] CRUDPUT: Successfully inserted %d metadata records into KBMetadata", len(metadataRecords))
 		}
 	}
 
@@ -2863,6 +2889,19 @@ func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 		return 0, nil // No documents to delete
 	}
 
+	// NEW: Clean up lineage for all documents being deleted
+	if optimusdb.Interceptor != nil {
+		for _, doc := range matchedDocs {
+			if docMap, ok := doc.(map[string]interface{}); ok {
+				if err := optimusdb.Interceptor.OnDocumentDelete(docMap, "dsswres"); err != nil {
+					// Log but don't fail the deletion
+					logger.Error("[ERROR] Warning: lineage cleanup failed for doc %v: %v\n", docMap["_id"], err)
+					//fmt.Printf("Warning: lineage cleanup failed for doc %v: %v\n", docMap["_id"], err)
+				}
+			}
+		}
+	}
+
 	// Delete each matched document
 	deletedCount := 0
 	for _, doc := range matchedDocs {
@@ -3022,6 +3061,14 @@ func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 		}
 
 		updatedCount++
+
+		// NEW: Add lineage update for modified document
+		if optimusdb.Interceptor != nil {
+			if err := optimusdb.Interceptor.OnDocumentUpdate(updatedDoc, "dsswres"); err != nil {
+				//logChan <- Log{Type: Warning, Data: fmt.Sprintf("Metadata update failed for doc %s: %v", docIDStr, err)}
+				logger.Error("[ERROR] Metadata update failed for doc %s: %v", docIDStr, err)
+			}
+		}
 
 		// Update corresponding metadata if exists
 		if optimusdb.KBMetadata != nil {

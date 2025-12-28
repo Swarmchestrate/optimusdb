@@ -450,6 +450,12 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	}
 	//########################################################################
 
+	//########################################################################
+	// NEW: Initialize the interceptor for automatic lineage tracking
+	knowledgeBaseDB.Interceptor = NewPersistenceInterceptor(knowledgeBaseDB)
+	logger.Debug("[DEBUG] Persistence interceptor initialized for automatic metadata extraction")
+	//########################################################################
+
 	// connect to a bootstrap peer
 	if *config.FlagBootstrap != "" {
 		logger.Debug("[DEBUG] bootstrap Connect to a peer, TOSCAImportedStoreAddr %v", *config.FlagBootstrap)
