@@ -1,6 +1,7 @@
 package app
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -52,7 +53,7 @@ func (lm *LineageManager) PopulateDatacatalog(meta *DocumentMetadata) error {
 
 	if exists {
 		// UPDATE existing entry
-		sql := `
+		query := `
 			UPDATE datacatalog 
 			SET 
 				name = ?,
@@ -64,7 +65,7 @@ func (lm *LineageManager) PopulateDatacatalog(meta *DocumentMetadata) error {
 				updated_timestamp = ?
 			WHERE _id = ?
 		`
-		_, err = GlobalKBSQLite.Db.Exec(sql,
+		_, err = GlobalKBSQLite.DB.Exec(query,
 			meta.Name,
 			meta.MetadataType,
 			meta.Component,
@@ -76,7 +77,7 @@ func (lm *LineageManager) PopulateDatacatalog(meta *DocumentMetadata) error {
 		)
 	} else {
 		// INSERT new entry
-		sql := `
+		query := `
 			INSERT INTO datacatalog (
 				_id, name, metadata_type, component, description,
 				tags, statistics, generation_code,
@@ -84,7 +85,7 @@ func (lm *LineageManager) PopulateDatacatalog(meta *DocumentMetadata) error {
 				created_timestamp, updated_timestamp
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
-		_, err = GlobalKBSQLite.Db.Exec(sql,
+		_, err = GlobalKBSQLite.DB.Exec(query,
 			meta.TableURI,
 			meta.Name,
 			meta.MetadataType,
@@ -138,14 +139,14 @@ func (lm *LineageManager) CreateLineageRelationships(
 // resolveReferenceToURI converts a reference (node name, ID, etc) to a table URI
 func (lm *LineageManager) resolveReferenceToURI(ref string, dstype string) (string, error) {
 	// Query datacatalog to find matching entry
-	sql := `
+	query := `
 		SELECT _id FROM datacatalog 
 		WHERE name = ? OR _id LIKE ? 
 		LIMIT 1
 	`
 
 	var uri string
-	err := GlobalKBSQLite.Db.QueryRow(sql, ref, "%"+ref+"%").Scan(&uri)
+	err := GlobalKBSQLite.DB.QueryRow(query, ref, "%"+ref+"%").Scan(&uri)
 	if err != nil {
 		// Not found in datacatalog - create placeholder URI
 		return fmt.Sprintf("optimusdb://default.Unknown/%s", sanitizeName(ref)), nil
@@ -175,13 +176,13 @@ func (lm *LineageManager) updateLineageEdges(
 	// Update source's upstream
 	if len(upstream) > 0 {
 		upstreamJSON, _ := json.Marshal(upstream)
-		sql := `
+		query := `
 			UPDATE datacatalog 
 			SET lineage_upstream = ?,
 				updated_timestamp = ?
 			WHERE _id = ?
 		`
-		_, err := GlobalKBSQLite.Db.Exec(sql,
+		_, err := GlobalKBSQLite.DB.Exec(query,
 			string(upstreamJSON),
 			time.Now().Unix(),
 			sourceURI)
@@ -207,8 +208,8 @@ func (lm *LineageManager) updateLineageEdges(
 func (lm *LineageManager) addToDownstream(targetURI, newDownstream string) error {
 	// Get current downstream
 	var downstreamJSON string
-	sql := `SELECT lineage_downstream FROM datacatalog WHERE _id = ?`
-	err := GlobalKBSQLite.Db.QueryRow(sql, targetURI).Scan(&downstreamJSON)
+	query := `SELECT lineage_downstream FROM datacatalog WHERE _id = ?`
+	err := GlobalKBSQLite.DB.QueryRow(query, targetURI).Scan(&downstreamJSON)
 
 	if err == sql.ErrNoRows {
 		// Entry doesn't exist yet - skip
@@ -237,13 +238,13 @@ func (lm *LineageManager) addToDownstream(targetURI, newDownstream string) error
 		downstream = append(downstream, newDownstream)
 		newDownstreamJSON, _ := json.Marshal(downstream)
 
-		sql = `
+		query = `
 			UPDATE datacatalog 
 			SET lineage_downstream = ?,
 				updated_timestamp = ?
 			WHERE _id = ?
 		`
-		_, err = GlobalKBSQLite.Db.Exec(sql,
+		_, err = GlobalKBSQLite.DB.Exec(query,
 			string(newDownstreamJSON),
 			time.Now().Unix(),
 			targetURI)
@@ -256,8 +257,8 @@ func (lm *LineageManager) addToDownstream(targetURI, newDownstream string) error
 // entryExists checks if a datacatalog entry already exists
 func (lm *LineageManager) entryExists(tableURI string) (bool, error) {
 	var count int
-	sql := `SELECT COUNT(*) FROM datacatalog WHERE _id = ?`
-	err := GlobalKBSQLite.Db.QueryRow(sql, tableURI).Scan(&count)
+	query := `SELECT COUNT(*) FROM datacatalog WHERE _id = ?`
+	err := GlobalKBSQLite.DB.QueryRow(query, tableURI).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -268,8 +269,8 @@ func (lm *LineageManager) entryExists(tableURI string) (bool, error) {
 func (lm *LineageManager) RemoveLineageForDeletedDocument(tableURI string) error {
 	// Get upstream and downstream before deletion
 	var upstreamJSON, downstreamJSON string
-	sql := `SELECT lineage_upstream, lineage_downstream FROM datacatalog WHERE _id = ?`
-	err := GlobalKBSQLite.Db.QueryRow(sql, tableURI).Scan(&upstreamJSON, &downstreamJSON)
+	query := `SELECT lineage_upstream, lineage_downstream FROM datacatalog WHERE _id = ?`
+	err := GlobalKBSQLite.DB.QueryRow(query, tableURI).Scan(&upstreamJSON, &downstreamJSON)
 
 	if err != nil {
 		return err // Entry not found or error
@@ -291,16 +292,16 @@ func (lm *LineageManager) RemoveLineageForDeletedDocument(tableURI string) error
 	}
 
 	// Delete the entry
-	sql = `DELETE FROM datacatalog WHERE _id = ?`
-	_, err = GlobalKBSQLite.Db.Exec(sql, tableURI)
+	query = `DELETE FROM datacatalog WHERE _id = ?`
+	_, err = GlobalKBSQLite.DB.Exec(query, tableURI)
 
 	return err
 }
 
 func (lm *LineageManager) removeFromDownstream(targetURI, uriToRemove string) error {
 	var downstreamJSON string
-	sql := `SELECT lineage_downstream FROM datacatalog WHERE _id = ?`
-	err := GlobalKBSQLite.Db.QueryRow(sql, targetURI).Scan(&downstreamJSON)
+	query := `SELECT lineage_downstream FROM datacatalog WHERE _id = ?`
+	err := GlobalKBSQLite.DB.QueryRow(query, targetURI).Scan(&downstreamJSON)
 	if err != nil {
 		return err
 	}
@@ -317,15 +318,15 @@ func (lm *LineageManager) removeFromDownstream(targetURI, uriToRemove string) er
 	}
 
 	newJSON, _ := json.Marshal(filtered)
-	sql = `UPDATE datacatalog SET lineage_downstream = ?, updated_timestamp = ? WHERE _id = ?`
-	_, err = GlobalKBSQLite.Db.Exec(sql, string(newJSON), time.Now().Unix(), targetURI)
+	query = `UPDATE datacatalog SET lineage_downstream = ?, updated_timestamp = ? WHERE _id = ?`
+	_, err = GlobalKBSQLite.DB.Exec(query, string(newJSON), time.Now().Unix(), targetURI)
 	return err
 }
 
 func (lm *LineageManager) removeFromUpstream(targetURI, uriToRemove string) error {
 	var upstreamJSON string
-	sql := `SELECT lineage_upstream FROM datacatalog WHERE _id = ?`
-	err := GlobalKBSQLite.Db.QueryRow(sql, targetURI).Scan(&upstreamJSON)
+	query := `SELECT lineage_upstream FROM datacatalog WHERE _id = ?`
+	err := GlobalKBSQLite.DB.QueryRow(query, targetURI).Scan(&upstreamJSON)
 	if err != nil {
 		return err
 	}
@@ -342,7 +343,7 @@ func (lm *LineageManager) removeFromUpstream(targetURI, uriToRemove string) erro
 	}
 
 	newJSON, _ := json.Marshal(filtered)
-	sql = `UPDATE datacatalog SET lineage_upstream = ?, updated_timestamp = ? WHERE _id = ?`
-	_, err = GlobalKBSQLite.Db.Exec(sql, string(newJSON), time.Now().Unix(), targetURI)
+	query = `UPDATE datacatalog SET lineage_upstream = ?, updated_timestamp = ? WHERE _id = ?`
+	_, err = GlobalKBSQLite.DB.Exec(query, string(newJSON), time.Now().Unix(), targetURI)
 	return err
 }

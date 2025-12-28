@@ -307,6 +307,15 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 				return
 			}
 
+			// NEW: Trigger automatic metadata extraction and lineage tracking
+			if optimusdb.Interceptor != nil {
+				if err := optimusdb.Interceptor.OnDocumentPut(toscaDoc, "dsswres"); err != nil {
+					logger.Warn("[WARN] Metadata extraction failed for TOSCA upload %s: %v", templateID, err)
+				} else {
+					logger.Info("[LINEAGE] TOSCA document %s indexed with automatic lineage tracking", templateID)
+				}
+			}
+
 			// Also index in SQLite for fast lookups
 			if app.GlobalKBSQLite != nil {
 				nodeCount := tosca.CountNodeTemplatesFromJSON(toscaDoc)
@@ -386,6 +395,15 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 			if _, err := (*optimusdb.DsTOSCA_Imported).Put(ctx, doc); err != nil {
 				sendErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to persist to OrbitDB: %v", err))
 				return
+			}
+
+			// NEW: Trigger automatic metadata extraction for legacy TOSCA uploads
+			if optimusdb.Interceptor != nil {
+				if err := optimusdb.Interceptor.OnDocumentPut(doc, "tosca_imported"); err != nil {
+					logger.Warn("[WARN] Metadata extraction failed for legacy TOSCA upload %s: %v", templateID, err)
+				} else {
+					logger.Info("[LINEAGE] Legacy TOSCA document %s indexed", templateID)
+				}
 			}
 
 			// Index in SQLite
