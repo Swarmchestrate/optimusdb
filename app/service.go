@@ -2865,20 +2865,21 @@ func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 		if !ok {
 			return false, nil
 		}
-
+		// Use enhanced matching with nested path support and operators ($regex, $gt, $lt, $in, etc.)
+		return matchesCriteriaEnhanced(record, filterCriteria), nil
 		// Check if all criteria match
-		for key, value := range filterCriteria {
-			recordValue, exists := record[key]
-			if !exists {
-				return false, nil
-			}
-
-			if fmt.Sprintf("%v", recordValue) != fmt.Sprintf("%v", value) {
-				return false, nil
-			}
-		}
-
-		return true, nil
+		//for key, value := range filterCriteria {
+		//	recordValue, exists := record[key]
+		//	if !exists {
+		//		return false, nil
+		//	}
+		//
+		//	if fmt.Sprintf("%v", recordValue) != fmt.Sprintf("%v", value) {
+		//		return false, nil
+		//	}
+		//}
+		//
+		//return true, nil
 	})
 
 	if err != nil {
