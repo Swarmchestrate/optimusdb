@@ -1044,6 +1044,12 @@ func ConvertMetadataToMap(entry datamodel.MetadataEntry) map[string]interface{} 
 // 2. CRUDPUT - Insert Documents (REFINED - Supports All Datastores)
 // =============================================================================
 
+// =============================================================================
+// COMPLETE FIXED crudPutDocStoreRev FUNCTION
+// Replace your existing function (around line 1080-1240) with this version
+// This includes FIX #2 (forceIndexRebuild call) which is currently MISSING
+// =============================================================================
+
 func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 	dbtype string, criteria []map[string]interface{}) ([]map[string]interface{}, error) {
 
@@ -1157,49 +1163,41 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 	}
 
 	// Insert data documents into selected DocumentStore
-	//logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Inserting %d data records into %s", len(docsToInsert), storeName)}
 	logger.Info("[INFO] CRUDPUT: Inserting %d data records into %s", len(docsToInsert), storeName)
 
-	//_, err = dbDocStore.PutAll(ctx, docsToInsert)
-	//if err != nil {
-	//	return nil, fmt.Errorf("failed to insert data records into %s: %w", storeName, err)
-	//}
-
-	// Use custom PutAll implementation (workaround for go-orbit-db v1.21.0 bug)
-	// Option 1: Basic custom PutAll (faster, no verification)
-	//err = CustomPutAllDocuments(ctx, dbDocStore, docsToInsert, logChan, storeName)
-	//if err != nil {
-	//	return nil, fmt.Errorf("failed to insert data records into %s: %w", storeName, err)
-	//}
-
-	// Option 2: With verification (slower, but guarantees persistence)
-	// Uncomment this and comment out Option 1 if you want verification
+	// Use custom PutAll implementation with verification and retry logic
 	err = CustomPutAllWithVerification(ctx, dbDocStore, docsToInsert, logChan, storeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert data records into %s: %w", storeName, err)
 	}
 
-	//logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully inserted %d data records into %s", len(docsToInsert), storeName)}
 	logger.Info("[INFO] CRUDPUT: Successfully inserted %d data records into %s", len(docsToInsert), storeName)
+
+	// =========================================================================
+	// FIX ISSUE 2 & 7: Force index rebuild after bulk insert
+	// THIS IS THE CRITICAL MISSING PIECE!
+	// =========================================================================
+	if err := forceIndexRebuild(ctx, dbDocStore, logChan); err != nil {
+		logger.Warn("[WARN] Index rebuild failed: %v", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+	// =========================================================================
 
 	// NEW: Add lineage extraction for all inserted documents
 	if optimusdb.Interceptor != nil {
 		for _, doc := range docsToInsert {
 			if docMap, ok := doc.(map[string]interface{}); ok {
 				if err := optimusdb.Interceptor.OnDocumentPut(docMap, storeName); err != nil {
-					//logChan <- Log{Type: Warning, Data: fmt.Sprintf("Metadata extraction failed for doc %v: %v", docMap["_id"], err)}
 					logger.Warn("[WARN] Metadata extraction failed for doc %v: %v", docMap["_id"], err)
 				}
 			}
 		}
 		logger.Info("[INFO] CRUDPUT: Lineage extraction completed for %d documents", len(docsToInsert))
-		//logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Lineage extraction completed for %d documents", len(docsToInsert))}
 	}
 
 	// Insert metadata records into KBMetadata (only for data stores, not metadata store itself)
 	if optimusdb.KBMetadata != nil && len(metadataRecords) > 0 {
 		metadataStore := *optimusdb.KBMetadata
-		//_, err = metadataStore.PutAll(ctx, metadataRecords)
 		err = CustomPutAllDocuments(ctx, metadataStore, metadataRecords, logChan, "kbmetadata")
 		if err != nil {
 			logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("CRUDPUT: Warning - metadata insert failed: %v", err)}
@@ -1209,11 +1207,6 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 			logger.Info("[INFO] CRUDPUT: Successfully inserted %d metadata records into KBMetadata", len(metadataRecords))
 		}
 	}
-
-	// Note: Metadata records are already created and inserted into KBMetadata above
-	// The MetadataService in this system is designed for database table enrichment,
-	// not individual record enrichment. Background enrichment happens via
-	// the MetadataEnricher worker if enabled in main.go
 
 	return dataRecords, nil
 }
@@ -3455,9 +3448,14 @@ func CustomPutAllDocuments(
 }
 
 // =============================================================================
-// BATCH INSERT WITH VERIFICATION
+// CRITICAL FIXES FOR 5-FILE UPLOAD PROBLEM
+// Replace your existing CustomPutAllWithVerification function with this one
+// And add the forceIndexRebuild function if it doesn't exist
 // =============================================================================
-// CustomPutAllWithVerification - Enhanced version with post-insert verification
+
+// =============================================================================
+// FIX #6: CustomPutAllWithVerification WITH RETRY LOGIC
+// This version includes exponential backoff retries for 8-node clusters
 // =============================================================================
 
 func CustomPutAllWithVerification(
@@ -3467,6 +3465,12 @@ func CustomPutAllWithVerification(
 	logChan chan Log,
 	storeName string,
 ) error {
+	if len(documents) == 0 {
+		return fmt.Errorf("no documents to insert")
+	}
+
+	logger.Info("[INFO] CustomPutAll: Starting insertion of %d documents into %s", len(documents), storeName)
+
 	// Track document IDs for verification
 	expectedIDs := make(map[string]bool)
 
@@ -3491,71 +3495,97 @@ func CustomPutAllWithVerification(
 			return fmt.Errorf("failed to insert document %s: %w", docIDStr, err)
 		}
 
-		//logChan <- Log{
-		//	Type: Info,
-		//	Data: fmt.Sprintf("CustomPutAll: Inserted document %s (%d/%d)", docIDStr, i+1, len(documents)),
-		//}
 		logger.Info("[INFO] CustomPutAll: Inserted document %s (%d/%d)", docIDStr, i+1, len(documents))
 	}
 
-	// Second pass: Verify all documents exist
-	time.Sleep(200 * time.Millisecond) // Brief pause for replication
-
+	// FIX ISSUE 6: Retry verification with exponential backoff
+	maxRetries := 5
+	retryDelay := 100 * time.Millisecond
 	verifiedCount := 0
 	missingDocs := []string{}
 
-	for docID := range expectedIDs {
-		// Query to check if document exists
-		results, err := dbDocStore.Query(ctx, func(d interface{}) (bool, error) {
-			if dm, ok := d.(map[string]interface{}); ok {
-				if id, hasID := dm["_id"]; hasID {
-					return fmt.Sprintf("%v", id) == docID, nil
-				}
-			}
-			return false, nil
-		})
+	for retry := 0; retry < maxRetries; retry++ {
+		time.Sleep(retryDelay)
 
+		// Force reload to get latest state from cluster
+		err := dbDocStore.Load(ctx, 100000)
 		if err != nil {
-			logger.Warn("[WARN] CustomPutAll: Verification query failed for %s: %v", docID, err)
-			missingDocs = append(missingDocs, docID)
-			continue
+			logger.Warn("[WARN] Load failed on retry %d: %v", retry+1, err)
 		}
 
-		if len(results) > 0 {
-			expectedIDs[docID] = true
-			verifiedCount++
-		} else {
-			logger.Warn("[WARN] CustomPutAll: Document %s not found after insert!", docID)
-			missingDocs = append(missingDocs, docID)
+		// Reset verification state for this retry
+		verifiedCount = 0
+		missingDocs = []string{}
+
+		// Verify all documents
+		for docID := range expectedIDs {
+			results, err := dbDocStore.Query(ctx, func(d interface{}) (bool, error) {
+				if dm, ok := d.(map[string]interface{}); ok {
+					if id, hasID := dm["_id"]; hasID {
+						return fmt.Sprintf("%v", id) == docID, nil
+					}
+				}
+				return false, nil
+			})
+
+			if err != nil {
+				logger.Warn("[WARN] Verification query failed for %s: %v", docID, err)
+				missingDocs = append(missingDocs, docID)
+				continue
+			}
+
+			if len(results) > 0 {
+				expectedIDs[docID] = true
+				verifiedCount++
+			} else {
+				missingDocs = append(missingDocs, docID)
+			}
 		}
+
+		// Check if all documents verified
+		if len(missingDocs) == 0 {
+			if retry > 0 {
+				logger.Info("[INFO] All documents verified after %d retries", retry+1)
+			}
+			break
+		}
+
+		// Exponential backoff: 100ms → 200ms → 400ms → 800ms → 1600ms
+		retryDelay *= 2
+		logger.Warn("[WARN] Retry %d/%d: %d documents still missing: %v",
+			retry+1, maxRetries, len(missingDocs), missingDocs)
 	}
 
-	// Report verification results
+	// Final verification results
 	if len(missingDocs) > 0 {
-		logger.Error("[ERROR] CustomPutAll: Verification FAILED! %d/%d documents missing: %v",
-			len(missingDocs), len(documents), missingDocs)
-		return fmt.Errorf("verification failed: %d documents missing", len(missingDocs))
+		logger.Error("[ERROR] CustomPutAll: Verification FAILED after %d retries! %d/%d documents missing: %v",
+			maxRetries, len(missingDocs), len(documents), missingDocs)
+		return fmt.Errorf("verification failed: %d documents missing after %d retries", len(missingDocs), maxRetries)
 	}
 
 	logger.Info("[INFO] CustomPutAll: Verification SUCCESS! All %d documents confirmed in %s", verifiedCount, storeName)
-
-	//logChan <- Log{
-	//	Type: Info,
-	//	Data: fmt.Sprintf("CustomPutAll: Verification SUCCESS! All %d documents confirmed in %s", verifiedCount, storeName),
-	//}
-
 	return nil
 }
 
-/*
-func extractCIDFromIPFSPath(ipfsPath string) (string, error) {
-	// Remove the "/ipfs/" prefix from the IPFS path
-	cidStartIndex := strings.Index(ipfsPath, "/ipfs/") + 6
-	if cidStartIndex < 6 || cidStartIndex >= len(ipfsPath) {
-		return "", fmt.Errorf("extractCIDFromIPFSPath:invalid IPFS path")
+// =============================================================================
+// FIX #7: forceIndexRebuild Function
+// Forces OrbitDB to rebuild its index after bulk operations
+// =============================================================================
+
+func forceIndexRebuild(ctx context.Context, dbDocStore iface.DocumentStore, logChan chan Log) error {
+	logger.Info("[INFO] Forcing index rebuild...")
+
+	// Load with high limit to force full index rebuild
+	err := dbDocStore.Load(ctx, 100000)
+	if err != nil {
+		return fmt.Errorf("index rebuild failed: %w", err)
 	}
 
-	cid := ipfsPath[cidStartIndex:]
-	return cid, nil
+	// Wait for propagation
+	time.Sleep(500 * time.Millisecond)
+
+	logger.Info("[INFO] Index rebuild complete")
+	return nil
 }
-*/
+
+// =============================================================================
