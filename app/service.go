@@ -529,17 +529,6 @@ func awaitStoreExchange(optimusdb *KnowledgeBaseDB, logChan chan Log) {
 	}
 }
 
-func extractCIDFromIPFSPath(ipfsPath string) (string, error) {
-	// Remove the "/ipfs/" prefix from the IPFS path
-	cidStartIndex := strings.Index(ipfsPath, "/ipfs/") + 6
-	if cidStartIndex < 6 || cidStartIndex >= len(ipfsPath) {
-		return "", fmt.Errorf("extractCIDFromIPFSPath:invalid IPFS path")
-	}
-
-	cid := ipfsPath[cidStartIndex:]
-	return cid, nil
-}
-
 // Listens for write events to the contributions database and validates the added data.
 // What this does:
 // Subscribes to write events on contributions
@@ -1168,9 +1157,24 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 	}
 
 	// Insert data documents into selected DocumentStore
-	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Inserting %d data records into %s", len(docsToInsert), storeName)}
+	//logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Inserting %d data records into %s", len(docsToInsert), storeName)}
+	logger.Info("[INFO] CRUDPUT: Inserting %d data records into %s", len(docsToInsert), storeName)
 
-	_, err = dbDocStore.PutAll(ctx, docsToInsert)
+	//_, err = dbDocStore.PutAll(ctx, docsToInsert)
+	//if err != nil {
+	//	return nil, fmt.Errorf("failed to insert data records into %s: %w", storeName, err)
+	//}
+
+	// Use custom PutAll implementation (workaround for go-orbit-db v1.21.0 bug)
+	// Option 1: Basic custom PutAll (faster, no verification)
+	//err = CustomPutAllDocuments(ctx, dbDocStore, docsToInsert, logChan, storeName)
+	//if err != nil {
+	//	return nil, fmt.Errorf("failed to insert data records into %s: %w", storeName, err)
+	//}
+
+	// Option 2: With verification (slower, but guarantees persistence)
+	// Uncomment this and comment out Option 1 if you want verification
+	err = CustomPutAllWithVerification(ctx, dbDocStore, docsToInsert, logChan, storeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert data records into %s: %w", storeName, err)
 	}
@@ -1195,7 +1199,8 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 	// Insert metadata records into KBMetadata (only for data stores, not metadata store itself)
 	if optimusdb.KBMetadata != nil && len(metadataRecords) > 0 {
 		metadataStore := *optimusdb.KBMetadata
-		_, err = metadataStore.PutAll(ctx, metadataRecords)
+		//_, err = metadataStore.PutAll(ctx, metadataRecords)
+		err = CustomPutAllDocuments(ctx, metadataStore, metadataRecords, logChan, "kbmetadata")
 		if err != nil {
 			logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("CRUDPUT: Warning - metadata insert failed: %v", err)}
 			// Don't fail the whole operation if metadata fails
@@ -2936,6 +2941,22 @@ func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 			return deletedCount, fmt.Errorf("failed to delete document %s: %w", docIDStr, err)
 		}
 
+		// FIX ISSUE 5: Verify deletion worked
+		time.Sleep(100 * time.Millisecond)
+
+		verifyDocs, _ := dbDocStore.Query(ctx, func(d interface{}) (bool, error) {
+			if r, ok := d.(map[string]interface{}); ok {
+				if id, ok := r["_id"]; ok && fmt.Sprintf("%v", id) == docIDStr {
+					return true, nil
+				}
+			}
+			return false, nil
+		})
+
+		if len(verifyDocs) > 0 {
+			logger.Warn("[WARN] Document %s still exists after delete!", docIDStr)
+		}
+
 		deletedCount++
 
 		// Also delete corresponding metadata if exists
@@ -3362,3 +3383,179 @@ func matchesCriteriaEnhanced(doc map[string]interface{}, criteria map[string]int
 
 	return true
 }
+
+// =============================================================================
+// CUSTOM PUTALL IMPLEMENTATION
+// =============================================================================
+// CustomPutAllDocuments - Workaround for go-orbit-db v1.21.0 PutAll bug
+// The library's PutAll has a bug in index.go:68 where it incorrectly tracks
+// handled keys, causing documents to overwrite each other.
+// This implementation uses individual Put operations which work correctly.
+// =============================================================================
+
+func CustomPutAllDocuments(
+	ctx context.Context,
+	dbDocStore iface.DocumentStore,
+	documents []interface{},
+	logChan chan Log,
+	storeName string,
+) error {
+	if len(documents) == 0 {
+		return fmt.Errorf("no documents to insert")
+	}
+
+	logChan <- Log{
+		Type: Info,
+		Data: fmt.Sprintf("CustomPutAll: Starting insertion of %d documents into %s", len(documents), storeName),
+	}
+
+	successCount := 0
+	failedDocs := []string{}
+
+	// Insert each document individually to avoid PutAll bug
+	for i, doc := range documents {
+		// Extract document ID for logging
+		docMap, ok := doc.(map[string]interface{})
+		var docID string
+		if ok {
+			if id, hasID := docMap["_id"]; hasID {
+				docID = fmt.Sprintf("%v", id)
+			} else {
+				docID = fmt.Sprintf("doc_%d", i)
+			}
+		} else {
+			docID = fmt.Sprintf("doc_%d", i)
+		}
+
+		// Attempt to insert document
+		_, err := dbDocStore.Put(ctx, doc)
+		if err != nil {
+			logger.Warn("[WARN] CustomPutAll: Failed to insert document %s: %v", docID, err)
+			failedDocs = append(failedDocs, docID)
+			continue
+		}
+
+		successCount++
+
+		// Log progress every 10 documents
+		if (i+1)%10 == 0 {
+			logger.Info("[INFO] CustomPutAll: Progress %d/%d documents inserted", successCount, len(documents))
+		}
+	}
+
+	// Final summary
+	if len(failedDocs) > 0 {
+		logger.Warn("[WARN] CustomPutAll: Completed with %d successes, %d failures. Failed IDs: %v",
+			successCount, len(failedDocs), failedDocs)
+		return fmt.Errorf("failed to insert %d document(s): %v", len(failedDocs), failedDocs)
+	}
+	logger.Info("[INFO] CustomPutAll: Successfully inserted all %d documents into %s", successCount, storeName)
+
+	return nil
+}
+
+// =============================================================================
+// BATCH INSERT WITH VERIFICATION
+// =============================================================================
+// CustomPutAllWithVerification - Enhanced version with post-insert verification
+// =============================================================================
+
+func CustomPutAllWithVerification(
+	ctx context.Context,
+	dbDocStore iface.DocumentStore,
+	documents []interface{},
+	logChan chan Log,
+	storeName string,
+) error {
+	// Track document IDs for verification
+	expectedIDs := make(map[string]bool)
+
+	// First pass: Insert documents and track IDs
+	for i, doc := range documents {
+		docMap, ok := doc.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("document %d is not a map[string]interface{}", i)
+		}
+
+		docID, hasID := docMap["_id"]
+		if !hasID {
+			return fmt.Errorf("document %d missing _id field", i)
+		}
+
+		docIDStr := fmt.Sprintf("%v", docID)
+		expectedIDs[docIDStr] = false // Mark as not yet verified
+
+		// Insert document
+		_, err := dbDocStore.Put(ctx, doc)
+		if err != nil {
+			return fmt.Errorf("failed to insert document %s: %w", docIDStr, err)
+		}
+
+		//logChan <- Log{
+		//	Type: Info,
+		//	Data: fmt.Sprintf("CustomPutAll: Inserted document %s (%d/%d)", docIDStr, i+1, len(documents)),
+		//}
+		logger.Info("[INFO] CustomPutAll: Inserted document %s (%d/%d)", docIDStr, i+1, len(documents))
+	}
+
+	// Second pass: Verify all documents exist
+	time.Sleep(200 * time.Millisecond) // Brief pause for replication
+
+	verifiedCount := 0
+	missingDocs := []string{}
+
+	for docID := range expectedIDs {
+		// Query to check if document exists
+		results, err := dbDocStore.Query(ctx, func(d interface{}) (bool, error) {
+			if dm, ok := d.(map[string]interface{}); ok {
+				if id, hasID := dm["_id"]; hasID {
+					return fmt.Sprintf("%v", id) == docID, nil
+				}
+			}
+			return false, nil
+		})
+
+		if err != nil {
+			logger.Warn("[WARN] CustomPutAll: Verification query failed for %s: %v", docID, err)
+			missingDocs = append(missingDocs, docID)
+			continue
+		}
+
+		if len(results) > 0 {
+			expectedIDs[docID] = true
+			verifiedCount++
+		} else {
+			logger.Warn("[WARN] CustomPutAll: Document %s not found after insert!", docID)
+			missingDocs = append(missingDocs, docID)
+		}
+	}
+
+	// Report verification results
+	if len(missingDocs) > 0 {
+		logger.Error("[ERROR] CustomPutAll: Verification FAILED! %d/%d documents missing: %v",
+			len(missingDocs), len(documents), missingDocs)
+		return fmt.Errorf("verification failed: %d documents missing", len(missingDocs))
+	}
+
+	logger.Info("[INFO] CustomPutAll: Verification SUCCESS! All %d documents confirmed in %s", verifiedCount, storeName)
+
+	//logChan <- Log{
+	//	Type: Info,
+	//	Data: fmt.Sprintf("CustomPutAll: Verification SUCCESS! All %d documents confirmed in %s", verifiedCount, storeName),
+	//}
+
+	return nil
+}
+
+/*
+func extractCIDFromIPFSPath(ipfsPath string) (string, error) {
+	// Remove the "/ipfs/" prefix from the IPFS path
+	cidStartIndex := strings.Index(ipfsPath, "/ipfs/") + 6
+	if cidStartIndex < 6 || cidStartIndex >= len(ipfsPath) {
+		return "", fmt.Errorf("extractCIDFromIPFSPath:invalid IPFS path")
+	}
+
+	cid := ipfsPath[cidStartIndex:]
+	return cid, nil
+}
+*/

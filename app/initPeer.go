@@ -334,7 +334,15 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 			},
 		},
 	}
-	docstoreOpt = documentstore.DefaultStoreOptsForMap("_id") ////Here the fiasko
+	docstoreOpt = documentstore.DefaultStoreOptsForMap("_id")
+
+	//docstoreOpt = &documentstore.StoreOpts{
+	//	IndexBy:    "_id",
+	//	MaxEntries: 10000, // Explicitly set instead of using defaults
+	//	CacheSize:  50000, // Increase cache size
+	//
+	//}
+
 	cacheStore = filepath.Join(cache, *config.Flagdsswres)
 
 	logger.Debug("[DEBUG] : OptimusDB instance " + *config.Flagdsswres)
