@@ -6,28 +6,25 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"log"
-	"optimusdb/contextualmetadata"
-	"optimusdb/logger"
-	"os"
-	"os/signal"
-	"runtime"
-	"syscall"
-	"time"
-
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	pubsub_pb "github.com/libp2p/go-libp2p-pubsub/pb"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lukesampson/figlet/figletlib"
-
 	_ "github.com/mattn/go-sqlite3"
-
+	"log"
 	"optimusdb/api"
 	"optimusdb/app"
 	"optimusdb/config"
+	"optimusdb/contextualmetadata"
 	"optimusdb/election"
+	"optimusdb/logger"
 	"optimusdb/utilities"
+	"os"
+	"os/signal"
+	"runtime"
+	"syscall"
+	"time"
 )
 
 func init() {
@@ -53,7 +50,7 @@ func (mt *MeshTracer) Trace(evt *pubsub_pb.TraceEvent) {
 			}
 			//log.Printf("[MESH] 🌿 GRAFT: Peer %s joined mesh for topic %s",
 			//	peerID, *evt.Graft.Topic)
-			logger.Info("[MESH] 🌿 GRAFT: Peer %s joined mesh for topic %s",
+			logger.Mesh("[MESH] 🌿 GRAFT: Peer %s joined mesh for topic %s",
 				peerID, *evt.Graft.Topic)
 		}
 	case pubsub_pb.TraceEvent_PRUNE:
@@ -67,13 +64,13 @@ func (mt *MeshTracer) Trace(evt *pubsub_pb.TraceEvent) {
 			}
 			//log.Printf("[MESH] ✂️ PRUNE: Peer %s left mesh for topic %s",
 			//	peerID, *evt.Prune.Topic)
-			logger.Info("[MESH] ✂️ PRUNE: Peer %s left mesh for topic %s",
+			logger.Mesh("[MESH] ✂️ PRUNE: Peer %s left mesh for topic %s",
 				peerID, *evt.Prune.Topic)
 		}
 	case pubsub_pb.TraceEvent_JOIN:
 		if evt.Join != nil && evt.Join.Topic != nil {
 			//log.Printf("[MESH] ➕ JOIN: Subscribed to topic %s", *evt.Join.Topic)
-			logger.Info("[MESH] ➕ JOIN: Subscribed to topic %s", *evt.Join.Topic)
+			logger.Mesh("[MESH] ➕ JOIN: Subscribed to topic %s", *evt.Join.Topic)
 		}
 	case pubsub_pb.TraceEvent_ADD_PEER:
 		peerID := ""
@@ -84,7 +81,7 @@ func (mt *MeshTracer) Trace(evt *pubsub_pb.TraceEvent) {
 			}
 		}
 		//log.Printf("[MESH] 👥 ADD_PEER: Connected to %s", peerID)
-		logger.Info("[MESH] 👥 ADD_PEER: Connected to %s", peerID)
+		logger.Mesh("[MESH] 👥 ADD_PEER: Connected to %s", peerID)
 	}
 }
 
@@ -108,18 +105,18 @@ func MonitorMeshStatus(ctx context.Context, ps *pubsub.PubSub, topic *pubsub.Top
 			meshPeers := ps.ListPeers("optimusdb")
 
 			//log.Printf("[MESH-STATUS] ════════════════════════════════")
-			logger.Info("[MESH-STATUS] Connected peers: %d", len(allPeers))
-			logger.Info("[MESH-STATUS] Topic 'optimusdb' subscribers: %d", len(topicPeers))
-			logger.Info("[MESH-STATUS] Mesh peers: %d", len(meshPeers))
+			logger.Mesh("[MESH-STATUS] Connected peers: %d", len(allPeers))
+			logger.Mesh("[MESH-STATUS] Topic 'optimusdb' subscribers: %d", len(topicPeers))
+			logger.Mesh("[MESH-STATUS] Mesh peers: %d", len(meshPeers))
 
 			// List mesh peer details
 			for i, p := range meshPeers {
-				shortID := fmt.Sprintf("%s", p)
-				if len(shortID) > 8 {
-					shortID = shortID[:8] + "..."
-				}
+				shortID := fmt.Sprintf("%s", p) + "..."
+				//if len(shortID) > 8 {
+				//	shortID = shortID[:8] + "..."
+				//}
 				connectedness := host.Network().Connectedness(p)
-				logger.Info("[MESH-STATUS]   [%d] %s - %s", i+1, shortID, connectedness)
+				logger.Mesh("[MESH-STATUS]   [%d] %s - %s", i+1, shortID, connectedness)
 			}
 			//log.Printf("[MESH-STATUS] ════════════════════════════════")
 		}
@@ -138,13 +135,28 @@ func main() {
 		if runtime.GOOS == "windows" {
 			log.Printf("Running on Windows")
 			utilities.GetMemoryUsage()
-			utilities.GetDiskUsage(interval)
+			_, _, err := utilities.GetDiskUsage(interval)
+			if err != nil {
+				return
+			}
 		} else {
 			log.Printf("Running on OS: %s", runtime.GOOS)
 			utilities.GetMemoryUsage()
-			utilities.GetCPUUsage()
-			utilities.GetNetworkUsage()
-			utilities.GetDiskUsage(interval)
+			usage, f, f2, err := utilities.GetCPUUsage()
+			if err != nil {
+				logger.Error("Problem faced in GetCPUUsage, %v %v %v with error: %v", usage, f, f2, err)
+				return
+			}
+			networkUsage, f3, err := utilities.GetNetworkUsage()
+			if err != nil {
+				logger.Error("Problem faced in GetNetworkUsage, %v %v with error: %v", networkUsage, f3, err)
+				return
+			}
+			diskUsage, f4, err := utilities.GetDiskUsage(interval)
+			if err != nil {
+				logger.Error("Problem faced in GetNetworkUsage, %v %v with error: %v", diskUsage, f4, err)
+				return
+			}
 		}
 	}
 
@@ -183,7 +195,11 @@ func main() {
 
 	// Init peer + KB components
 	if err := app.InitPeer(&knowledgeBaseDB, &rdbms, &bench, logChan); err != nil {
-		fmt.Fprintf(os.Stderr, "Error on setup:\n %+v\n", err)
+		fprintf, err := fmt.Fprintf(os.Stderr, "Error on setup:\n %+v\n", err)
+		if err != nil {
+			logger.Error("Problem faced in InitPeer setup, %v with error: %v", fprintf, err)
+			return
+		}
 		logger.Error("Error on setup of InitPeer under main: %v", err)
 
 		os.Exit(1)
@@ -551,13 +567,25 @@ func main() {
 	logger.Info("[SHUTDOWN] Shutting down OptimusDB node...")
 
 	// Persist config & benchmark
-	config.SaveStructAsJSON(knowledgeBaseDB.Config, *config.FlagRepo+"_config")
+	err = config.SaveStructAsJSON(knowledgeBaseDB.Config, *config.FlagRepo+"_config")
+	if err != nil {
+		logger.Error("Problem faced in SaveStructAsJSON, with error: %v", err)
+		return
+	}
 	benchmarkPath := *config.FlagRepo + "_benchmark"
-	config.SaveStructAsJSON(knowledgeBaseDB.Benchmark, benchmarkPath)
+	err = config.SaveStructAsJSON(knowledgeBaseDB.Benchmark, benchmarkPath)
+	if err != nil {
+		logger.Error("Problem faced in SaveStructAsJSON in benchmark, with error: %v", err)
+		return
+	}
 
 	// Close OrbitDB
 	if knowledgeBaseDB.Orbit != nil {
-		(*knowledgeBaseDB.Orbit).Close()
+		err := (*knowledgeBaseDB.Orbit).Close()
+		if err != nil {
+			logger.Error("Problem faced in Closing Optimusdb Data Store pointer, with error: %v", err)
+			return
+		}
 	}
 
 	log.Println("[SHUTDOWN] Complete")
@@ -608,7 +636,11 @@ func handleShutdown(service *api.Service, knowledgeBaseDB *app.KnowledgeBaseDB, 
 	}
 
 	if knowledgeBaseDB != nil && knowledgeBaseDB.Orbit != nil {
-		(*knowledgeBaseDB.Orbit).Close()
+		err := (*knowledgeBaseDB.Orbit).Close()
+		if err != nil {
+			logger.Error("Problem faced in Closing knowledgeBaseDB Data Store pointer, with error: %v", err)
+			return
+		}
 		logger.Info("[SHUTDOWN] OrbitDB instance closed.")
 	}
 

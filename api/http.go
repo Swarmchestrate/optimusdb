@@ -77,9 +77,7 @@ func peersHandler() http.HandlerFunc {
 	}
 }
 
-/*
-// logsHandler handles GET /<context>/log?date=YYYY-MM-DD&hour=HH
-*/
+// LogsHandler handles GET /<context>/log?date=YYYY-MM-DD&hour=HH
 func LogsHandler(kb *app.LoggerSQLite) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		date := r.URL.Query().Get("date")
@@ -101,139 +99,12 @@ func LogsHandler(kb *app.LoggerSQLite) http.HandlerFunc {
 	}
 }
 
-/*
-*  dedicated HTTP handler for TOSCA uploads
-
+// uploadTOSCAHandler handles TOSCA template uploads with optional full structure storage
 func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 	type UploadRequest struct {
-		File     string `json:"file"`               // Base64-encoded TOSCA YAML
-		Filename string `json:"filename,omitempty"` // optional
-	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			sendErrorResponse(w, http.StatusMethodNotAllowed, "Only POST is allowed")
-			return
-		}
-
-		var req UploadRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.File == "" {
-			sendErrorResponse(w, http.StatusBadRequest, "Invalid JSON payload")
-			return
-		}
-
-		// 1) Base64 decode
-		decoded, err := base64.StdEncoding.DecodeString(req.File)
-		if err != nil {
-			sendErrorResponse(w, http.StatusBadRequest, "Base64 decoding failed")
-			return
-		}
-
-		// 2) Parse TOSCA
-		tmpl, err := tosca.ParseTOSCA(decoded)
-		if err != nil {
-			sendErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("TOSCA parse error: %v", err))
-			return
-		}
-
-		// 3) Compute IDs / counts
-		templateID := tosca.ComputeTemplateID(decoded)
-		nodeCount := tosca.CountNodeTemplates(tmpl)
-		description := tmpl.Description
-
-		// 4) Persist ORIGINAL YAML to OrbitDB (e.g., DsTOSCA_Imported)
-		if optimusdb.DsTOSCA_Imported == nil {
-			sendErrorResponse(w, http.StatusInternalServerError, "TOSCA store not initialized")
-			return
-		}
-		ctx := r.Context()
-		doc := map[string]interface{}{
-			"_id":         templateID,
-			"type":        "tosca_template",
-			"description": description,
-			"nodeCount":   nodeCount,
-			"yaml":        string(decoded),
-			"createdAt":   time.Now().UTC().Format(time.RFC3339),
-		}
-		if _, err := (*optimusdb.DsTOSCA_Imported).Put(ctx, doc); err != nil {
-			sendErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to persist to OrbitDB: %v", err))
-			return
-		}
-
-		// 5) Index lightweight metadata into SQLite
-		if app.GlobalKBSQLite == nil {
-			sendErrorResponse(w, http.StatusInternalServerError, "SQLite not initialized")
-			return
-		}
-
-		// (B) Also add the raw YAML blob to IPFS to get a stable content path (ipfsPath)
-		var ipfsPath string
-		if optimusdb.Orbit != nil {
-			coreAPI := (*optimusdb.Orbit).IPFS()
-			nd := files.NewBytesFile(decoded)
-			p, err := coreAPI.Unixfs().Add(ctx, nd)
-			if err == nil {
-				ipfsPath = p.String() // e.g., /ipfs/<CID>
-			} // if it fails, we'll just leave ipfsPath empty
-		}
-
-		filename := req.Filename
-		if filename == "" {
-			filename = "unknown"
-		}
-		filesize := int64(len(decoded))
-
-		// compute sha256
-		sum := sha256.Sum256(decoded)
-		sha := fmt.Sprintf("%x", sum[:])
-
-		uploader := r.Header.Get("X-User") // optional: caller can set this
-		if uploader == "" {
-			uploader = app.GetAgentName() // fallback to your agent name
-		}
-		sourcePod := os.Getenv("POD_NAME") // set by Kubernetes downward API in your manifest
-		sourceIP, _ := getLocalIPAddress() // your helper already exists
-
-		// (D) Insert into SQLite with contextual metadata generation
-		if err := app.GlobalKBSQLite.InsertTOSCAMetadata(
-			templateID,
-			description,
-			nodeCount,
-			filename,
-			filesize,
-			sha,
-			ipfsPath,
-			uploader,
-			sourcePod,
-			sourceIP,
-		); err != nil {
-			sendErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to index metadata: %v", err))
-			return
-		}
-
-		// 6) Respond
-		sendSuccessResponse(w, map[string]interface{}{
-			"message":     "TOSCA uploaded successfully",
-			"template_id": templateID,
-			"node_count":  nodeCount,
-			"filename":    filename,
-			"filesize":    filesize,
-			"sha256":      sha,
-		})
-	}
-}
-*/
-
-// =============================================================================
-// COMPLETE REPLACEMENT FOR uploadTOSCAHandler in api/http.go
-// =============================================================================
-// Copy this entire function and replace your existing uploadTOSCAHandler
-// =============================================================================
-
-func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
-	type UploadRequest struct {
-		File               string `json:"file"`                           // Base64-encoded TOSCA YAML
-		Filename           string `json:"filename,omitempty"`             // optional
-		StoreFullStructure bool   `json:"store_full_structure,omitempty"` // NEW: Enable full structure storage
+		File               string `json:"file"`
+		Filename           string `json:"filename,omitempty"`
+		StoreFullStructure bool   `json:"store_full_structure,omitempty"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -307,12 +178,12 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 				return
 			}
 
-			// NEW: Trigger automatic metadata extraction and lineage tracking
+			// Trigger automatic metadata extraction and lineage tracking
 			if optimusdb.Interceptor != nil {
 				if err := optimusdb.Interceptor.OnDocumentPut(toscaDoc, "dsswres"); err != nil {
-					logger.Warn("[WARN] Metadata extraction failed for TOSCA upload %s: %v", templateID, err)
+					logger.Warn("Metadata extraction failed for TOSCA upload %s: %v", templateID, err)
 				} else {
-					logger.Info("[LINEAGE] TOSCA document %s indexed with automatic lineage tracking", templateID)
+					logger.Lineage("TOSCA document %s indexed with automatic lineage tracking", templateID)
 				}
 			}
 
@@ -344,6 +215,9 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 
 			// Extract sample queryable fields for response
 			queryableFields := extractQueryableFieldPaths(toscaDoc, "", 50)
+
+			logger.Info("TOSCA uploaded with full structure: %s (filename: %s, size: %d bytes)",
+				templateID, filename, len(decoded))
 
 			sendSuccessResponse(w, map[string]interface{}{
 				"message":          "TOSCA uploaded with full queryable structure",
@@ -397,12 +271,12 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 				return
 			}
 
-			// NEW: Trigger automatic metadata extraction for legacy TOSCA uploads
+			// Trigger automatic metadata extraction for legacy TOSCA uploads
 			if optimusdb.Interceptor != nil {
 				if err := optimusdb.Interceptor.OnDocumentPut(doc, "tosca_imported"); err != nil {
-					logger.Warn("[WARN] Metadata extraction failed for legacy TOSCA upload %s: %v", templateID, err)
+					logger.Warn("Metadata extraction failed for legacy TOSCA upload %s: %v", templateID, err)
 				} else {
-					logger.Info("[LINEAGE] Legacy TOSCA document %s indexed", templateID)
+					logger.Lineage("Legacy TOSCA document %s indexed", templateID)
 				}
 			}
 
@@ -435,6 +309,9 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 				)
 			}
 
+			logger.Info("TOSCA uploaded (legacy mode): %s (filename: %s, nodes: %d)",
+				templateID, filename, nodeCount)
+
 			sendSuccessResponse(w, map[string]interface{}{
 				"message":          "TOSCA uploaded (legacy mode)",
 				"template_id":      templateID,
@@ -449,10 +326,6 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 		}
 	}
 }
-
-// =============================================================================
-// HELPER FUNCTIONS - Add these at the end of api/http.go (before ServeHTTP)
-// =============================================================================
 
 // extractDescription extracts description from parsed TOSCA JSON
 func extractDescription(toscaDoc map[string]interface{}) string {
@@ -505,7 +378,7 @@ func extractQueryableFieldPaths(doc map[string]interface{}, prefix string, limit
 	return fields
 }
 
-// gathers all benchmark data from known peers
+// benchmarksHandler gathers all benchmark data from known peers
 func benchmarksHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		o := *optimusdb.Orbit
@@ -522,15 +395,13 @@ func benchmarksHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 			ma := c.Address()
 			ip, err := extractIPFromMultiaddr(ma)
 			if err != nil {
-				// TODO : log the error using logChan
-				fmt.Print(err)
+				logger.Warn("Failed to extract IP from multiaddr %s: %v", ma, err)
 				continue
 			}
 
 			bm, err := getBenchmark(client, ip)
 			if err != nil {
-				// TODO : log the error ?
-				fmt.Print(err)
+				logger.Warn("Failed to get benchmark from peer %s: %v", ip, err)
 				continue
 			}
 
@@ -551,9 +422,7 @@ func benchmarksHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 	}
 }
 
-/*
-*
- */
+// getBenchmark retrieves benchmark data from a peer
 func getBenchmark(client *http.Client, peerIP string) (app.Benchmark, error) {
 	var bm app.Benchmark
 
@@ -564,7 +433,6 @@ func getBenchmark(client *http.Client, peerIP string) (app.Benchmark, error) {
 	}
 
 	// send get benchmark request
-	//cmdPath := "http://" + peerIP + ":8089/optimusdb/command"
 	cmdPath := "http://" + peerIP + ":" + *config.FlagHTTPPort + "/" + *config.FlagContext + "/command"
 	req, err := http.NewRequest("POST", cmdPath, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -603,10 +471,7 @@ func extractIPFromMultiaddr(maddr multiaddr.Multiaddr) (string, error) {
 	return "", fmt.Errorf("No ip found in ma " + maddr.String())
 }
 
-/*
-*
-This is the context handler for the REQ/RSP of the Http payload
-*/
+// commandHandler handles HTTP requests and routes them to the service layer
 func commandHandler(reqChan chan<- app.Request, resChan <-chan interface{}) http.HandlerFunc {
 
 	type HTTPRequest struct {
@@ -620,11 +485,11 @@ func commandHandler(reqChan chan<- app.Request, resChan <-chan interface{}) http
 		SQLDML          string                   `json:"sqldml"`
 	}
 
-	fmt.Println("[DEBUG] Inside command Handler formation")
+	logger.Debug("Command handler initialized")
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		logger.Debug("Processing command request from %s", r.RemoteAddr)
 
-		fmt.Println("[DEBUG] Inside command Handler ~ Response Writer")
 		if r.Method != "POST" {
 			sendErrorResponse(w, http.StatusMethodNotAllowed, "Method not allowed")
 			return
@@ -673,32 +538,25 @@ func commandHandler(reqChan chan<- app.Request, resChan <-chan interface{}) http
 	}
 }
 
-/*
-*	sendErrorResponse
- */
+// sendErrorResponse sends an error response
 func sendErrorResponse(w http.ResponseWriter, statusCode int, message string) {
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		//"status":  "error",
 		"status":  http.Error,
 		"message": message,
 	})
 }
 
-/*
-*	sendSuccessResponse
- */
+// sendSuccessResponse sends a success response
 func sendSuccessResponse(w http.ResponseWriter, data interface{}) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		//"status": "success",
 		"status": http.StatusOK,
 		"data":   data,
 	})
 }
 
 // agentStatusHandler returns comprehensive agent status including role and peer health
-// Add this function to api/http.go (before ServeHTTP function)
 func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -722,7 +580,7 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 		role, currentLeader, currentTerm, leadershipCount := election.GetNodeStatus()
 
 		// Determine if this node is the coordinator
-		isCoordinator := (role == "Coordinator") // Election state
+		isCoordinator := (role == "Coordinator")
 		isCurrentLeader := (role == "Coordinator" && selfPeerID == currentLeader)
 
 		// Get self reputation/health metrics
@@ -735,7 +593,7 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 		// Get all peers reputation
 		allReputations, err := election.GetAllPeersReputation()
 		if err != nil {
-			logger.Error("[ERROR] Failed to get peer reputations: %v", err)
+			logger.Error("Failed to get peer reputations: %v", err)
 			allReputations = []election.NodeReputation{}
 		}
 
@@ -759,7 +617,7 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 		// Build peer list with roles and health
 		peersList := make([]map[string]interface{}, 0)
 
-		// ⭐ FIX: Use connected peers as source, not just reputations
+		// Use connected peers as source
 		for peerIDStr := range connectedPeerIDs {
 			// Skip self
 			if peerIDStr == selfPeerID {
@@ -780,7 +638,6 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 			var peerInfo map[string]interface{}
 
 			if hasReputation {
-				// We have reputation data for this peer
 				healthScore := election.CalculateHealthScore(*rep)
 
 				var healthStatus string
@@ -820,7 +677,6 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 					},
 				}
 			} else {
-				// No reputation data yet, use defaults
 				peerInfo = map[string]interface{}{
 					"peer_id":   peerIDStr,
 					"role":      peerRole,
@@ -899,7 +755,7 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 			}
 		}
 		// Add self to counts
-		if role == "Coordinator" { //  Use actual role
+		if role == "Coordinator" {
 			coordCount++
 		} else {
 			followerCount++
@@ -926,13 +782,13 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 				"last_election_term": lastElectionTerm,
 			},
 			"cluster": map[string]interface{}{
-				"total_peers":      len(peersList) + 1, // ✅ Fixed: +1 for self
+				"total_peers":      len(peersList) + 1,
 				"connected_peers":  len(connectedPeerIDs) - 1,
 				"discovered_peers": len(discoveredPeers),
-				"coordinators":     coordCount,    // ✅ Fixed: actual count
-				"followers":        followerCount, // ✅ Fixed: actual count
+				"coordinators":     coordCount,
+				"followers":        followerCount,
 			},
-			"peers": peersList, // ✅ Now populated!
+			"peers": peersList,
 			"configuration": map[string]interface{}{
 				"context":   *config.FlagContext,
 				"http_port": *config.FlagHTTPPort,
@@ -944,9 +800,7 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 	}
 }
 
-// //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// ServeHTTP
-// //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ServeHTTP initializes and starts the HTTP server
 func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan chan app.Request,
 	resChan chan interface{}, logChan chan app.Log) {
 
@@ -954,12 +808,10 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 
 	// middleware to handle CORS headers and preflight requests
 	mw := func(next http.Handler) http.Handler {
-		/////
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := r.RemoteAddr
 			logChan <- app.Log{app.Info, "Received HTTP request from " + ip}
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			//w.Header().Set("Access-Control-Allow-Methods", "POST")
 			w.Header().Set("Access-Control-Allow-Methods", "*")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
@@ -971,37 +823,19 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 		})
 	}
 
-	// register command handler which allows to run commands similar to the shell
-	//fmt.Println("config.FlagContext is:", *config.FlagContext)
-
-	/**
-	simple HTTP endpoint all command related to data stores
-	*/
+	// Register command handler
 	server.Handle("/"+*config.FlagContext+"/command", mw(commandHandler(reqChan, resChan)))
 
-	/**
-	Agent status endpoint - shows coordinator/follower status and peer health
-	*/
+	// Agent status endpoint
 	server.Handle("/"+*config.FlagContext+"/agent/status", mw(agentStatusHandler(optimusdb)))
 
-	/**
-		/upload-tosca endpoint
-		curl -X POST http://localhost:8089/optimusdb/upload-tosca \
-	  -H "Content-Type: application/json" \
-	  -d '{"file": "'$(base64 -w 0 mytosca.yaml)'"}'
-
-	*/
+	// TOSCA upload endpoint
 	server.Handle("/"+*config.FlagContext+"/upload", mw(uploadTOSCAHandler(optimusdb)))
 
-	/**
-	simple HTTP endpoint to fetch the list of connected peers
-	*/
+	// Peers endpoint
 	server.Handle("/"+*config.FlagContext+"/peers", mw(peersHandler()))
 
-	/**
-	simple HTTP endpoint to fetch the communication with EMS
-	*/
-	//server.Handle("/"+*config.FlagContext+"/ems", mw(peersHandler()))
+	// EMS endpoints
 	server.Handle("/"+*config.FlagContext+"/ems",
 		mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sendSuccessResponse(w, map[string]string{
@@ -1009,15 +843,10 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 			})
 		})))
 
-	/**
-	simple HTTP endpoint to fetch the communication with Logging of OptimusDB
-	*/
+	// Logging endpoint
 	server.Handle("/"+*config.FlagContext+"/log", mw(LogsHandler(theLog)))
 
-	/**
-	Added as context to be retrieved
-	*/
-	// GET /<context>/ems/logs?limit=50&level=ERROR&since_min=60
+	// EMS logs endpoint with filters
 	server.Handle("/"+*config.FlagContext+"/ems/logs",
 		mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if app.GlobalLoggerDB == nil {
@@ -1070,7 +899,7 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 			sendJSONResponse(w, map[string]interface{}{"records": rows})
 		})))
 
-	// GET /<context>/ems/events?limit=50&since_min=60
+	// EMS events endpoint
 	server.Handle("/"+*config.FlagContext+"/ems/events",
 		mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if app.GlobalLoggerDB == nil {
@@ -1096,7 +925,6 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 				where += fmt.Sprintf(` AND received_at >= datetime('now','-%d minutes')`, sinceMin)
 			}
 
-			// Note: ems_events lives in the logger DB
 			sql := fmt.Sprintf(`
 			SELECT id, received_at, client_id, topic, action, resource,
 			       substr(params_json,1,240) AS params,
@@ -1108,7 +936,6 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 
 			rows, err := app.GlobalLoggerDB.SelectAll(sql)
 			if err != nil {
-				// If table doesn’t exist yet, return a friendly message
 				if strings.Contains(strings.ToLower(err.Error()), "no such table") {
 					sendErrorResponse(w, http.StatusNotFound, "ems_events table not found (enable EMS persistence or redeploy with events table)")
 					return
@@ -1119,8 +946,7 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 			sendJSONResponse(w, map[string]interface{}{"records": rows})
 		})))
 
-	// GET /<context>/ems/sql?q=<URL-encoded SQL>
-	// or POST with {"sql": "..."} to run against the logger DB (ems_events lives here)
+	// EMS SQL endpoint
 	server.Handle("/"+*config.FlagContext+"/ems/sql",
 		mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if app.GlobalLoggerDB == nil {
@@ -1162,29 +988,23 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 	credentials.SetupCredentialsEndpoints(server, mw, *config.FlagContext, optimusdb, theLog)
 
 	// Add metadata routes
-
 	metadataRouter := mux.NewRouter()
 	RegisterMetadataRoutes(metadataRouter, optimusdb)
-	// Mount the metadata router at /api/ prefix
 	server.Handle("/api/", mw(metadataRouter))
 
-	/////////
-	// register benchmarks handler which is specific for this API because it's
-	// used to gather all peers data
+	// Register benchmarks handler
 	if *config.FlagBenchmark {
 		server.Handle("/"+*config.FlagContext+"/benchmarks", mw(benchmarksHandler(optimusdb)))
 	}
 
-	// start the HTTP server
-	// Get the local IP address of the server
+	// Get the local IP address
 	ip, err := getLocalIPAddress()
 	if err != nil {
-		logChan <- app.Log{app.Info, "\nFailed to determine local IP address: " + err.Error()}
+		logger.Warn("Failed to determine local IP address: %v", err)
 		ip = "unknown"
 	}
-	//logChan <- app.Log{app.Info, "Starting HTTP Server in port: " + " " + *config.FlagHTTPPort}
-	//logChan <- app.Log{app.Info, fmt.Sprintf("Starting HTTP Server on IP %s and port %s", ip, *config.FlagHTTPPort)}
 
+	logger.Info("Starting HTTP Server on IP %s and port %s", ip, *config.FlagHTTPPort)
 	logChan <- app.Log{
 		Type: app.Info,
 		Data: fmt.Sprintf("Starting HTTP Server on IP %s and port %s", ip, *config.FlagHTTPPort),
@@ -1222,7 +1042,7 @@ func getLocalIPAddress() (string, error) {
 	return "", nil
 }
 
-// sendJSONResponse writes a 200 JSON body.
+// sendJSONResponse writes a 200 JSON body
 func sendJSONResponse(w http.ResponseWriter, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -1240,22 +1060,8 @@ func EnrichHandler(kb *app.KnowledgeBaseDB) http.HandlerFunc {
 			req.MaxRows = 200
 		}
 
-		// Choose client by build tag
 		var svc contextualmetadata.Service
 		svc.UseGreek = req.Greek
-		// HTTP mode:
-
-		/*
-			if c, err := contextualmetadata.NewTinyLlamaHTTP(); err == nil {
-				svc.Client = c
-			} else if c2, err2 := contextualmetadata.NewTinyLlamaLocal(); err2 == nil {
-				svc.Client = c2
-			} else {
-				http.Error(w, "No TinyLlama client configured", http.StatusInternalServerError)
-				return
-			}
-
-		*/
 
 		entry, err := svc.EnrichDataset(r.Context(), kb, req.DB, req.Table, req.MaxRows)
 		if err != nil {
@@ -1269,7 +1075,7 @@ func EnrichHandler(kb *app.KnowledgeBaseDB) http.HandlerFunc {
 // RegisterMetadataRoutes registers metadata enrichment endpoints
 func RegisterMetadataRoutes(router *mux.Router, kb *app.KnowledgeBaseDB) {
 	if kb.MetadataService == nil || kb.MetadataCache == nil {
-		logger.Info("[API] Metadata service not initialized, skipping metadata routes")
+		logger.Info("Metadata service not initialized, skipping metadata routes")
 		return
 	}
 
@@ -1279,13 +1085,11 @@ func RegisterMetadataRoutes(router *mux.Router, kb *app.KnowledgeBaseDB) {
 		Cache:   kb.MetadataCache.(*contextualmetadata.MetadataCache),
 	}
 
-	// ============================================================
-	// Create chat handler
-	// ============================================================
 	chatHandler := &contextualmetadata.ChatHandler{
 		KB:      kb,
 		Service: kb.MetadataService.(*contextualmetadata.Service),
 	}
+
 	// Create API v1 subrouter
 	apiV1 := router.PathPrefix("/api/v1").Subrouter()
 
@@ -1297,8 +1101,7 @@ func RegisterMetadataRoutes(router *mux.Router, kb *app.KnowledgeBaseDB) {
 	apiV1.HandleFunc("/metadata/health", metadataHandler.HealthCheck).Methods("GET")
 	apiV1.HandleFunc("/metadata/cache", metadataHandler.ClearCache).Methods("DELETE")
 	apiV1.HandleFunc("/chat", chatHandler.HandleChat).Methods("POST")
-	// ============================================================
 
-	logger.Info("[API]  Metadata enrichment endpoints registered")
-	//logger.Info("[API]  Chat endpoint registered at /api/v1/chat")
+	logger.Info("Metadata enrichment endpoints registered at /api/v1/metadata")
+	logger.Info("Chat endpoint registered at /api/v1/chat")
 }

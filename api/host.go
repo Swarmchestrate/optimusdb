@@ -3,12 +3,11 @@ package api
 import (
 	"context"
 	"fmt"
+	"github.com/libp2p/go-libp2p"
 	"log"
-	"optimusdb/config"
 	"optimusdb/logger"
 	"strings"
-
-	libp2p "github.com/libp2p/go-libp2p"
+	//libp2p "github.com/libp2p/go-libp2p"
 )
 
 // StartHost initializes a libp2p host and starts the discovery service
@@ -21,18 +20,21 @@ func StartHost(ctx context.Context) error {
 	// Defer host.Close to ensure the host remains active while the application is running
 	defer func() {
 		if err := host.Close(); err != nil {
+			logger.Error("Error closing host in Host.go : %v", err)
 			log.Printf("Error closing host: %v", err)
 		}
 	}()
 
 	// Print the host's ID and addresses
-	logger.Info("[INFO] Swarmchetrate Env, searching for KB Lead Agent  or   Swarm Agents ~ AutoDiscovery is enabled")
+	logger.DISc("Swarmchetrate Env, searching for KB Lead Agent  or   Swarm Agents ~ AutoDiscovery is enabled")
 
-	if *config.FlagCoordinator {
-		logger.Info("[ELECTION] Agent is a KB Coordinator, swarm AgentID: %v", host.ID())
-	} else {
-		logger.Info("[ELECTION] Agent is a KB Follower, swarm AgentID: %v", host.ID())
-	}
+	/*
+		if *config.FlagCoordinator {
+			logger.Info("[ELECTION] Agent is a KB Coordinator, swarm AgentID: %v", host.ID())
+		} else {
+			logger.Info("[ELECTION] Agent is a KB Follower, swarm AgentID: %v", host.ID())
+		}
+	*/
 	fmt.Println("Agent Listening on:")
 	for _, addr := range host.Addrs() {
 		//fmt.Println(addr)

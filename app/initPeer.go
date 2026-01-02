@@ -49,9 +49,7 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	}
 	//conf.PeerID = node.Identity.String()
 	conf.PeerID = fmt.Sprintf("%s", node.Identity)
-
 	knowledgeBaseDB.Node = node
-
 	//logger.Info("OptimusDB peer initialized with PeerID: %s", conf.PeerID)
 	coreAPI, err := coreapi.NewCoreAPI(node)
 	if err != nil {
@@ -93,7 +91,7 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	}
 
 	//log.Println("####################################################################")
-	log.Println("Start OptimusDB instance")
+	//log.Println("Start OptimusDB instance")
 	//logger.Info("Start OptimusDB instance")
 	orbit, err = orbitdb.NewOrbitDB(ctx, coreAPI, orbitopts)
 
@@ -400,7 +398,7 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	}
 	//logChan <- Log{Type: Info, Data: "RDBMS database initialized successfully"}
 	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("RDBMS database initialized successfully"), runtime.GOOS)
-	logger.Info("RDBMS database initialized successfully")
+	logger.Info("[INFO] RDBMS database initialized successfully")
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -434,7 +432,7 @@ func InitPeer(knowledgeBaseDB *KnowledgeBaseDB, rdbms *KnowledgeBaseSQLite, benc
 	store, err = orbit.Open(ctx, conf.TOSCAImportedStoreAddr, &dbopts)
 	if err != nil {
 		//fmt.Fprintf(os.Stderr, "%v\nTry resolving it by connecting to a peer, TOSCAImportedStoreAddr\n", err)
-		logger.Error("Try resolving it by connecting to a peer, TOSCAImportedStoreAddr %v", err)
+		logger.Error("[ERROR] Try resolving it by connecting to a peer, TOSCAImportedStoreAddr %v", err)
 	} else {
 		db := store.(iface.DocumentStore)
 		db.Load(ctx, -1)

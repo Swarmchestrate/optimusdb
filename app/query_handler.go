@@ -22,7 +22,7 @@ import (
 //| **7️⃣ Merge results**          | Collects all peer responses into one slice.                                                                         | Returns unified results to the initiator node.                             |
 //| **8️⃣ Timeout handling**       | Stops if `ctx.Done()` is triggered (e.g., exceeded query timeout).                                                  | Avoids deadlocks during slow networks.                                     |
 
-// Register handler for peer query requests.
+// RegisterQueryStreamHandler Register handler for peer query requests.
 func RegisterQueryStreamHandler(hostNode host.Host, db *KnowledgeBaseDB) {
 	hostNode.SetStreamHandler("/query/1.0.0", func(stream network.Stream) {
 		handleQueryStream(stream, db)
@@ -43,7 +43,12 @@ type qOptions struct {
 }
 
 func handleQueryStream(stream network.Stream, db *KnowledgeBaseDB) {
-	defer stream.Close()
+	defer func(stream network.Stream) {
+		err := stream.Close()
+		if err != nil {
+			logger.Error("[ERROR] Error closing stream in HandleQuery: ", err)
+		}
+	}(stream)
 
 	var msg map[string]interface{}
 	if err := json.NewDecoder(stream).Decode(&msg); err != nil {
@@ -385,7 +390,12 @@ func queryPeersLimited(
 				ch <- peerChunk{nil, err}
 				return
 			}
-			defer stream.Close()
+			defer func(stream network.Stream) {
+				err := stream.Close()
+				if err != nil {
+					logger.Error("[QUERY] Failed to close stream: %s", err)
+				}
+			}(stream)
 
 			// --- 4️⃣ Send the query request (clamped strategy=LOCAL_ONLY to prevent recursion) ---
 			req := map[string]interface{}{
@@ -474,7 +484,12 @@ func queryPeersUntilQuorum(ctx context.Context, db *KnowledgeBaseDB, criteria []
 				ch <- peerResp{pid: string(p), rows: nil, err: err}
 				return
 			}
-			defer stream.Close()
+			defer func(stream network.Stream) {
+				err := stream.Close()
+				if err != nil {
+					logger.Error("[QUERY] Failed to close stream, range all Peers: %s", err)
+				}
+			}(stream)
 
 			req := map[string]interface{}{
 				"criteria":   criteria,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"optimusdb/config"
@@ -15,25 +16,58 @@ import (
 	"time"
 )
 
+// LogLevel represents different logging severity levels
 type LogLevel int
 
 const (
-	INFO LogLevel = iota
-	ERROR
-	DEBUG
-	WARN
+	DEBUG       LogLevel = iota // Most verbose - development debugging
+	INFO                        // General information
+	QUERY                       // SQL query operations
+	LINEAGE                     // Data lineage tracking
+	MESH                        // LibP2P mesh network operations
+	REPLICATION                 // OrbitDB replication events
+	ELECTION                    // Leader election events
+	CACHE                       // SQLite cache operations
+	gAI                         // TinyLlama AI operations
+	METRICS                     // Performance metrics
+	PROC                        // General processing
+	WARN                        // Warning conditions
+	ERROR                       // Error conditions
+	DISCOVERY                   //Discovery related logs
 )
 
 var (
-	mutexSync sync.Mutex
+	logMutex sync.RWMutex // Protects all logging operations
+	lokiMux  sync.Mutex   // Separate mutex for Loki operations
 )
+
+// GlobalLogger instance accessible throughout the app
+var GlobalLogger *Logger
+
+func init() {
+	lokiURL := os.Getenv("LOKI_URL")
+	logFilename := "./logs/optimusdb.log"
+	if config.FlagLogFilename != nil && *config.FlagLogFilename != "" {
+		logFilename = *config.FlagLogFilename
+	}
+	GlobalLogger = NewLogger(INFO, logFilename, lokiURL)
+}
 
 // Logger is a custom logger with different log levels
 type Logger struct {
-	level   LogLevel
-	logFile *os.File
-	lokiURL string
-	db      LoggerDBInterface // Add database interface
+	level      LogLevel
+	logFile    *os.File
+	lokiURL    string
+	db         LoggerDBInterface
+	lokiBuffer chan *lokiLogEntry
+	wg         sync.WaitGroup
+	shutdown   chan struct{}
+}
+
+// lokiLogEntry represents a queued log for async Loki sending
+type lokiLogEntry struct {
+	level   string
+	message string
 }
 
 // LoggerDBInterface allows injecting the database logger
@@ -41,105 +75,200 @@ type LoggerDBInterface interface {
 	AddToOptimusLog(level, message, source string) error
 }
 
-// NewLogger initializes a new logger instance with file & Loki support
+// NewLogger initializes a new logger instance with file, database & Loki support
 func NewLogger(level LogLevel, logFilePath, lokiURL string) *Logger {
+	// Create logs directory if it doesn't exist
 	logDir := filepath.Dir(logFilePath)
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		log.Fatalf("Failed to create logs directory: %v", err)
 	}
+
+	// Open log file
 	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatalf("Failed to open log file: %v", err)
 	}
 
+	// Configure standard logger
 	log.SetOutput(logFile)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.Printf("[INFO] Loki url is: %v\n", lokiURL)
-	return &Logger{level: level, logFile: logFile, lokiURL: lokiURL}
+
+	logger := &Logger{
+		level:      level,
+		logFile:    logFile,
+		lokiURL:    lokiURL,
+		lokiBuffer: make(chan *lokiLogEntry, 1000), // Buffer up to 1000 logs
+		shutdown:   make(chan struct{}),
+	}
+
+	// Start async Loki sender if URL is configured
+	if lokiURL != "" {
+		logger.wg.Add(1)
+		go logger.lokiWorker()
+		log.Printf("[INFO] Loki integration enabled: %s\n", lokiURL)
+	} else {
+		log.Printf("[INFO] Loki integration disabled (no URL configured)\n")
+	}
+
+	return logger
 }
 
 // SetDatabase sets the database logger for persistence
 func (l *Logger) SetDatabase(db LoggerDBInterface) {
+	logMutex.Lock()
+	defer logMutex.Unlock()
 	l.db = db
 }
 
-// Log writes a log message based on the log level
+// SetLevel changes the current log level
+func (l *Logger) SetLevel(level LogLevel) {
+	logMutex.Lock()
+	defer logMutex.Unlock()
+	l.level = level
+}
+
+// levelToString converts LogLevel to string
+func levelToString(level LogLevel) string {
+	switch level {
+	case DEBUG:
+		return "DEBUG"
+	case INFO:
+		return "INFO"
+	case QUERY:
+		return "QUERY"
+	case LINEAGE:
+		return "LINEAGE"
+	case MESH:
+		return "MESH"
+	case REPLICATION:
+		return "REPLICATION"
+	case ELECTION:
+		return "ELECTION"
+	case CACHE:
+		return "CACHE"
+	case gAI:
+		return "gAI"
+	case METRICS:
+		return "METRICS"
+	case PROC:
+		return "PROC"
+	case WARN:
+		return "WARN"
+	case ERROR:
+		return "ERROR"
+	case DISCOVERY:
+		return "DISCOVERY"
+	default:
+		return "LOG"
+	}
+}
+
+// Log writes a log message based on the log level (thread-safe)
 func (l *Logger) Log(level LogLevel, message string, args ...interface{}) {
-	if level >= l.level {
-		prefix := ""
-		switch level {
-		case INFO:
-			prefix = "INFO"
-		case ERROR:
-			prefix = "ERROR"
-		case DEBUG:
-			prefix = "DEBUG"
-		case WARN:
-			prefix = "WARN"
-		default:
-			prefix = "LOG"
-		}
-
-		formattedMessage := fmt.Sprintf(message, args...)
-		fullMessage := fmt.Sprintf("[%s] %s\n", prefix, formattedMessage)
-
-		// Ensure only one log writes at a time (avoids race conditions)
-		mutexSync.Lock()
-		log.Print(fullMessage) // Logs to file
-		mutexSync.Unlock()
-
-		// Send log to Loki
-		//l.sendToLoki(prefix, fullMessage)
-
-		// Persist to database
-		l.persistToDatabase(prefix, formattedMessage, 3)
+	// Quick check without lock
+	if level < l.level {
+		return
 	}
-}
 
-// persistToDatabase saves the log entry to the database
-func (l *Logger) persistToDatabase(level, message string, callerDepth int) {
+	// Get caller information before acquiring lock (reduces lock contention)
+	_, file, line, ok := runtime.Caller(2)
+	var source string
+	if ok {
+		source = fmt.Sprintf("%s:%d", filepath.Base(file), line)
+	} else {
+		source = "unknown"
+	}
+
+	// Format message
+	formattedMessage := fmt.Sprintf(message, args...)
+	prefix := levelToString(level)
+	fullMessage := fmt.Sprintf("[%s] %s", prefix, formattedMessage)
+
+	// Acquire lock for all write operations
+	logMutex.Lock()
+	defer logMutex.Unlock()
+
+	// Double-check level after acquiring lock (in case it changed)
+	if level < l.level {
+		return
+	}
+
+	// Write to file
+	log.Print(fullMessage)
+
+	// Queue for Loki (non-blocking)
+	select {
+	case l.lokiBuffer <- &lokiLogEntry{level: prefix, message: fullMessage}:
+		// Successfully queued
+	default:
+		// Buffer full, drop the log (avoid blocking)
+		log.Printf("[WARN] Loki buffer full, dropping log entry\n")
+	}
+
+	// Persist to database (handle errors gracefully)
 	if l.db != nil {
-		var source string
-		if _, file, line, ok := runtime.Caller(callerDepth); ok {
-			source = fmt.Sprintf("%s:%d", filepath.Base(file), line)
-		} else {
-			source = runtime.GOOS
+		if err := l.db.AddToOptimusLog(prefix, formattedMessage, source); err != nil {
+			// Log DB error to file only (avoid recursion)
+			log.Printf("[ERROR] Failed to persist log to database: %v (original: %s)\n", err, formattedMessage)
 		}
-		_ = l.db.AddToOptimusLog(level, message, source)
 	}
 }
 
+// lokiWorker processes the Loki queue asynchronously
+func (l *Logger) lokiWorker() {
+	defer l.wg.Done()
+
+	for {
+		select {
+		case entry := <-l.lokiBuffer:
+			l.sendToLoki(entry.level, entry.message)
+		case <-l.shutdown:
+			// Drain remaining logs
+			for {
+				select {
+				case entry := <-l.lokiBuffer:
+					l.sendToLoki(entry.level, entry.message)
+				default:
+					return
+				}
+			}
+		}
+	}
+}
+
+// escapeLogMessage sanitizes log messages for JSON
 func escapeLogMessage(message string) string {
 	message = strings.ReplaceAll(message, "\n", " ")
 	message = strings.ReplaceAll(message, "\t", " ")
 	message = strings.ReplaceAll(message, "\r", " ")
-	message = strings.ReplaceAll(message, "\\", "\\\\")
-	message = strings.ReplaceAll(message, `"`, `\"`)
 	return message
 }
 
+// sendToLoki sends a log entry to Loki (with retries)
 func (l *Logger) sendToLoki(level, message string) {
 	if l.lokiURL == "" {
-		log.Printf("[INFO] Loki URL is not set\n")
 		return
-	} else if *config.FlagLokiIsDisabled {
-		log.Printf("[INFO] Loki is disabled\n")
+	}
+
+	if config.FlagLokiIsDisabled != nil && *config.FlagLokiIsDisabled {
 		return
 	}
 
 	escapedMessage := escapeLogMessage(message)
-	log.Printf("[DEBUG] Sending log to Loki: %s", escapedMessage)
 
 	logEntry := map[string]interface{}{
 		"streams": []map[string]interface{}{
 			{
 				"stream": map[string]string{
-					"job":    "optimusdbLoki",
+					"job":    "optimusdb",
 					"level":  level,
-					"source": "optimusdb",
+					"source": "optimusdb-cluster",
 				},
 				"values": [][]string{
-					{time.Now().Format(time.RFC3339Nano), escapedMessage},
+					{
+						fmt.Sprintf("%d", time.Now().UnixNano()),
+						escapedMessage,
+					},
 				},
 			},
 		},
@@ -147,64 +276,133 @@ func (l *Logger) sendToLoki(level, message string) {
 
 	jsonData, err := json.Marshal(logEntry)
 	if err != nil {
-		log.Printf("[ERROR] Failed to parse jsonData log for Loki: %v\n", err)
+		log.Printf("[ERROR] Failed to marshal Loki log entry: %v\n", err)
 		return
 	}
 
-	for i := 0; i < 3; i++ {
-		resp, err := http.Post(l.lokiURL, "application/json", bytes.NewBuffer(jsonData))
+	// Retry logic with exponential backoff
+	for attempt := 1; attempt <= 3; attempt++ {
+		req, err := http.NewRequest("POST", l.lokiURL, bytes.NewBuffer(jsonData))
 		if err != nil {
-			log.Printf("[WARN] Failed to send log to Loki, retrying... (%d/3): %v\n", i+1, err)
-			time.Sleep(1 * time.Second)
-			continue
-		}
-
-		if resp.StatusCode == http.StatusOK {
-			log.Printf("[INFO] Loki Data sent successfully\n")
-			resp.Body.Close()
+			log.Printf("[ERROR] Failed to create Loki request: %v\n", err)
 			return
 		}
 
-		log.Printf("[WARN] Loki returned non-200 status: %s, retrying...\n", resp.Status)
-		resp.Body.Close()
-		time.Sleep(1 * time.Second)
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+
+		if err != nil {
+			log.Printf("[WARN] Failed to send log to Loki (attempt %d/3): %v\n", attempt, err)
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		// Always close response body
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return // Success
+		}
+
+		log.Printf("[WARN] Loki returned status %d (attempt %d/3): %s\n", resp.StatusCode, attempt, string(body))
+		time.Sleep(time.Duration(attempt) * time.Second)
 	}
 
-	log.Printf("[ERROR] Failed to send log to Loki after 3 attempts")
+	log.Printf("[ERROR] Failed to send log to Loki after 3 attempts\n")
 }
 
-// CloseLogger closes the log file
+// CloseLogger gracefully shuts down the logger
 func (l *Logger) CloseLogger() {
-	l.logFile.Close()
-}
+	// Signal shutdown to Loki worker
+	close(l.shutdown)
 
-// GlobalLogger instance accessible throughout the app
-var lokiURL = os.Getenv("LOKI_URL")
-var GlobalLogger = NewLogger(INFO, *config.FlagLogFilename, lokiURL)
+	// Wait for Loki worker to finish
+	l.wg.Wait()
+
+	// Close log file
+	logMutex.Lock()
+	defer logMutex.Unlock()
+
+	if l.logFile != nil {
+		_ = l.logFile.Close()
+	}
+
+	log.Printf("[INFO] Logger closed gracefully\n")
+}
 
 // SetGlobalDatabase sets the database for the global logger
 func SetGlobalDatabase(db LoggerDBInterface) {
-	GlobalLogger.SetDatabase(db)
+	if GlobalLogger != nil {
+		GlobalLogger.SetDatabase(db)
+	}
 }
 
-// Info logs an info-level message
-func Info(format string, args ...interface{}) {
-	GlobalLogger.Log(INFO, format, args...)
+// SetGlobalLevel changes the global logger level
+func SetGlobalLevel(level LogLevel) {
+	if GlobalLogger != nil {
+		GlobalLogger.SetLevel(level)
+	}
 }
 
-// Error logs an error-level message
-func Error(format string, args ...interface{}) {
-	GlobalLogger.Log(ERROR, format, args...)
-}
+// Convenience logging functions
 
-// Debug logs a debug-level message
 func Debug(format string, args ...interface{}) {
 	GlobalLogger.Log(DEBUG, format, args...)
 }
 
-// Debug logs a debug-level message
+func Info(format string, args ...interface{}) {
+	GlobalLogger.Log(INFO, format, args...)
+}
+
+func Query(format string, args ...interface{}) {
+	GlobalLogger.Log(QUERY, format, args...)
+}
+
+func Lineage(format string, args ...interface{}) {
+	GlobalLogger.Log(LINEAGE, format, args...)
+}
+
+func Mesh(format string, args ...interface{}) {
+	GlobalLogger.Log(MESH, format, args...)
+}
+
+func Replication(format string, args ...interface{}) {
+	GlobalLogger.Log(REPLICATION, format, args...)
+}
+
+func Election(format string, args ...interface{}) {
+	GlobalLogger.Log(ELECTION, format, args...)
+}
+
+func Cache(format string, args ...interface{}) {
+	GlobalLogger.Log(CACHE, format, args...)
+}
+
+func AI(format string, args ...interface{}) {
+	GlobalLogger.Log(gAI, format, args...)
+}
+
+func Metrics(format string, args ...interface{}) {
+	GlobalLogger.Log(METRICS, format, args...)
+}
+
+func Proc(format string, args ...interface{}) {
+	GlobalLogger.Log(PROC, format, args...)
+}
+
+func DISc(format string, args ...interface{}) {
+	GlobalLogger.Log(DISCOVERY, format, args...)
+}
+
 func Warn(format string, args ...interface{}) {
 	GlobalLogger.Log(WARN, format, args...)
+}
+
+func Error(format string, args ...interface{}) {
+	GlobalLogger.Log(ERROR, format, args...)
 }
 
 // CheckAndLogError logs the error if it is not nil
@@ -212,4 +410,30 @@ func CheckAndLogError(err error, message string, args ...interface{}) {
 	if err != nil {
 		Error("%s: %v", fmt.Sprintf(message, args...), err)
 	}
+}
+
+// LogWithContext logs with additional context fields (useful for lineage tracking)
+func LogWithContext(level LogLevel, message string, context map[string]interface{}) {
+	contextStr := ""
+	if len(context) > 0 {
+		parts := make([]string, 0, len(context))
+		for k, v := range context {
+			parts = append(parts, fmt.Sprintf("%s=%v", k, v))
+		}
+		contextStr = fmt.Sprintf(" | %s", strings.Join(parts, ", "))
+	}
+	GlobalLogger.Log(level, "%s%s", message, contextStr)
+}
+
+// LogLineage is a specialized function for lineage events
+func LogLineage(sourceURI, targetURI, operation string, metadata map[string]interface{}) {
+	context := map[string]interface{}{
+		"source":    sourceURI,
+		"target":    targetURI,
+		"operation": operation,
+	}
+	for k, v := range metadata {
+		context[k] = v
+	}
+	LogWithContext(LINEAGE, fmt.Sprintf("Lineage: %s -> %s", sourceURI, targetURI), context)
 }

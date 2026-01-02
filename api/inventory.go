@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"optimusdb/app"
 	"optimusdb/election"
+	"optimusdb/logger"
 	"os"
 	"path/filepath"
 	"strings"
@@ -213,6 +214,9 @@ func AgentInventoryHandler(
 	loggerDB *app.LoggerSQLite,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		requestID := generateRequestID()
+		logger.Info("Agent inventory request received: %s from %s", requestID, r.RemoteAddr)
+
 		// Parse query parameters
 		includeSchemas := r.URL.Query().Get("include_schemas") != "false"
 		includeStatistics := r.URL.Query().Get("include_statistics") != "false"
@@ -220,8 +224,8 @@ func AgentInventoryHandler(
 		includeMetadata := r.URL.Query().Get("include_metadata") != "false"
 		includeSamples := r.URL.Query().Get("include_samples") == "true"
 
-		// Generate request ID
-		requestID := generateRequestID()
+		logger.Debug("Inventory options: schemas=%v, stats=%v, lineage=%v, metadata=%v, samples=%v",
+			includeSchemas, includeStatistics, includeLineage, includeMetadata, includeSamples)
 
 		// Build response
 		response := AgentInventoryResponse{
@@ -250,13 +254,20 @@ func AgentInventoryHandler(
 			response.QualityMetrics = &qualityMetrics
 		}
 
+		logger.Info("Agent inventory generated successfully: %s (tables: %d, stores: %d)",
+			requestID,
+			len(response.Databases.Knowledgebase.Tables)+len(response.Databases.Logger.Tables),
+			response.OrbitDBStores.TotalActive)
+
 		// Send response
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 
 		encoder := json.NewEncoder(w)
 		encoder.SetIndent("", "  ")
-		encoder.Encode(response)
+		if err := encoder.Encode(response); err != nil {
+			logger.Error("Failed to encode inventory response: %v", err)
+		}
 	}
 }
 
@@ -266,6 +277,7 @@ func AgentInventoryHandler(
 
 func buildAgentInfo(kb *app.KnowledgeBaseDB) AgentInfo {
 	if kb == nil || kb.Node == nil || kb.Node.PeerHost == nil {
+		logger.Warn("Building agent info with incomplete knowledge base reference")
 		return AgentInfo{
 			AgentID:   "unknown",
 			AgentName: "OptimusDB Agent",
@@ -276,6 +288,8 @@ func buildAgentInfo(kb *app.KnowledgeBaseDB) AgentInfo {
 
 	peerID := kb.Node.PeerHost.ID().String()
 	peers := kb.Node.PeerHost.Network().Peers()
+
+	logger.Debug("Building agent info: peer_id=%s, connected_peers=%d", peerID, len(peers))
 
 	return AgentInfo{
 		AgentID:       peerID,
@@ -315,7 +329,6 @@ func isCoordinator(kb *app.KnowledgeBaseDB) bool {
 	if kb == nil || kb.Node == nil {
 		return false
 	}
-	// Check election system - simplified for now
 	return false
 }
 
@@ -349,6 +362,9 @@ func buildDatabaseInventory(
 	includeStatistics bool,
 	includeSamples bool,
 ) DatabaseInventory {
+	logger.Debug("Building database inventory: schemas=%v, stats=%v, samples=%v",
+		includeSchemas, includeStatistics, includeSamples)
+
 	inventory := DatabaseInventory{
 		Other: make(map[string]DatabaseInfo),
 	}
@@ -357,18 +373,27 @@ func buildDatabaseInventory(
 	if rdbms != nil && rdbms.DB != nil {
 		info := getDatabaseInfo(rdbms.DB, "knowledgebase.db", includeSchemas, includeStatistics, includeSamples)
 		inventory.Knowledgebase = &info
+		logger.Debug("Knowledgebase DB discovered: %d tables", len(info.Tables))
+	} else {
+		logger.Warn("Knowledgebase database not available")
 	}
 
 	// Logger database
 	if loggerDB != nil && loggerDB.TheLog != nil {
 		info := getDatabaseInfo(loggerDB.TheLog, "optimuslog.db", includeSchemas, includeStatistics, includeSamples)
 		inventory.Logger = &info
+		logger.Debug("Logger DB discovered: %d tables", len(info.Tables))
+	} else {
+		logger.Warn("Logger database not available")
 	}
 
 	// Reputation database
 	if election.GlobalReputationDB != nil && election.GlobalReputationDB.ReputationDB != nil {
 		info := getDatabaseInfo(election.GlobalReputationDB.ReputationDB, "reputation.db", includeSchemas, includeStatistics, includeSamples)
 		inventory.Reputation = &info
+		logger.Debug("Reputation DB discovered: %d tables", len(info.Tables))
+	} else {
+		logger.Warn("Reputation database not available")
 	}
 
 	return inventory
@@ -383,6 +408,8 @@ func getDatabaseInfo(db *sql.DB, dbName string, includeSchemas, includeStatistic
 
 	// Get all tables automatically
 	tables := getTableNames(db)
+	logger.Debug("Discovered %d tables in %s", len(tables), dbName)
+
 	for _, tableName := range tables {
 		tableInfo := TableInfo{
 			RowCount: getRowCount(db, tableName),
@@ -410,6 +437,7 @@ func getTableNames(db *sql.DB) []string {
 	query := `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`
 	rows, err := db.Query(query)
 	if err != nil {
+		logger.Error("Failed to query table names: %v", err)
 		return []string{}
 	}
 	defer rows.Close()
@@ -439,6 +467,7 @@ func getDatabaseSize(db *sql.DB, dbName string) int64 {
 	if info, err := os.Stat(path); err == nil {
 		return info.Size()
 	}
+	logger.Warn("Failed to get database size for %s", dbName)
 	return 0
 }
 
@@ -447,6 +476,7 @@ func getRowCount(db *sql.DB, tableName string) int64 {
 	query := fmt.Sprintf("SELECT COUNT(*) FROM \"%s\"", tableName)
 	err := db.QueryRow(query).Scan(&count)
 	if err != nil {
+		logger.Warn("Failed to get row count for table %s: %v", tableName, err)
 		return 0
 	}
 	return count
@@ -456,6 +486,7 @@ func getTableSchema(db *sql.DB, tableName string) *TableSchema {
 	query := fmt.Sprintf("PRAGMA table_info(\"%s\")", tableName)
 	rows, err := db.Query(query)
 	if err != nil {
+		logger.Error("Failed to get schema for table %s: %v", tableName, err)
 		return nil
 	}
 	defer rows.Close()
@@ -489,6 +520,7 @@ func getTableIndexes(db *sql.DB, tableName string) []string {
 	query := fmt.Sprintf("PRAGMA index_list(\"%s\")", tableName)
 	rows, err := db.Query(query)
 	if err != nil {
+		logger.Warn("Failed to get indexes for table %s: %v", tableName, err)
 		return []string{}
 	}
 	defer rows.Close()
@@ -526,7 +558,10 @@ func getTableStatistics(db *sql.DB, tableName string) map[string]interface{} {
 			rows.Close()
 			if len(dist) > 0 {
 				stats["metadata_types"] = dist
+				logger.Debug("Datacatalog metadata type distribution: %d types", len(dist))
 			}
+		} else {
+			logger.Warn("Failed to get datacatalog statistics: %v", err)
 		}
 
 	case "ems_events":
@@ -606,12 +641,14 @@ func getSampleRecords(db *sql.DB, tableName string, limit int) []map[string]inte
 	query := fmt.Sprintf("SELECT * FROM \"%s\" LIMIT %d", tableName, limit)
 	rows, err := db.Query(query)
 	if err != nil {
+		logger.Warn("Failed to get sample records for table %s: %v", tableName, err)
 		return []map[string]interface{}{}
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
+		logger.Error("Failed to get columns for table %s: %v", tableName, err)
 		return []map[string]interface{}{}
 	}
 
@@ -624,6 +661,7 @@ func getSampleRecords(db *sql.DB, tableName string, limit int) []map[string]inte
 		}
 
 		if err := rows.Scan(valuePtrs...); err != nil {
+			logger.Warn("Failed to scan row in table %s: %v", tableName, err)
 			continue
 		}
 
@@ -647,12 +685,15 @@ func getSampleRecords(db *sql.DB, tableName string, limit int) []map[string]inte
 // ============================================================================
 
 func buildOrbitDBInventory(kb *app.KnowledgeBaseDB, includeMetadata, includeSamples bool) OrbitDBInventory {
+	logger.Debug("Building OrbitDB inventory: metadata=%v, samples=%v", includeMetadata, includeSamples)
+
 	inventory := OrbitDBInventory{
 		ActiveStores:  []OrbitDBStoreInfo{},
 		PlannedStores: []PlannedStoreInfo{},
 	}
 
 	if kb == nil {
+		logger.Warn("KnowledgeBase is nil, cannot build OrbitDB inventory")
 		return inventory
 	}
 
@@ -679,6 +720,9 @@ func buildOrbitDBInventory(kb *app.KnowledgeBaseDB, includeMetadata, includeSamp
 		{"DsTOSCA_EventHistory", kb.DsTOSCA_EventHistory, "Event history", "full_rw", true},
 	}
 
+	activeCount := 0
+	plannedCount := 0
+
 	for _, s := range documentStores {
 		if s.store != nil {
 			storeInfo := OrbitDBStoreInfo{
@@ -692,7 +736,7 @@ func buildOrbitDBInventory(kb *app.KnowledgeBaseDB, includeMetadata, includeSamp
 
 			// Get entry count using Query
 			results, err := (*s.store).Query(ctx, func(doc interface{}) (bool, error) {
-				return true, nil // Return all documents
+				return true, nil
 			})
 			if err == nil {
 				storeInfo.EntryCount = len(results)
@@ -712,9 +756,14 @@ func buildOrbitDBInventory(kb *app.KnowledgeBaseDB, includeMetadata, includeSamp
 					}
 					storeInfo.SampleEntries = samples
 				}
+
+				logger.Debug("OrbitDB store %s: %d entries", s.name, len(results))
+			} else {
+				logger.Warn("Failed to query OrbitDB store %s: %v", s.name, err)
 			}
 
 			inventory.ActiveStores = append(inventory.ActiveStores, storeInfo)
+			activeCount++
 		} else {
 			inventory.PlannedStores = append(inventory.PlannedStores, PlannedStoreInfo{
 				Name:        s.name,
@@ -722,6 +771,7 @@ func buildOrbitDBInventory(kb *app.KnowledgeBaseDB, includeMetadata, includeSamp
 				Status:      "not_initialized",
 				Description: s.description,
 			})
+			plannedCount++
 		}
 	}
 
@@ -741,9 +791,13 @@ func buildOrbitDBInventory(kb *app.KnowledgeBaseDB, includeMetadata, includeSamp
 		entries, err := (*kb.Contributions).List(ctx, &orbitdb.StreamOptions{Amount: &infinity})
 		if err == nil {
 			storeInfo.EventCount = len(entries)
+			logger.Debug("Contributions store: %d events", len(entries))
+		} else {
+			logger.Warn("Failed to list Contributions events: %v", err)
 		}
 
 		inventory.ActiveStores = append(inventory.ActiveStores, storeInfo)
+		activeCount++
 	} else {
 		inventory.PlannedStores = append(inventory.PlannedStores, PlannedStoreInfo{
 			Name:        "Contributions",
@@ -751,6 +805,7 @@ func buildOrbitDBInventory(kb *app.KnowledgeBaseDB, includeMetadata, includeSamp
 			Status:      "not_initialized",
 			Description: "Contribution log",
 		})
+		plannedCount++
 	}
 
 	// Dynamic stores
@@ -768,9 +823,12 @@ func buildOrbitDBInventory(kb *app.KnowledgeBaseDB, includeMetadata, includeSamp
 			Description: "Credential audit (on-demand)",
 		},
 	)
+	plannedCount += 2
 
-	inventory.TotalActive = len(inventory.ActiveStores)
-	inventory.TotalPlanned = len(inventory.PlannedStores)
+	inventory.TotalActive = activeCount
+	inventory.TotalPlanned = plannedCount
+
+	logger.Info("OrbitDB inventory built: %d active stores, %d planned stores", activeCount, plannedCount)
 
 	return inventory
 }
@@ -786,6 +844,7 @@ func buildIPFSInventory(kb *app.KnowledgeBaseDB) IPFSInventory {
 	}
 
 	if app.GlobalKBSQLite == nil || app.GlobalKBSQLite.DB == nil {
+		logger.Warn("SQLite not available for IPFS inventory")
 		return inventory
 	}
 
@@ -796,6 +855,7 @@ func buildIPFSInventory(kb *app.KnowledgeBaseDB) IPFSInventory {
 
 	rows, err := app.GlobalKBSQLite.DB.Query(query)
 	if err != nil {
+		logger.Warn("Failed to query IPFS content from toscametadata: %v", err)
 		return inventory
 	}
 	defer rows.Close()
@@ -833,6 +893,8 @@ func buildIPFSInventory(kb *app.KnowledgeBaseDB) IPFSInventory {
 		}
 	}
 
+	logger.Debug("IPFS inventory: %d items, %d bytes total", inventory.ContentCount, inventory.TotalSizeBytes)
+
 	return inventory
 }
 
@@ -842,6 +904,7 @@ func buildIPFSInventory(kb *app.KnowledgeBaseDB) IPFSInventory {
 
 func buildLineageGraph(rdbms *app.KnowledgeBaseSQLite) *LineageGraph {
 	if rdbms == nil || rdbms.DB == nil {
+		logger.Warn("Cannot build lineage graph: database not available")
 		return nil
 	}
 
@@ -853,6 +916,7 @@ func buildLineageGraph(rdbms *app.KnowledgeBaseSQLite) *LineageGraph {
 
 	rows, err := rdbms.DB.Query(query)
 	if err != nil {
+		logger.Warn("Failed to query lineage data: %v", err)
 		return &LineageGraph{Tables: []TableLineage{}}
 	}
 	defer rows.Close()
@@ -865,6 +929,7 @@ func buildLineageGraph(rdbms *app.KnowledgeBaseSQLite) *LineageGraph {
 		var level int
 
 		if err := rows.Scan(&sourceID, &sourceType, &targetID, &targetType, &targetName, &level); err != nil {
+			logger.Warn("Failed to scan lineage row: %v", err)
 			continue
 		}
 
@@ -891,6 +956,8 @@ func buildLineageGraph(rdbms *app.KnowledgeBaseSQLite) *LineageGraph {
 	for _, lineage := range lineageMap {
 		tables = append(tables, *lineage)
 	}
+
+	logger.Debug("Lineage graph built: %d tables with dependencies", len(tables))
 
 	return &LineageGraph{Tables: tables}
 }
@@ -928,6 +995,9 @@ func buildEnrichmentStatus(kb *app.KnowledgeBaseDB, rdbms *app.KnowledgeBaseSQLi
 				status.CacheHitRate = 0.75
 			}
 		}
+		logger.Debug("Metadata enrichment service active: %d enriched tables", status.EnrichedTablesCount)
+	} else {
+		logger.Debug("Metadata enrichment service not active")
 	}
 
 	return status
@@ -970,6 +1040,8 @@ func buildAccessPatterns(rdbms *app.KnowledgeBaseSQLite) AccessPatterns {
 				})
 			}
 		}
+	} else {
+		logger.Warn("Failed to query access patterns: %v", err)
 	}
 
 	topUsersQuery := `
@@ -997,6 +1069,8 @@ func buildAccessPatterns(rdbms *app.KnowledgeBaseSQLite) AccessPatterns {
 			}
 		}
 	}
+
+	logger.Debug("Access patterns: %d top tables, %d top users", len(patterns.TopAccessedTables), len(patterns.TopUsers))
 
 	return patterns
 }
@@ -1032,6 +1106,11 @@ func buildQualityMetrics(rdbms *app.KnowledgeBaseSQLite) QualityMetrics {
 		metrics.QualityDistribution["high"] = high
 		metrics.QualityDistribution["medium"] = medium
 		metrics.QualityDistribution["low"] = low
+
+		logger.Debug("Quality metrics: avg_score=%.2f, tables=%d (high=%d, medium=%d, low=%d)",
+			metrics.AvgQualityScore, totalCount, high, medium, low)
+	} else {
+		logger.Warn("Failed to query quality metrics: %v", err)
 	}
 
 	return metrics
@@ -1111,6 +1190,7 @@ func APIKeyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		apiKey := r.Header.Get("X-API-Key")
 		if !isValidAPIKey(apiKey) {
+			logger.Warn("Unauthorized inventory access attempt from %s", r.RemoteAddr)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
