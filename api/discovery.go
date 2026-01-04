@@ -244,7 +244,7 @@ func WaitForExit(service *Service) {
 
 	<-sigChan // Block until a signal is received
 
-	logger.Info("Received termination signal. Cleaning up...")
+	logger.Warn("Received termination signal in Discovery. Cleaning up...")
 	service.stopMdnsDiscovery()
 	os.Exit(0)
 }

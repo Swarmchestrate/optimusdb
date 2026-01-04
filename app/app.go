@@ -1018,7 +1018,6 @@ Example:
 	SELECT Alias, Component FROM metadata  →  SELECT "Alias", "Component" FROM metadata
 */
 func sanitizeSQLQuery(query string) string {
-	// List of common reserved words that appear in OptimusDB queries
 	reservedWords := []string{
 		"Alias", "Component", "Status", "Type", "Name", "Group",
 		"Order", "Index", "Key", "Value", "Table", "Column",
@@ -1026,17 +1025,11 @@ func sanitizeSQLQuery(query string) string {
 
 	result := query
 
-	// Quote each reserved word if it appears unquoted
 	for _, word := range reservedWords {
-		// Pattern: word boundary + reserved word + word boundary (not already quoted)
-		// This handles: SELECT Alias, FROM Alias, WHERE Alias =
-
-		// Replace in SELECT clause: "SELECT Alias," -> "SELECT \"Alias\","
 		result = strings.ReplaceAll(result, " "+word+",", " \""+word+"\",")
 		result = strings.ReplaceAll(result, " "+word+" ", " \""+word+"\" ")
 		result = strings.ReplaceAll(result, " "+word+")", " \""+word+"\")")
 
-		// Handle start of SELECT: "SELECT Alias" -> "SELECT \"Alias\""
 		if strings.HasPrefix(strings.TrimSpace(strings.ToUpper(result)), "SELECT "+strings.ToUpper(word)) {
 			result = strings.Replace(result, "SELECT "+word, "SELECT \""+word+"\"", 1)
 			result = strings.Replace(result, "select "+word, "select \""+word+"\"", 1)
