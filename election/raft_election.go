@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/rand"
 	"optimusdb/app"
 	"optimusdb/config"
@@ -521,6 +522,11 @@ func (rn *RaftNode) becomeLeader(term int) {
 	rn.mu.Lock()
 	rn.role = RoleCoordinator
 	rn.leadershipCount++
+	metricsCollectorMutex.RLock()
+	if GlobalMetricsCollector != nil {
+		GlobalMetricsCollector.UpdateLeadershipCount()
+	}
+	metricsCollectorMutex.RUnlock()
 	rn.mu.Unlock()
 
 	// Announce leadership
@@ -783,21 +789,178 @@ func GetLatestElectionInfo() (leaderID string, term int, timestamp string, err e
 	return leaderID, term, time.Now().Format(time.RFC3339), nil
 }
 
-// Dummy types for API compatibility (reputation system removed)
+/*
+NodeReputation contains all metrics used to calculate a node's fitness
+for leadership. Higher scores across these dimensions increase the likelihood
+of being elected coordinator.
+
+Reputation is stored persistently in SQLite and updated every 30 seconds by
+each node broadcasting its current metrics via PubSub.
+*/
 type NodeReputation struct {
-	NodeID string `json:"nodeId"`
+	NodeID                string  `json:"nodeId"`
+	Uptime                float64 `json:"uptime"`             // 0.0-1.0, proportion of time online
+	LeadershipCount       int     `json:"leadership_count"`   // Number of times previously elected
+	Latency               float64 `json:"latency"`            // Network latency in milliseconds
+	UserCPU               float64 `json:"user_cpu"`           // User CPU usage percentage
+	SystemCPU             float64 `json:"system_cpu"`         // System CPU usage percentage
+	IdleCPU               float64 `json:"idle_cpu"`           // Idle CPU percentage
+	MemoryAvailable       float64 `json:"memory_available"`   // Available memory in MB
+	MemoryAllocationTotal float64 `json:"memory_total_alloc"` // Total allocated memory in MB
+	MemorySystem          float64 `json:"memory_sys"`         // System memory in MB
+	AvgReadMBs            float64 `json:"avg_read_mbs"`       // Average disk read MB/s
+	AvgWriteMBs           float64 `json:"avg_write_mbs"`      // Average disk write MB/s
+	GeographyScore        float64 `json:"geography_score"`    // Geographic diversity score 0.0-1.0
 }
 
 func GetAllPeersReputation() ([]NodeReputation, error) {
-	return []NodeReputation{}, nil
+	//return []NodeReputation{}, nil
+	return GetAllPeersReputationWithMetrics() // ← Use real metrics
 }
 
 func GetPeerReputation(peerID string) (*NodeReputation, error) {
-	return &NodeReputation{NodeID: peerID}, nil
+	//return &NodeReputation{NodeID: peerID}, nil
+	return GetPeerReputationWithMetrics(peerID) // ← Use real metrics
 }
 
+// CalculateHealthScore calculates health score for a node reputation
 func CalculateHealthScore(nr NodeReputation) float64 {
-	return 100.0
+	return calculateReputation(nr)
+}
+
+/*
+calculateReputation computes a weighted reputation score from 0-100.
+
+Each metric is normalized to a 0-100 scale before weighting:
+- CPU: 100 - usage% (lower usage is better)
+- Memory: 100 - (allocated/system * 100) (more free memory is better)
+- Disk: Logarithmic scale to handle bursts (lower I/O is better)
+- Latency: 100 - min(latency_ms, 100) (lower latency is better)
+- Uptime: uptime * 100 (higher uptime is better)
+- Leadership: min(count * 10, 100) (experience is valuable, capped)
+- Geography: score * 100 (diversity is good)
+
+The weighted sum produces the final reputation score.
+*/
+/*
+===================================================================================
+REPUTATION SCORING ALGORITHM
+===================================================================================
+
+The reputation score determines which nodes are more likely to be elected as
+coordinator. The score is a weighted sum of normalized metrics (0-100 scale):
+
+Weight Distribution:
+- Uptime (20%): Higher uptime = more reliable
+- Leadership (10%): Prior successful leadership experience
+- CPU (20%): Lower usage = more capacity for coordinator duties
+- Memory (20%): More available memory = better performance
+- Disk I/O (10%): Lower I/O = less likely to be bottlenecked
+- Latency (10%): Lower network latency = faster coordination
+- Geography (10%): Geographic diversity for resilience
+
+Normalization:
+- CPU: 100 - usage% (lower usage is better, max 100%)
+- Memory: 100 - (allocated/system * 100) (more free is better)
+- Disk: Logarithmic scale (1MB/s=100, 10MB/s=75, 100MB/s=50, 1000MB/s=25)
+- Latency: 100 - min(latency_ms, 100) (lower latency is better, cap at 100ms)
+- Uptime: uptime * 100 (convert 0-1 range to 0-100)
+- Leadership: min(count * 10, 100) (each leadership worth 10 points, cap at 100)
+- Geography: score * 100 (convert 0-1 range to 0-100)
+
+Final score: 0-100 (higher is better for coordinator selection)
+*/
+// getReputationWeights returns the weight of each metric in reputation calculation
+func getReputationWeights() map[string]float64 {
+	return map[string]float64{
+		"uptime":          0.20,
+		"leadership":      0.10,
+		"cpu":             0.20,
+		"memory":          0.20,
+		"disk":            0.10,
+		"latency":         0.10,
+		"geography_score": 0.10,
+	}
+}
+
+func calculateReputation(nr NodeReputation) float64 {
+	w := getReputationWeights()
+
+	// CPU Score: 0-100 (lower usage = better, cap at 100%)
+	cpuUsage := nr.UserCPU + nr.SystemCPU
+	if cpuUsage > 100 {
+		cpuUsage = 100
+	}
+	cpuScore := 100 - cpuUsage
+
+	// Memory Score: 0-100 (less used = better, as percentage of system memory)
+	memoryScore := 100.0
+	if nr.MemorySystem > 0 {
+		memoryUsedPct := (nr.MemoryAllocationTotal / nr.MemorySystem) * 100
+		if memoryUsedPct > 100 {
+			memoryUsedPct = 100
+		}
+		memoryScore = 100 - memoryUsedPct
+	}
+
+	// Disk Score: Logarithmic scale to handle bursts gracefully
+	// 1 MB/s = 100, 10 MB/s = 75, 100 MB/s = 50, 1000 MB/s = 25
+	diskIO := nr.AvgReadMBs + nr.AvgWriteMBs
+	diskScore := 100.0
+	if diskIO > 0 {
+		logDisk := math.Log10(diskIO)
+		diskScore = 100 - (logDisk * 25)
+		if diskScore < 0 {
+			diskScore = 0
+		}
+		if diskScore > 100 {
+			diskScore = 100
+		}
+	}
+
+	// Latency Score: 0-100 (lower latency = better, assume max 100ms)
+	latency := nr.Latency
+	if latency > 100 {
+		latency = 100
+	}
+	latencyScore := 100 - latency
+
+	// Uptime Score: Convert 0-1 range to 0-100
+	uptimeScore := nr.Uptime * 100
+	if uptimeScore > 100 {
+		uptimeScore = 100
+	}
+
+	// Leadership Score: Each past leadership worth 10 points, capped at 100
+	leadershipScore := float64(nr.LeadershipCount) * 10
+	if leadershipScore > 100 {
+		leadershipScore = 100
+	}
+
+	// Geography Score: Convert 0-1 range to 0-100
+	geographyScore := nr.GeographyScore * 100
+	if geographyScore > 100 {
+		geographyScore = 100
+	}
+
+	// Calculate weighted sum
+	score := (w["uptime"] * uptimeScore) +
+		(w["leadership"] * leadershipScore) +
+		(w["cpu"] * cpuScore) +
+		(w["memory"] * memoryScore) +
+		(w["disk"] * diskScore) +
+		(w["latency"] * latencyScore) +
+		(w["geography_score"] * geographyScore)
+
+	// Final safety clamp
+	if score < 0 {
+		return 0
+	}
+	if score > 100 {
+		return 100
+	}
+
+	return score
 }
 
 /*
@@ -822,6 +985,25 @@ type ReputationSQLite struct {
 
 // Global reputation DB for compatibility
 var GlobalReputationDB *ReputationSQLite
+
+/*
+===================================================================================
+DATABASE INITIALIZATION AND MANAGEMENT
+===================================================================================
+
+Reputation data is stored in SQLite for persistence across restarts. This allows
+the cluster to prefer nodes with proven reliability even after reboots.
+
+Two tables are maintained:
+1. reputation: Current metrics for each node
+2. election_log: Historical record of elections (winner, votes, timestamp)
+
+Database Location:
+~/.cache/optimusdb/<repo>/optimusdb/optimusreputation.db
+
+The database is created if it doesn't exist, and tables are created with
+IF NOT EXISTS to allow safe restarts.
+*/
 
 // InitReputationDB initializes the reputation database (compatibility stub)
 // This is called from main.go but is now a minimal no-op implementation
@@ -864,17 +1046,39 @@ func InitReputationDB() (*ReputationSQLite, error) {
 	return GlobalReputationDB, nil
 }
 
-// createReputationDB creates minimal tables (compatibility stub)
+// createReputationDB creates the necessary tables in SQLite
 func (rep *ReputationSQLite) createReputationDB() error {
-	// Minimal table for compatibility
+	// Reputation metrics table
 	tableQuery := `CREATE TABLE IF NOT EXISTS reputation (
 		node_id TEXT PRIMARY KEY,
-		uptime REAL DEFAULT 1.0,
-		leadership_count INTEGER DEFAULT 0
+		uptime REAL,
+		leadership_count INTEGER,
+		latency REAL,
+		user_cpu REAL,
+		system_cpu REAL,
+		idle_cpu REAL,
+		memory_available REAL,
+		memory_total_alloc REAL,
+		memory_sys REAL,
+		avg_read_mbs REAL,
+		avg_write_mbs REAL,
+		geography_score REAL
 	);`
-
 	if _, err := rep.ReputationDB.Exec(tableQuery); err != nil {
 		return err
+	}
+
+	// Election history log
+	electionLogQuery := `CREATE TABLE IF NOT EXISTS election_log (
+		id TEXT PRIMARY KEY,
+		timestamp TEXT,
+		leader_id TEXT,
+		term INTEGER,
+		votes_json TEXT
+	);`
+	if _, err := rep.ReputationDB.Exec(electionLogQuery); err != nil {
+		logger.Error("[ERROR] Failed to create election_log table: %v", err)
+		return fmt.Errorf("failed to create election_log table: %w", err)
 	}
 
 	return nil
