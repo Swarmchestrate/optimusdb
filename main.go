@@ -222,23 +222,23 @@ func main() {
 	// Initialize TinyLlama HTTP client
 	llmClient, err := contextualmetadata.NewTinyLlamaHTTP()
 	if err != nil {
-		logger.Info("[METADATA] ⚠️  TinyLlama not available: %v", err)
-		logger.Info("[METADATA] ℹ️  Will use basic metadata generation")
-		if app.GlobalLoggerDB != nil {
-			_ = app.GlobalLoggerDB.AddToOptimusLog("WARN", "TinyLlama unavailable: "+err.Error(), runtime.GOOS)
-		}
+		logger.AI("[METADATA] ⚠️  TinyLlama not available: %v", err)
+		logger.AI("[METADATA] ℹ️  Will use basic metadata generation")
+		//if app.GlobalLoggerDB != nil {
+		//	_ = app.GlobalLoggerDB.AddToOptimusLog("WARN", "TinyLlama unavailable: "+err.Error(), runtime.GOOS)
+		//}
 		llmClient = nil
 	} else {
 		// Quick health check
 		healthCtx, healthCancel := context.WithTimeout(termCtx, 20*time.Second) // TBD if more is required
 		if err := llmClient.HealthCheck(healthCtx); err != nil {
-			logger.Info("[METADATA] ⚠️  TinyLlama health check failed: %v", err)
+			logger.AI("[METADATA] ⚠️  TinyLlama health check failed: %v", err)
 			llmClient = nil
 		} else {
-			logger.Info("[METADATA] ✅ TinyLlama client initialized and healthy")
-			if app.GlobalLoggerDB != nil {
-				_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", "TinyLlama client initialized", runtime.GOOS)
-			}
+			logger.AI("[METADATA] ✅ TinyLlama client initialized and healthy")
+			//if app.GlobalLoggerDB != nil {
+			//	_ = app.GlobalLoggerDB.AddToOptimusLog("INFO", "TinyLlama client initialized", runtime.GOOS)
+			//}
 		}
 		healthCancel()
 	}
@@ -514,18 +514,18 @@ func main() {
 	// ===============================
 	// START ELECTION CONTROLLER
 	// ===============================
-	logger.Info("[ELECTION] Waiting for GossipSub mesh to stabilize...")
+	//logger.Election("[ELECTION] Waiting for GossipSub mesh to stabilize...")
 	time.Sleep(5 * time.Second)
 
 	//log.Println("[INIT] Starting Election Controller...")
 	//go election.RunFullNode(termCtx, hostMain, ps, &knowledgeBaseDB)
-	logger.Info("[ELECTION] Starting Election Controller...")
+	//logger.Election("[ELECTION] Starting Election Controller...")
 	electionNode := election.RunFullNode(termCtx, hostMain, ps, &knowledgeBaseDB)
 	//if app.GlobalLoggerDB != nil {
 	//	_ = app.GlobalLoggerDB.AddToOptimusLog("ELECTION", fmt.Sprintf("ELECTION Results: %v", electionNode), runtime.GOOS)
 	//}
-	logger.Info("[ELECTION] ELECTION Results: %v", electionNode)
-	logger.Info("[ELECTION] ✅ Election node initialized and stored globally")
+	logger.Election("[RAFT] ELECTION Results: %v", electionNode)
+	logger.Election("[RAFT] ✅ Election node initialized and stored globally")
 
 	// ===============================
 	// START BACKGROUND METADATA ENRICHER
