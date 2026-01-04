@@ -248,22 +248,22 @@ func (tm *TopicManager) GetTopicAndSubscribe(name string) (*pubsub.Topic, *pubsu
 	// Reuse existing topic if available
 	topic, ok := tm.topics[name]
 	if !ok {
-		logger.Info("[ELECTION] Creating new topic: %s", name)
+		logger.Election("Creating new topic: %s", name)
 		var err error
 		topic, err = tm.pubsub.Join(name)
 		if err != nil {
-			logger.Error("[ERROR] Failed to join topic '%s': %v", name, err)
+			logger.Error("Failed to join topic '%s': %v", name, err)
 			return nil, nil, fmt.Errorf("failed to join topic '%s': %w", name, err)
 		}
 		tm.topics[name] = topic
 	} else {
-		logger.Info("[ELECTION] Reusing existing topic: %s", name)
+		logger.Election("Reusing existing topic: %s", name)
 	}
 
 	// Reuse existing subscription if available
 	sub, ok := tm.subs[name]
 	if !ok {
-		logger.Info("[ELECTION] Creating new subscription for: %s", name)
+		logger.Election("Creating new subscription for: %s", name)
 		var err error
 		sub, err = topic.Subscribe()
 		if err != nil {
@@ -596,14 +596,14 @@ func InitReputationDB() (*ReputationSQLite, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(rdbmsCache)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		logger.Error("[ERROR] Failed to create directory for Reputation DB: %v", err)
+		logger.Error("Failed to create directory for Reputation DB: %v", err)
 		return nil, fmt.Errorf("failed to create directory for Reputation DB: %w", err)
 	}
 
 	// Open SQLite database
 	db, err := sql.Open("sqlite3", rdbmsCache)
 	if err != nil {
-		logger.Error("[ERROR] Cannot open SQLite DB for Reputation: %v", err)
+		logger.Error("Cannot open SQLite DB for Reputation: %v", err)
 		return nil, err
 	}
 
@@ -611,11 +611,11 @@ func InitReputationDB() (*ReputationSQLite, error) {
 
 	// Create tables if they don't exist
 	if err := GlobalReputationDB.createReputationDB(); err != nil {
-		logger.Error("[ERROR] Table creation failed for Reputation DB: %v", err)
+		logger.Error("Table creation failed for Reputation DB: %v", err)
 		return nil, err
 	}
 
-	logger.Info("[ELECTION] SQLite Reputation Database Ready at: %s", rdbmsCache)
+	logger.Election("SQLite Reputation Database Ready at: %s", rdbmsCache)
 	return GlobalReputationDB, nil
 }
 
@@ -650,7 +650,7 @@ func (rep *ReputationSQLite) createReputationDB() error {
 		votes_json TEXT
 	);`
 	if _, err := rep.ReputationDB.Exec(electionLogQuery); err != nil {
-		logger.Error("[ERROR] Failed to create election_log table: %v", err)
+		logger.Error("Failed to create election_log table: %v", err)
 		return fmt.Errorf("failed to create election_log table: %w", err)
 	}
 
@@ -779,7 +779,7 @@ func (n *Node) publishMessage(msgType string, payload interface{}) error {
 	// Serialize the payload
 	data, err := json.Marshal(payload)
 	if err != nil {
-		logger.Error("[ERROR] Failed to marshal payload for %s: %v", msgType, err)
+		logger.Error("Failed to marshal payload for %s: %v", msgType, err)
 		return fmt.Errorf("marshal payload failed: %w", err)
 	}
 
@@ -787,33 +787,33 @@ func (n *Node) publishMessage(msgType string, payload interface{}) error {
 	core := CoreMessage{Type: msgType, Payload: data}
 	coreData, err := json.Marshal(core)
 	if err != nil {
-		logger.Error("[ERROR] Failed to marshal CoreMessage for %s: %v", msgType, err)
+		logger.Error("Failed to marshal CoreMessage for %s: %v", msgType, err)
 		return fmt.Errorf("marshal core failed: %w", err)
 	}
 
 	// Check mesh status before publishing
 	meshPeers := n.electionTopic.ListPeers()
-	logger.Info("[ELECTION] Publishing %s: %d bytes, %d peers in mesh",
+	logger.Election("Publishing %s: %d bytes, %d peers in mesh",
 		msgType, len(coreData), len(meshPeers))
 
 	if len(meshPeers) == 0 {
-		logger.Warn("[ELECTION] No mesh peers! Message may not propagate")
+		logger.Warn("No mesh peers! Message may not propagate")
 		// Log connected peers for debugging
 		allPeers := n.host.Network().Peers()
-		logger.Info("[ELECTION] Connected peers: %d", len(allPeers))
+		logger.Election("Connected peers: %d", len(allPeers))
 		topics := n.pubsub.GetTopics()
-		logger.Info("[ELECTION] Subscribed topics: %v", topics)
+		logger.Election("Subscribed topics: %v", topics)
 	}
 
 	// Publish with retry logic (3 attempts with 500ms backoff)
 	for attempt := 0; attempt < 3; attempt++ {
 		err = n.electionTopic.Publish(n.ctx, coreData)
 		if err == nil {
-			logger.Info("[ELECTION] ✅ %s published successfully (attempt %d)", msgType, attempt+1)
+			logger.Election("✅ %s published successfully (attempt %d)", msgType, attempt+1)
 			return nil
 		}
 
-		logger.Error("[ERROR] Publish attempt %d failed: %v", attempt+1, err)
+		logger.Error("Publish attempt %d failed: %v", attempt+1, err)
 		if attempt < 2 {
 			time.Sleep(500 * time.Millisecond)
 		}
@@ -851,7 +851,7 @@ conditions when nodes start at opposite sides of a 10-second boundary.
 func (n *Node) StartElection(peers []NodeReputation, attempt int) {
 	// Prevent concurrent elections on the same node using atomic CAS
 	if !atomic.CompareAndSwapInt32(&n.isElecting, 0, 1) {
-		logger.Info("[ELECTION] Election already in progress, skipping")
+		logger.Election("Election already in progress, skipping")
 		return
 	}
 	defer atomic.StoreInt32(&n.isElecting, 0)
@@ -867,11 +867,11 @@ func (n *Node) StartElection(peers []NodeReputation, attempt int) {
 	n.peerCount = totalPeers
 	n.electionMutex.Unlock()
 
-	logger.Info("[ELECTION] ════════════════════════════════════════")
-	logger.Info("[ELECTION] Starting Election - Term %d, Attempt %d", term, attempt+1)
-	logger.Info("[ELECTION] Cluster size: %d peers", totalPeers)
-	logger.Info("[ELECTION] Mesh peers: %d", len(n.electionTopic.ListPeers()))
-	logger.Info("[ELECTION] ════════════════════════════════════════")
+	logger.Election("════════════════════════════════════════")
+	logger.Election("Starting Election - Term %d, Attempt %d", term, attempt+1)
+	logger.Election("Cluster size: %d peers", totalPeers)
+	logger.Election("Mesh peers: %d", len(n.electionTopic.ListPeers()))
+	logger.Election("════════════════════════════════════════")
 
 	/*
 	   ✅ PRODUCTION PATCH #5: Epoch Boundary Protection
@@ -895,13 +895,13 @@ func (n *Node) StartElection(peers []NodeReputation, attempt int) {
 
 	if secondsIntoEpoch < 2 {
 		clusterEpoch--
-		logger.Info("[ELECTION] Near epoch boundary (%ds), using previous epoch %d",
+		logger.Election("Near epoch boundary (%ds), using previous epoch %d",
 			secondsIntoEpoch, clusterEpoch)
 	}
 
 	electionID := fmt.Sprintf("cluster-term%d-epoch%d-attempt%d",
 		term, clusterEpoch, attempt)
-	logger.Info("[ELECTION] Election ID: %s", electionID)
+	logger.Election("Election ID: %s", electionID)
 
 	// Initialize election state
 	n.electionMutex.Lock()
@@ -947,12 +947,12 @@ func (n *Node) StartElection(peers []NodeReputation, attempt int) {
 	n.electionMutex.Lock()
 	n.votedNodes[vote.NodeID] = vote.Vote
 	n.votes[vote.Vote]++
-	logger.Info("[ELECTION] 🗳️  I vote for: %s", vote.Vote)
+	logger.Election("🗳️  I vote for: %s", vote.Vote)
 	n.electionMutex.Unlock()
 
 	// Broadcast vote to cluster via GossipSub
 	if err := n.publishMessage(TypeVote, vote); err != nil {
-		logger.Error("[ERROR] Failed to publish vote: %v", err)
+		logger.Error("Failed to publish vote: %v", err)
 	}
 
 	/*
@@ -1066,20 +1066,18 @@ func (n *Node) finalizeElection(term int, electionID string, attempt int, peers 
 	// Verify we're still in the same election (could have changed due to race)
 	if n.currentElectionID != electionID || n.currentTerm != term {
 		n.electionMutex.Unlock()
-		logger.Warn("[ELECTION] Election state changed, aborting finalization")
+		logger.Warn("Election state changed, aborting finalization")
 		return
 	}
 
 	n.electionPhase = PhaseCompleted
 
 	// Log vote tally
-	//	logger.Info("[ELECTION] ════════════════════════════════════════")
-	logger.Info("[ELECTION] Final Results - Term %d:", term)
+	logger.Election("Final Results - Term %d:", term)
 	for candidate, count := range n.votes {
-		logger.Info("[ELECTION]   %s: %d votes", candidate, count)
+		logger.Election("  %s: %d votes", candidate, count)
 	}
-	logger.Info("[ELECTION] Participation: %d/%d nodes voted", len(n.votedNodes), n.peerCount)
-	//	logger.Info("[ELECTION] ════════════════════════════════════════")
+	logger.Election("Participation: %d/%d nodes voted", len(n.votedNodes), n.peerCount)
 
 	// Determine winner based on vote counts and quorum
 	winner := n.determineWinner()
@@ -1105,24 +1103,24 @@ func (n *Node) finalizeElection(term int, electionID string, attempt int, peers 
 	   - Attempt 3: 4 seconds (2^2)
 	*/
 	if winner == "" {
-		logger.Warn("[ELECTION] No winner in term %d (attempt %d/%d)", term, attempt+1, 3)
+		logger.Warn("No winner in term %d (attempt %d/%d)", term, attempt+1, 3)
 
 		if attempt < 2 {
 			// Exponential backoff: 1s, 2s, 4s
 			backoff := time.Duration(math.Pow(2, float64(attempt))) * time.Second
-			logger.Info("[ELECTION] Retrying in %v...", backoff)
+			logger.Election("Retrying in %v...", backoff)
 			time.Sleep(backoff)
 			n.StartElection(peers, attempt+1)
 		} else {
 			// After 3 failed attempts, use fallback election
-			logger.Error("[ERROR] Election failed after 3 attempts, using fallback")
+			logger.Error("Election failed after 3 attempts, using fallback")
 			n.fallbackElection()
 		}
 		return
 	}
 
 	// Winner found! Announce to cluster
-	logger.Info("[ELECTION] 🎉 WINNER: %s with %d votes", winner, votesCopy[winner])
+	logger.Election("🎉 WINNER: %s with %d votes", winner, votesCopy[winner])
 	n.announceLeader(winner, term)
 
 	// Record election in database for historical tracking
@@ -1136,7 +1134,7 @@ func (n *Node) finalizeElection(term int, electionID string, attempt int, peers 
 			votesCopy,
 		)
 		if err != nil {
-			logger.Error("[ERROR] Failed to log election: %v", err)
+			logger.Error("Failed to log election: %v", err)
 		}
 	}
 }
@@ -1197,19 +1195,19 @@ func (n *Node) determineWinner() string {
 		}
 	}
 
-	logger.Info("[ELECTION] Quorum Analysis:")
-	logger.Info("[ELECTION]   Cluster size: %d", n.peerCount)
-	logger.Info("[ELECTION]   Participation: %d nodes voted", participation)
-	logger.Info("[ELECTION]   Required: %d votes", required)
-	logger.Info("[ELECTION]   Winner votes: %d", maxVotes)
+	logger.Election("Quorum Analysis:")
+	logger.Election("  Cluster size: %d", n.peerCount)
+	logger.Election("  Participation: %d nodes voted", participation)
+	logger.Election("  Required: %d votes", required)
+	logger.Election("  Winner votes: %d", maxVotes)
 
 	// Both participation and vote count must meet quorum
 	if participation >= required && maxVotes >= required {
-		logger.Info("[ELECTION] ✅ Quorum ACHIEVED")
+		logger.Election("✅ Quorum ACHIEVED")
 		return winner
 	}
 
-	logger.Warn("[ELECTION] Quorum NOT met (need %d, got %d)", required, maxVotes)
+	logger.Warn("Quorum NOT met (need %d, got %d)", required, maxVotes)
 	return ""
 }
 
@@ -1235,14 +1233,14 @@ Each message is logged with sequence number for debugging and analysis.
 func (n *Node) ListenForElectionEvents() {
 	// Ensure listener only starts once using atomic CAS
 	if !atomic.CompareAndSwapInt32(&n.listenerStarted, 0, 1) {
-		logger.Warn("[ELECTION] Listener already started")
+		logger.Warn("Listener already started")
 		return
 	}
 
-	logger.Info("[ELECTION] ════════════════════════════════════════")
-	logger.Info("[ELECTION] Starting Election Message Listener")
-	logger.Info("[ELECTION] Node: %s", n.host.ID().String())
-	logger.Info("[ELECTION] ════════════════════════════════════════")
+	logger.Election("════════════════════════════════════════")
+	logger.Election("Starting Election Message Listener")
+	logger.Election("Node: %s", n.host.ID().String())
+	logger.Election("════════════════════════════════════════")
 
 	if n.electionSub == nil {
 		log.Fatal("[FATAL] No GossipSub subscription available!")
@@ -1256,10 +1254,10 @@ func (n *Node) ListenForElectionEvents() {
 			if err != nil {
 				// Context cancelled (shutdown)
 				if n.ctx.Err() != nil {
-					logger.Info("[ELECTION] Listener shutting down")
+					logger.Election("Listener shutting down")
 					return
 				}
-				logger.Error("[ERROR] Failed to receive message: %v", err)
+				logger.Error("Failed to receive message: %v", err)
 				continue
 			}
 
@@ -1269,17 +1267,17 @@ func (n *Node) ListenForElectionEvents() {
 				sender = sender[:12] + "..."
 			}
 
-			logger.Info("[ELECTION] 📨 MSG #%d from %s (%d bytes)",
+			logger.Election("📨 MSG #%d from %s (%d bytes)",
 				msgCount, sender, len(msg.Data))
 
 			// Deserialize CoreMessage envelope
 			var core CoreMessage
 			if err := json.Unmarshal(msg.Data, &core); err != nil {
-				logger.Error("[ERROR] Failed to unmarshal message: %v", err)
+				logger.Error("Failed to unmarshal message: %v", err)
 				continue
 			}
 
-			logger.Info("[ELECTION] 📨 MSG #%d type: %s", msgCount, core.Type)
+			logger.Election("📨 MSG #%d type: %s", msgCount, core.Type)
 
 			// Route to appropriate handler (with rate limiting via handleMessage)
 			n.handleMessage(core, msg.ReceivedFrom)
@@ -1379,26 +1377,26 @@ func (n *Node) handleMessage(core CoreMessage, from peer.ID) {
 	case TypeVote:
 		var vote VoteMessage
 		if err := json.Unmarshal(core.Payload, &vote); err != nil {
-			logger.Error("[ERROR] Failed to unmarshal vote: %v", err)
+			logger.Error("Failed to unmarshal vote: %v", err)
 			return
 		}
-		logger.Info("[ELECTION] 🗳️  Vote: %s → %s (election: %s, term: %d)",
+		logger.Election("🗳️  Vote: %s → %s (election: %s, term: %d)",
 			vote.NodeID, vote.Vote, vote.ElectionID, vote.Term)
 		n.handleVote(vote)
 
 	case TypeHeartbeat:
 		var hb HeartbeatMessage
 		if err := json.Unmarshal(core.Payload, &hb); err != nil {
-			logger.Error("[ERROR] Failed to unmarshal heartbeat: %v", err)
+			logger.Error("Failed to unmarshal heartbeat: %v", err)
 			return
 		}
-		logger.Info("[ELECTION] 💓 Heartbeat from %s (term %d)", hb.LeaderID, hb.Term)
+		logger.Election("💓 Heartbeat from %s (term %d)", hb.LeaderID, hb.Term)
 		n.handleHeartbeat(hb)
 
 	case TypeReputation:
 		var rep NodeReputation
 		if err := json.Unmarshal(core.Payload, &rep); err != nil {
-			logger.Error("[ERROR] Failed to unmarshal reputation: %v", err)
+			logger.Error("Failed to unmarshal reputation: %v", err)
 			return
 		}
 
@@ -1406,13 +1404,13 @@ func (n *Node) handleMessage(core CoreMessage, from peer.ID) {
 		if rep.NodeID != n.host.ID().String() {
 			// ✅ PRODUCTION PATCH #6: Validate reputation data before storing
 			if err := validateReputationData(rep); err != nil {
-				logger.Warn("[ELECTION] Invalid reputation from %s: %v (IGNORING)",
+				logger.Warn("Invalid reputation from %s: %v (IGNORING)",
 					rep.NodeID, err)
 				return
 			}
 
 			score := calculateReputation(rep)
-			logger.Info("[ELECTION] 📊 Reputation from %s: %.2f", rep.NodeID, score)
+			logger.Election("📊 Reputation from %s: %.2f", rep.NodeID, score)
 
 			if GlobalReputationDB != nil && GlobalReputationDB.ReputationDB != nil {
 				UpsertReputation(GlobalReputationDB.ReputationDB, rep)
@@ -1422,21 +1420,21 @@ func (n *Node) handleMessage(core CoreMessage, from peer.ID) {
 	case TypeAnnouncement:
 		var ann map[string]interface{}
 		if err := json.Unmarshal(core.Payload, &ann); err != nil {
-			logger.Error("[ERROR] Failed to unmarshal announcement: %v", err)
+			logger.Error("Failed to unmarshal announcement: %v", err)
 			return
 		}
 		leaderID, _ := ann["leader"].(string)
 		term := int(ann["term"].(float64))
-		logger.Info("[ELECTION] 📢 Announcement: %s is leader (term %d)", leaderID, term)
+		logger.Election("📢 Announcement: %s is leader (term %d)", leaderID, term)
 		n.handleAnnouncement(leaderID, term)
 
 	case TypeElectionResult:
 		var result ElectionResultMessage
 		if err := json.Unmarshal(core.Payload, &result); err != nil {
-			logger.Error("[ERROR] Failed to unmarshal election result: %v", err)
+			logger.Error("Failed to unmarshal election result: %v", err)
 			return
 		}
-		logger.Info("[ELECTION] 📋 Result: Leader=%s, Term=%d, Votes=%v",
+		logger.Election("📋 Result: Leader=%s, Term=%d, Votes=%v",
 			result.LeaderID, result.Term, result.Votes)
 	}
 }
@@ -1489,9 +1487,9 @@ func (n *Node) handleVote(vote VoteMessage) {
 		(vote.Term == n.currentTerm && vote.ElectionID != n.currentElectionID)
 
 	if shouldJoin {
-		logger.Info("[ELECTION] 📥 JOINING election started by %s", vote.NodeID)
-		logger.Info("[ELECTION]    Election ID: %s", vote.ElectionID)
-		logger.Info("[ELECTION]    Term: %d", vote.Term)
+		logger.Election("📥 JOINING election started by %s", vote.NodeID)
+		logger.Election("   Election ID: %s", vote.ElectionID)
+		logger.Election("   Term: %d", vote.Term)
 
 		// Adopt the election parameters from the received vote
 		n.electionPhase = PhaseVoting
@@ -1529,7 +1527,7 @@ func (n *Node) handleVote(vote VoteMessage) {
 				Term:       vote.Term,
 			}
 
-			logger.Info("[ELECTION] 🗳️  My vote in this election: %s → %s",
+			logger.Election("🗳️  My vote in this election: %s → %s",
 				ownVote.NodeID, ownVote.Vote)
 
 			// Record own vote locally
@@ -1567,10 +1565,10 @@ func (n *Node) handleVote(vote VoteMessage) {
 		n.votedNodes[vote.NodeID] = vote.Vote
 		n.votes[vote.Vote]++
 
-		logger.Info("[ELECTION] ✅ Recorded vote: %s → %s (total for %s: %d)",
+		logger.Election("✅ Recorded vote: %s → %s (total for %s: %d)",
 			vote.NodeID, vote.Vote, vote.Vote, n.votes[vote.Vote])
 	} else {
-		logger.Warn("[ELECTION] Duplicate vote from %s ignored", vote.NodeID)
+		logger.Warn("Duplicate vote from %s ignored", vote.NodeID)
 	}
 }
 
@@ -1615,20 +1613,20 @@ func (n *Node) handleHeartbeat(hb HeartbeatMessage) {
 	if n.role == "Coordinator" {
 		if hb.LeaderID != n.host.ID().String() {
 			// Another coordinator exists!
-			logger.Warn("[ELECTION] ⚠️  Detected competing coordinator: %s", hb.LeaderID)
+			logger.Warn("⚠️  Detected competing coordinator: %s", hb.LeaderID)
 
 			if hb.Term > n.currentTerm {
 				// They have higher term - they're the legitimate leader
-				logger.Warn("[ELECTION] Their term (%d) > our term (%d), stepping down",
+				logger.Warn("Their term (%d) > our term (%d), stepping down",
 					hb.Term, n.currentTerm)
 				n.stepDownLocked(hb.LeaderID, hb.Term)
 			} else if hb.Term == n.currentTerm && hb.LeaderID < n.host.ID().String() {
 				// Same term, use peer ID as tiebreaker (lower ID wins)
-				logger.Warn("[ELECTION] Same term, their ID < our ID, stepping down")
+				logger.Warn("Same term, their ID < our ID, stepping down")
 				n.stepDownLocked(hb.LeaderID, hb.Term)
 			} else {
 				// We have higher term or lower ID - we're the legitimate leader
-				logger.Info("[ELECTION] We have precedence, ignoring their heartbeat")
+				logger.Election("We have precedence, ignoring their heartbeat")
 			}
 		}
 		return
@@ -1646,7 +1644,7 @@ func (n *Node) handleHeartbeat(hb HeartbeatMessage) {
 		// Convert leader ID string to peer.ID
 		leaderPeerID, err := peer.Decode(hb.LeaderID)
 		if err != nil {
-			logger.Error("[ERROR] Failed to decode leader ID: %v", err)
+			logger.Error("Failed to decode leader ID: %v", err)
 			return
 		}
 
@@ -1654,7 +1652,7 @@ func (n *Node) handleHeartbeat(hb HeartbeatMessage) {
 
 		// Update term if leader has higher term
 		if hb.Term > n.currentTerm {
-			logger.Info("[ELECTION] Updating term: %d → %d", n.currentTerm, hb.Term)
+			logger.Election("Updating term: %d → %d", n.currentTerm, hb.Term)
 			n.currentTerm = hb.Term
 		}
 	}
@@ -1669,8 +1667,8 @@ another coordinator with higher precedence exists.
 Note: Caller must already hold n.mutex
 */
 func (n *Node) stepDownLocked(newLeaderID string, term int) {
-	logger.Info("[ELECTION] ⬇️  STEPPING DOWN: Coordinator → Follower")
-	logger.Info("[ELECTION]    New leader: %s (term %d)", newLeaderID, term)
+	logger.Election("⬇️  STEPPING DOWN: Coordinator → Follower")
+	logger.Election("   New leader: %s (term %d)", newLeaderID, term)
 
 	n.role = "Follower"
 	n.currentTerm = term
@@ -1679,7 +1677,7 @@ func (n *Node) stepDownLocked(newLeaderID string, term int) {
 
 	leaderPeerID, err := peer.Decode(newLeaderID)
 	if err != nil {
-		logger.Error("[ERROR] Failed to decode new leader ID: %v", err)
+		logger.Error("Failed to decode new leader ID: %v", err)
 		return
 	}
 	n.leader = leaderPeerID
@@ -1706,7 +1704,7 @@ func (n *Node) handleAnnouncement(leaderID string, term int) {
 	// Convert string peer ID to peer.ID type
 	leaderPeerID, err := peer.Decode(leaderID)
 	if err != nil {
-		logger.Error("[ERROR] Failed to decode leader ID '%s': %v", leaderID, err)
+		logger.Error("Failed to decode leader ID '%s': %v", leaderID, err)
 		n.mutex.Unlock()
 		return
 	}
@@ -1717,15 +1715,15 @@ func (n *Node) handleAnnouncement(leaderID string, term int) {
 		n.role = "Coordinator"
 		n.leader = leaderPeerID
 		n.leadershipCount++
-		logger.Info("[ELECTION] 👑 I AM THE COORDINATOR (term %d)", term)
-		logger.Info("[ELECTION]    Leadership count: %d", n.leadershipCount)
+		logger.Election("👑 I AM THE COORDINATOR (term %d)", term)
+		logger.Election("   Leadership count: %d", n.leadershipCount)
 	} else {
 		// Someone else won
 		n.role = "Follower"
 		n.leader = leaderPeerID
 		n.lastHeartbeat = time.Now()
 		n.heartbeatMissed = 0
-		logger.Info("[ELECTION] 📋 FOLLOWER: Following %s (term %d)", leaderID, term)
+		logger.Election("📋 FOLLOWER: Following %s (term %d)", leaderID, term)
 	}
 
 	n.mutex.Unlock()
@@ -1745,11 +1743,11 @@ func (n *Node) announceLeader(leaderID string, term int) {
 
 	// Broadcast announcement via GossipSub
 	if err := n.publishMessage(TypeAnnouncement, announcement); err != nil {
-		logger.Error("[ERROR] Failed to announce leader: %v", err)
+		logger.Error("Failed to announce leader: %v", err)
 		return
 	}
 
-	logger.Info("[ELECTION] 📢 Announced coordinator: %s (term %d)", leaderID, term)
+	logger.Election("📢 Announced coordinator: %s (term %d)", leaderID, term)
 
 	// Update our own role
 	n.handleAnnouncement(leaderID, term)
@@ -1787,7 +1785,7 @@ func (n *Node) sendHeartbeats(term int) {
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 
-	logger.Info("[ELECTION] Starting heartbeat broadcast (every %v)", heartbeatInterval)
+	logger.Election("Starting heartbeat broadcast (every %v)", heartbeatInterval)
 
 	for {
 		select {
@@ -1796,7 +1794,7 @@ func (n *Node) sendHeartbeats(term int) {
 			n.mutex.Lock()
 			if n.role != "Coordinator" {
 				n.mutex.Unlock()
-				logger.Info("[ELECTION] No longer coordinator, stopping heartbeats")
+				logger.Election("No longer coordinator, stopping heartbeats")
 				return
 			}
 			n.mutex.Unlock()
@@ -1809,13 +1807,13 @@ func (n *Node) sendHeartbeats(term int) {
 			}
 
 			if err := n.publishMessage(TypeHeartbeat, hb); err != nil {
-				logger.Error("[ERROR] Heartbeat publish failed: %v", err)
+				logger.Error("Heartbeat publish failed: %v", err)
 			} else {
-				logger.Info("[ELECTION] 💓 Heartbeat sent (term %d)", term)
+				logger.Election("💓 Heartbeat sent (term %d)", term)
 			}
 
 		case <-n.ctx.Done():
-			logger.Info("[ELECTION] Context cancelled, stopping heartbeats")
+			logger.Election("Context cancelled, stopping heartbeats")
 			return
 		}
 	}
@@ -1836,13 +1834,13 @@ vote collection fails due to network issues.
 
 // fallbackElection selects highest-reputation node as coordinator
 func (n *Node) fallbackElection() {
-	logger.Warn("[ELECTION] Executing FALLBACK election")
+	logger.Warn("Executing FALLBACK election")
 
 	// Query all known nodes from reputation database
 	peers, err := QueryAllReputations(GlobalReputationDB.ReputationDB)
 	if err != nil || len(peers) == 0 {
 		// No reputation data - make ourselves coordinator
-		logger.Warn("[ELECTION] No peers found, making self coordinator")
+		logger.Warn("No peers found, making self coordinator")
 		n.announceLeader(n.host.ID().String(), n.currentTerm+1)
 		return
 	}
@@ -1858,7 +1856,7 @@ func (n *Node) fallbackElection() {
 		}
 	}
 
-	logger.Info("[ELECTION] Fallback winner: %s (reputation: %.2f)", best.NodeID, maxScore)
+	logger.Election("Fallback winner: %s (reputation: %.2f)", best.NodeID, maxScore)
 	n.announceLeader(best.NodeID, n.currentTerm+1)
 }
 
@@ -1883,7 +1881,7 @@ func (n *Node) CheckLeaderFailure() {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
-	logger.Info("[ELECTION] Starting leader failure detection")
+	logger.Election("Starting leader failure detection")
 
 	for range ticker.C {
 		n.mutex.Lock()
@@ -1906,7 +1904,7 @@ func (n *Node) CheckLeaderFailure() {
 		if timeSince > heartbeatTimeout {
 			// Heartbeat overdue - increment miss counter
 			n.heartbeatMissed++
-			logger.Warn("[ELECTION] Heartbeat timeout: %v since last heartbeat (miss #%d)",
+			logger.Warn("Heartbeat timeout: %v since last heartbeat (miss #%d)",
 				timeSince, n.heartbeatMissed)
 
 			if n.heartbeatMissed >= heartbeatRetryLimit {
@@ -1918,9 +1916,7 @@ func (n *Node) CheckLeaderFailure() {
 				   followers start elections at different times, reducing concurrent
 				   elections from 3 to typically just 1.
 				*/
-				logger.Error("[ELECTION] LEADER FAILURE DETECTED, Missed %d heartbeats, Last heartbeat: %v ago", n.heartbeatMissed, timeSince)
-				//logger.Error("[ELECTION] Missed %d heartbeats", n.heartbeatMissed)
-				//logger.Error("[ELECTION]    Last heartbeat: %v ago", timeSince)
+				logger.Error("LEADER FAILURE DETECTED, Missed %d heartbeats, Last heartbeat: %v ago", n.heartbeatMissed, timeSince)
 
 				n.heartbeatMissed = 0
 				n.mutex.Unlock()
@@ -1929,19 +1925,19 @@ func (n *Node) CheckLeaderFailure() {
 				backoffMs := rand.Intn(5000)
 				backoff := time.Duration(backoffMs) * time.Millisecond
 
-				logger.Info("[ELECTION] Applying random backoff: %v", backoff)
-				logger.Info("[ELECTION] (prevents thundering herd problem)")
+				logger.Election("Applying random backoff: %v", backoff)
+				logger.Election("(prevents thundering herd problem)")
 				time.Sleep(backoff)
 
 				// Re-check: someone else might have started election during backoff
 				if atomic.LoadInt32(&n.isElecting) == 0 {
-					logger.Info("[ELECTION] Starting re-election after leader failure")
+					logger.Election("Starting re-election after leader failure")
 					go func() {
 						peers, _ := QueryAllReputations(GlobalReputationDB.ReputationDB)
 						n.StartElection(peers, 0)
 					}()
 				} else {
-					logger.Info("[ELECTION] Another node already started election, joining")
+					logger.Election("Another node already started election, joining")
 				}
 				continue
 			}
@@ -1971,7 +1967,7 @@ func (n *Node) PeriodicReputationPublisher() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	logger.Info("[ELECTION] Starting reputation publisher (every 30s)")
+	logger.Election("Starting reputation publisher (every 30s)")
 
 	for {
 		select {
@@ -2008,14 +2004,14 @@ func (n *Node) PeriodicReputationPublisher() {
 
 			// Broadcast to cluster
 			if err := n.publishMessage(TypeReputation, reputation); err != nil {
-				logger.Error("[ERROR] Failed to publish reputation: %v", err)
+				logger.Error("Failed to publish reputation: %v", err)
 			} else {
 				score := calculateReputation(reputation)
-				logger.Info("[ELECTION] 📊 Reputation published (score: %.2f)", score)
+				logger.Election("📊 Reputation published (score: %.2f)", score)
 			}
 
 		case <-n.ctx.Done():
-			logger.Info("[ELECTION] Reputation publisher shutting down")
+			logger.Election("Reputation publisher shutting down")
 			return
 		}
 	}
@@ -2045,10 +2041,10 @@ This version includes EVERY production patch and the critical bug fix.
 
 // RunFullNode initializes and runs the election system
 func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, discovery *app.KnowledgeBaseDB) *Node {
-	logger.Info("[ELECTION] ════════════════════════════════════════")
-	logger.Info("[ELECTION] OptimusDB Election v2.1 - ULTIMATE")
-	logger.Info("[ELECTION] All patches + comprehensive documentation")
-	logger.Info("[ELECTION] ════════════════════════════════════════")
+	logger.Election("════════════════════════════════════════")
+	logger.Election("OptimusDB Election v2.1 - ULTIMATE")
+	logger.Election("All patches + comprehensive documentation")
+	logger.Election("════════════════════════════════════════")
 
 	/*
 	   GOSSIPSUB TOPIC SETUP
@@ -2063,20 +2059,20 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 		// Reuse pre-created topic
 		electionTopic = discovery.ElectionTopic
 		electionSub = discovery.ElectionSub
-		logger.Info("[ELECTION] Using pre-created GossipSub topic")
+		logger.Election("Using pre-created GossipSub topic")
 	} else {
 		// Create new topic and subscription
-		logger.Info("[ELECTION] Creating new GossipSub topic: optimusdb")
+		logger.Election("Creating new GossipSub topic: optimusdb")
 		var err error
 		electionTopic, err = pubsubObj.Join("optimusdb")
 		if err != nil {
-			logger.Error("[FATAL] Cannot join election topic: %v", err)
+			logger.Error("Cannot join election topic: %v", err)
 			log.Fatalf("[FATAL] Cannot join election topic: %v", err)
 		}
 
 		electionSub, err = electionTopic.Subscribe()
 		if err != nil {
-			logger.Error("[FATAL] Cannot subscribe to election topic: %v", err)
+			logger.Error("Cannot subscribe to election topic: %v", err)
 			log.Fatalf("[FATAL] Cannot subscribe to election topic: %v", err)
 		}
 	}
@@ -2098,8 +2094,8 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	GlobalElectionNode = node
 	electionNodeMutex.Unlock()
 
-	logger.Info("[ELECTION] Node initialized as FOLLOWER")
-	logger.Info("[ELECTION] Peer ID: %s", node.host.ID().String())
+	logger.Election("Node initialized as FOLLOWER")
+	logger.Election("Peer ID: %s", node.host.ID().String())
 
 	/*
 	   START BACKGROUND SERVICES
@@ -2115,7 +2111,7 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	go node.CheckLeaderFailure()
 	go node.LogRoleStatus()
 
-	logger.Info("[ELECTION] ✅ Background services started")
+	logger.Election("✅ Background services started")
 
 	/*
 	   ✅ PRODUCTION PATCH #1: Mesh Formation Waiting
@@ -2127,7 +2123,7 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	   with for message propagation. Without a mesh, published messages
 	   won't reach other nodes.
 	*/
-	logger.Info("[ELECTION] Waiting for GossipSub mesh formation...")
+	logger.Election("Waiting for GossipSub mesh formation...")
 	meshCheckInterval := 2 * time.Second
 	maxMeshWait := 30 * time.Second
 	meshStart := time.Now()
@@ -2137,26 +2133,26 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 		meshPeers := electionTopic.ListPeers()
 		allTopics := pubsubObj.GetTopics()
 
-		logger.Info("[ELECTION] Mesh status: %d discovered, %d in mesh, topics: %v",
+		logger.Election("Mesh status: %d discovered, %d in mesh, topics: %v",
 			len(discovered), len(meshPeers), allTopics)
 
 		// List mesh peers for debugging
 		if len(meshPeers) > 0 {
-			logger.Info("[ELECTION] Mesh peers:")
+			logger.Election("Mesh peers:")
 			for i, p := range meshPeers {
-				logger.Info("[ELECTION]   [%d] %s", i+1, p.String())
+				logger.Election("  [%d] %s", i+1, p.String())
 			}
 		}
 
 		// Mesh formed successfully
 		if len(meshPeers) >= 1 {
-			logger.Info("[ELECTION] ✅ Mesh formed with %d peers", len(meshPeers))
+			logger.Election("✅ Mesh formed with %d peers", len(meshPeers))
 			break
 		}
 
 		// Peers discovered but mesh not formed - try stimulating with test message
 		if len(discovered) > 0 && len(meshPeers) == 0 {
-			logger.Warn("[ELECTION] ⚠️  Peers discovered but mesh not formed, sending test message...")
+			logger.Warn("⚠️  Peers discovered but mesh not formed, sending test message...")
 			testMsg := map[string]string{
 				"type": "mesh_test",
 				"from": node.host.ID().String(),
@@ -2164,7 +2160,7 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 			}
 			testData, _ := json.Marshal(testMsg)
 			if err := electionTopic.Publish(ctx, testData); err != nil {
-				logger.Error("[ERROR] Test publish failed: %v", err)
+				logger.Error("Test publish failed: %v", err)
 			}
 		}
 
@@ -2172,11 +2168,11 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	}
 
 	// Allow additional stabilization time
-	logger.Info("[ELECTION] Allowing 5s for mesh stabilization...")
+	logger.Election("Allowing 5s for mesh stabilization...")
 	time.Sleep(5 * time.Second)
 
 	finalMeshPeers := electionTopic.ListPeers()
-	logger.Info("[ELECTION] Final mesh status: %d peers", len(finalMeshPeers))
+	logger.Election("Final mesh status: %d peers", len(finalMeshPeers))
 
 	/*
 	   ✅ PRODUCTION PATCH #1: Full Mesh Verification
@@ -2192,12 +2188,12 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	requiredMeshSize := len(discoveredPeers)
 
 	if requiredMeshSize > 0 && len(finalMeshPeers) < requiredMeshSize {
-		logger.Error("[ELECTION] ❌ INCOMPLETE MESH DETECTED")
-		logger.Error("[ELECTION]    Discovered peers: %d", requiredMeshSize)
-		logger.Error("[ELECTION]    Mesh peers: %d", len(finalMeshPeers))
-		logger.Error("[ELECTION]    Missing: %d peers from mesh", requiredMeshSize-len(finalMeshPeers))
-		logger.Error("[ELECTION] ABORTING: Elections require full mesh")
-		logger.Error("[ELECTION] Recommendation: Check network connectivity on port 4001")
+		logger.Error("❌ INCOMPLETE MESH DETECTED")
+		logger.Error("   Discovered peers: %d", requiredMeshSize)
+		logger.Error("   Mesh peers: %d", len(finalMeshPeers))
+		logger.Error("   Missing: %d peers from mesh", requiredMeshSize-len(finalMeshPeers))
+		logger.Error("ABORTING: Elections require full mesh")
+		logger.Error("Recommendation: Check network connectivity on port 4001")
 
 		// Wait indefinitely for full mesh rather than start broken election
 		for {
@@ -2205,17 +2201,17 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 			currentMesh := electionTopic.ListPeers()
 			discoveredNow := discovery.GetDiscoveredPeers()
 
-			logger.Info("[ELECTION] Mesh check: %d/%d peers in mesh",
+			logger.Election("Mesh check: %d/%d peers in mesh",
 				len(currentMesh), len(discoveredNow))
 
 			if len(currentMesh) >= len(discoveredNow) && len(discoveredNow) > 0 {
-				logger.Info("[ELECTION] ✅ Full mesh achieved!")
+				logger.Election("✅ Full mesh achieved!")
 				break
 			}
 		}
 	}
 
-	logger.Info("[ELECTION] ✅ Mesh verification passed: %d/%d peers",
+	logger.Election("✅ Mesh verification passed: %d/%d peers",
 		len(finalMeshPeers), requiredMeshSize)
 
 	/*
@@ -2264,13 +2260,13 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	   incomplete peer lists from causing multiple initiators.
 	   ═══════════════════════════════════════════════════════════════
 	*/
-	logger.Info("[ELECTION] ════════════════════════════════════════")
-	logger.Info("[ELECTION] Determining Election Initiator")
-	logger.Info("[ELECTION] ════════════════════════════════════════")
+	logger.Election("════════════════════════════════════════")
+	logger.Election("Determining Election Initiator")
+	logger.Election("════════════════════════════════════════")
 
 	time.Sleep(10 * time.Second)
 
-	logger.Info("[ELECTION] Waiting for discovery stabilization...")
+	logger.Election("Waiting for discovery stabilization...")
 
 	var stablePeerIDs []string
 	stableCount := 0
@@ -2300,17 +2296,17 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 
 			if sameAsBefore {
 				stableCount++
-				logger.Info("[ELECTION] Discovery stable (%d/%d checks)",
+				logger.Election("Discovery stable (%d/%d checks)",
 					stableCount, requiredStableChecks)
 
 				if stableCount >= requiredStableChecks {
-					logger.Info("[ELECTION] ✅ Discovery stabilized with %d peers",
+					logger.Election("✅ Discovery stabilized with %d peers",
 						len(currentPeerIDs))
 					break
 				}
 			} else {
 				stableCount = 0
-				logger.Info("[ELECTION] Discovery changed, restarting stability count")
+				logger.Election("Discovery changed, restarting stability count")
 			}
 		}
 
@@ -2320,32 +2316,32 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 
 	allPeerIDs := stablePeerIDs
 	if len(allPeerIDs) == 0 {
-		logger.Warn("[ELECTION] No peers discovered, using self only")
+		logger.Warn("No peers discovered, using self only")
 		allPeerIDs = []string{node.host.ID().String()}
 	}
 
-	logger.Info("[ELECTION] Cluster composition:")
+	logger.Election("Cluster composition:")
 	for i, peerID := range allPeerIDs {
-		logger.Info("[ELECTION]   [%d] %s", i+1, peerID)
+		logger.Election("  [%d] %s", i+1, peerID)
 	}
-	logger.Info("[ELECTION] My peer ID: %s", node.host.ID().String())
+	logger.Election("My peer ID: %s", node.host.ID().String())
 
 	// Only the lowest peer ID starts the election
 	if len(allPeerIDs) > 0 && node.host.ID().String() == allPeerIDs[0] {
-		logger.Info("[ELECTION] ════════════════════════════════════════")
-		logger.Info("[ELECTION] 👑 I AM THE ELECTION INITIATOR")
-		logger.Info("[ELECTION] (Lowest peer ID in cluster)")
-		logger.Info("[ELECTION] ════════════════════════════════════════")
-		logger.Info("[ELECTION] Starting first election with %d candidates", len(peers))
+		logger.Election("════════════════════════════════════════")
+		logger.Election("👑 I AM THE ELECTION INITIATOR")
+		logger.Election("(Lowest peer ID in cluster)")
+		logger.Election("════════════════════════════════════════")
+		logger.Election("Starting first election with %d candidates", len(peers))
 
 		go node.StartElection(peers, 0)
 	} else {
-		logger.Info("[ELECTION] ════════════════════════════════════════")
-		logger.Info("[ELECTION] 📋 FOLLOWER MODE - Waiting for Election")
-		logger.Info("[ELECTION] Initiator will be: %s", allPeerIDs[0])
-		logger.Info("[ELECTION] ════════════════════════════════════════")
-		logger.Info("[ELECTION] I will join the election when votes arrive")
-		logger.Info("[ELECTION] (via handleVote() when GossipSub delivers messages)")
+		logger.Election("════════════════════════════════════════")
+		logger.Election("📋 FOLLOWER MODE - Waiting for Election")
+		logger.Election("Initiator will be: %s", allPeerIDs[0])
+		logger.Election("════════════════════════════════════════")
+		logger.Election("I will join the election when votes arrive")
+		logger.Election("(via handleVote() when GossipSub delivers messages)")
 	}
 
 	/*
@@ -2361,7 +2357,7 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	logger.Info("[ELECTION] Shutdown signal received, exiting...")
+	logger.Election("Shutdown signal received, exiting...")
 	return node
 }
 
@@ -2501,9 +2497,9 @@ func (n *Node) LogRoleStatus() {
 			n.mutex.Unlock()
 
 			if role == "Coordinator" {
-				logger.Info("[STATUS] 👑 I AM THE COORDINATOR (term %d)", term)
+				logger.Election("[STATUS] 👑 I AM THE COORDINATOR (term %d)", term)
 			} else {
-				logger.Info("[STATUS] 📋 FOLLOWER following %s (term %d)", leader.String(), term)
+				logger.Election("[STATUS] 📋 FOLLOWER following %s (term %d)", leader.String(), term)
 			}
 
 		case <-n.ctx.Done():
@@ -2558,7 +2554,7 @@ func GetAllPeersReputation() ([]NodeReputation, error) {
 			&rep.AvgReadMBs, &rep.AvgWriteMBs, &rep.GeographyScore,
 		)
 		if err != nil {
-			logger.Error("[ERROR] Failed to scan reputation row: %v", err)
+			logger.Error("Failed to scan reputation row: %v", err)
 			continue
 		}
 		reputations = append(reputations, rep)
