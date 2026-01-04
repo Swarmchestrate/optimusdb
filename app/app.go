@@ -1007,6 +1007,46 @@ func (kb *LoggerSQLite) GetLogsForHour(date, hour string) ([]map[string]string, 
 }
 
 /*
+sanitizeSQLQuery automatically quotes SQLite reserved words in SELECT queries
+to prevent "near X: syntax error" issues.
+
+FIX #4: This function detects common reserved words (Alias, Component, Status, Type, etc.)
+and wraps them in double quotes to make them safe for SQLite.
+
+Example:
+
+	SELECT Alias, Component FROM metadata  →  SELECT "Alias", "Component" FROM metadata
+*/
+func sanitizeSQLQuery(query string) string {
+	// List of common reserved words that appear in OptimusDB queries
+	reservedWords := []string{
+		"Alias", "Component", "Status", "Type", "Name", "Group",
+		"Order", "Index", "Key", "Value", "Table", "Column",
+	}
+
+	result := query
+
+	// Quote each reserved word if it appears unquoted
+	for _, word := range reservedWords {
+		// Pattern: word boundary + reserved word + word boundary (not already quoted)
+		// This handles: SELECT Alias, FROM Alias, WHERE Alias =
+
+		// Replace in SELECT clause: "SELECT Alias," -> "SELECT \"Alias\","
+		result = strings.ReplaceAll(result, " "+word+",", " \""+word+"\",")
+		result = strings.ReplaceAll(result, " "+word+" ", " \""+word+"\" ")
+		result = strings.ReplaceAll(result, " "+word+")", " \""+word+"\")")
+
+		// Handle start of SELECT: "SELECT Alias" -> "SELECT \"Alias\""
+		if strings.HasPrefix(strings.TrimSpace(strings.ToUpper(result)), "SELECT "+strings.ToUpper(word)) {
+			result = strings.Replace(result, "SELECT "+word, "SELECT \""+word+"\"", 1)
+			result = strings.Replace(result, "select "+word, "select \""+word+"\"", 1)
+		}
+	}
+
+	return result
+}
+
+/*
 sqlDML executes SQL statements and returns results if it's a SELECT query.
 
 FIX #4 NOTE: If you encounter 'near "Alias": syntax error' or similar SQLite errors,
@@ -1014,22 +1054,28 @@ it's because the query contains unquoted reserved words. Use the helper function
 sql_helpers.go to safely quote identifiers:
 
 Example of problematic query:
-  SELECT Alias, Component FROM metadata  ❌ (Alias is reserved)
+
+	SELECT Alias, Component FROM metadata  ❌ (Alias is reserved)
 
 Fixed query:
-  SELECT "Alias", "Component" FROM metadata  ✅
+
+	SELECT "Alias", "Component" FROM metadata  ✅
 
 Helper functions available:
   - QuoteIdentifier("Alias") → "Alias"
   - BuildSafeSelect([]string{"Alias", "Name"}, "metadata", "")
 */
-// sqlDML executes SQL statements and returns results if it's a SELECT query.
 func (kb *KnowledgeBaseSQLite) SqlDML(stmt string, logChan chan Log) (interface{}, error) {
 	if kb == nil {
 		return nil, errors.New("ERROR: KB obj in SQL DML is nil")
 	}
 	if kb.DB == nil {
 		return nil, errors.New("ERROR: kb.DB obj in SQL DML is nil")
+	}
+
+	// FIX #4: Auto-sanitize SELECT queries to prevent reserved word errors
+	if strings.HasPrefix(strings.TrimSpace(strings.ToUpper(stmt)), "SELECT") {
+		stmt = sanitizeSQLQuery(stmt)
 	}
 
 	// Check if the query is a SELECT statement
