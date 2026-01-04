@@ -1006,6 +1006,23 @@ func (kb *LoggerSQLite) GetLogsForHour(date, hour string) ([]map[string]string, 
 	return logs, nil
 }
 
+/*
+sqlDML executes SQL statements and returns results if it's a SELECT query.
+
+FIX #4 NOTE: If you encounter 'near "Alias": syntax error' or similar SQLite errors,
+it's because the query contains unquoted reserved words. Use the helper functions in
+sql_helpers.go to safely quote identifiers:
+
+Example of problematic query:
+  SELECT Alias, Component FROM metadata  ❌ (Alias is reserved)
+
+Fixed query:
+  SELECT "Alias", "Component" FROM metadata  ✅
+
+Helper functions available:
+  - QuoteIdentifier("Alias") → "Alias"
+  - BuildSafeSelect([]string{"Alias", "Name"}, "metadata", "")
+*/
 // sqlDML executes SQL statements and returns results if it's a SELECT query.
 func (kb *KnowledgeBaseSQLite) SqlDML(stmt string, logChan chan Log) (interface{}, error) {
 	if kb == nil {

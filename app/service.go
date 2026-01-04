@@ -457,8 +457,10 @@ func awaitConnected(optimusdb *KnowledgeBaseDB, logChan chan Log) {
 				// send this stores id to peer by publishing it to the topic
 				// identified by their id
 				cidDbId := (*db).Address().String()
-				logChan <- Log{Info, "" +
-					"\nSend contributions db " + cidDbId + " to peer for replication"}
+				//logChan <- Log{Info, "" +
+				//	"\nSend contributions db " + cidDbId + " to peer for replication"}
+				logger.Info("Send contributions db " + cidDbId + " to peer for replication")
+
 				peerId := fmt.Sprintf("%s", e.Peer)
 				ctx := context.Background()
 				err := coreAPI.PubSub().Publish(ctx, peerId, []byte(cidDbId))

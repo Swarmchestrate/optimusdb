@@ -383,8 +383,11 @@ func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service 
 	if *config.FlagAutodiscoveryipfsPubSub {
 		logger.DISc("Enabling PubSub-based discovery")
 
+		// FIX #3: Added FloodPublish to improve message delivery in small clusters
+		// FloodPublish ensures all peers receive messages even if mesh isn't perfect
 		ps, err := pubsub.NewGossipSub(context.Background(), h,
 			pubsub.WithPeerExchange(true),
+			pubsub.WithFloodPublish(true), // FIX #3: Ensure delivery in 3-node cluster
 		)
 
 		if err != nil {

@@ -1073,13 +1073,13 @@ func (n *Node) finalizeElection(term int, electionID string, attempt int, peers 
 	n.electionPhase = PhaseCompleted
 
 	// Log vote tally
-	logger.Info("[ELECTION] ════════════════════════════════════════")
+	//	logger.Info("[ELECTION] ════════════════════════════════════════")
 	logger.Info("[ELECTION] Final Results - Term %d:", term)
 	for candidate, count := range n.votes {
 		logger.Info("[ELECTION]   %s: %d votes", candidate, count)
 	}
 	logger.Info("[ELECTION] Participation: %d/%d nodes voted", len(n.votedNodes), n.peerCount)
-	logger.Info("[ELECTION] ════════════════════════════════════════")
+	//	logger.Info("[ELECTION] ════════════════════════════════════════")
 
 	// Determine winner based on vote counts and quorum
 	winner := n.determineWinner()
@@ -1209,7 +1209,7 @@ func (n *Node) determineWinner() string {
 		return winner
 	}
 
-	logger.Warn("[ELECTION] ❌ Quorum NOT met (need %d, got %d)", required, maxVotes)
+	logger.Warn("[ELECTION] Quorum NOT met (need %d, got %d)", required, maxVotes)
 	return ""
 }
 
@@ -1601,6 +1601,13 @@ func (n *Node) handleHeartbeat(hb HeartbeatMessage) {
 	defer n.mutex.Unlock()
 
 	/*
+	   FIX: Always update lastHeartbeat regardless of role to prevent false
+	   timeout warnings. Previously, coordinators would skip this update and
+	   trigger false "18 hour timeout" warnings.
+	*/
+	n.lastHeartbeat = time.Now()
+
+	/*
 	   COORDINATOR SPLIT-BRAIN DETECTION
 
 	   If we're currently a coordinator and receive a heartbeat from
@@ -1640,7 +1647,6 @@ func (n *Node) handleHeartbeat(hb HeartbeatMessage) {
 	   Update our knowledge of who the leader is and reset heartbeat timeout.
 	*/
 	if n.role == "Follower" {
-		n.lastHeartbeat = time.Now()
 		n.heartbeatMissed = 0
 
 		// Convert leader ID string to peer.ID
@@ -1906,7 +1912,7 @@ func (n *Node) CheckLeaderFailure() {
 		if timeSince > heartbeatTimeout {
 			// Heartbeat overdue - increment miss counter
 			n.heartbeatMissed++
-			logger.Warn("[ELECTION] ⏰ Heartbeat timeout: %v since last heartbeat (miss #%d)",
+			logger.Warn("[ELECTION] Heartbeat timeout: %v since last heartbeat (miss #%d)",
 				timeSince, n.heartbeatMissed)
 
 			if n.heartbeatMissed >= heartbeatRetryLimit {
@@ -1918,9 +1924,9 @@ func (n *Node) CheckLeaderFailure() {
 				   followers start elections at different times, reducing concurrent
 				   elections from 3 to typically just 1.
 				*/
-				logger.Error("[ELECTION] 💀 LEADER FAILURE DETECTED")
-				logger.Error("[ELECTION]    Missed %d heartbeats", n.heartbeatMissed)
-				logger.Error("[ELECTION]    Last heartbeat: %v ago", timeSince)
+				logger.Error("[ELECTION] LEADER FAILURE DETECTED, Missed %d heartbeats, Last heartbeat: %v ago", n.heartbeatMissed, timeSince)
+				//logger.Error("[ELECTION] Missed %d heartbeats", n.heartbeatMissed)
+				//logger.Error("[ELECTION]    Last heartbeat: %v ago", timeSince)
 
 				n.heartbeatMissed = 0
 				n.mutex.Unlock()
@@ -1978,7 +1984,7 @@ func (n *Node) PeriodicReputationPublisher() {
 		case <-ticker.C:
 			// Collect current system metrics
 			userCPU, systemCPU, idleCPU, _ := utilities.GetCPUUsage()
-			allocMB, totalAllocMB, sysMB := utilities.GetMemoryUsage()
+			allocMB, sysMB := utilities.GetMemoryUsage() // Fixed: removed totalAllocMB
 			avgReadMBs, avgWriteMBs, _ := utilities.GetDiskUsage(5)
 			actualLatency := utilities.GetActualLatency(n.host)
 			actualGeoScore := utilities.GetGeographyScore(n.host)
@@ -1994,7 +2000,7 @@ func (n *Node) PeriodicReputationPublisher() {
 				SystemCPU:             systemCPU,
 				IdleCPU:               idleCPU,
 				MemoryAvailable:       allocMB,
-				MemoryAllocationTotal: totalAllocMB,
+				MemoryAllocationTotal: allocMB, // Fixed: use current allocation, not cumulative
 				MemorySystem:          sysMB,
 				AvgReadMBs:            avgReadMBs,
 				AvgWriteMBs:           avgWriteMBs,
@@ -2016,6 +2022,58 @@ func (n *Node) PeriodicReputationPublisher() {
 
 		case <-n.ctx.Done():
 			logger.Info("[ELECTION] Reputation publisher shutting down")
+			return
+		}
+	}
+}
+
+/*
+PeriodicMeshHealthMonitor monitors GossipSub mesh connectivity and logs warnings
+when mesh is incomplete. This helps diagnose message delivery issues.
+
+FIX #3: Added to detect incomplete mesh connectivity (1/2 peers instead of 2/2)
+which was causing election failures due to vote messages not reaching all nodes.
+*/
+func (n *Node) PeriodicMeshHealthMonitor() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	logger.Info("[MESH] Starting mesh health monitor (every 10s)")
+
+	for {
+		select {
+		case <-ticker.C:
+			meshPeers := n.electionTopic.ListPeers()
+			connectedPeers := n.host.Network().Peers()
+
+			meshSize := len(meshPeers)
+			expectedSize := len(connectedPeers)
+
+			if meshSize < expectedSize {
+				logger.Warn("[MESH] ⚠️  Incomplete mesh: %d/%d peers", meshSize, expectedSize)
+				logger.Warn("[MESH] This may cause message delivery failures and election issues")
+
+				// Log which peers are missing from mesh
+				meshPeerMap := make(map[peer.ID]bool)
+				for _, p := range meshPeers {
+					meshPeerMap[p] = true
+				}
+
+				for _, p := range connectedPeers {
+					if !meshPeerMap[p] {
+						peerStr := p.String()
+						if len(peerStr) > 16 {
+							peerStr = peerStr[:16] + "..."
+						}
+						logger.Warn("[MESH] Peer not in mesh: %s", peerStr)
+					}
+				}
+			} else if meshSize > 0 {
+				logger.Info("[MESH] ✅ Healthy mesh: %d/%d peers", meshSize, expectedSize)
+			}
+
+		case <-n.ctx.Done():
+			logger.Info("[MESH] Mesh health monitor shutting down")
 			return
 		}
 	}
@@ -2109,11 +2167,13 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	   - Reputation publisher: Broadcasts metrics every 30s
 	   - Failure detector: Monitors coordinator heartbeats
 	   - Status logger: Logs current role every 10s
+	   - Mesh monitor: Checks GossipSub mesh health every 10s (FIX #3)
 	*/
 	go node.ListenForElectionEvents()
 	go node.PeriodicReputationPublisher()
 	go node.CheckLeaderFailure()
 	go node.LogRoleStatus()
+	go node.PeriodicMeshHealthMonitor() // FIX #3: Monitor mesh connectivity
 
 	logger.Info("[ELECTION] ✅ Background services started")
 

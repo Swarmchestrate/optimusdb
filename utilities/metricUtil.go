@@ -42,12 +42,13 @@ func GetCPUUsage() (userPercent, systemPercent, idlePercent float64, err error) 
 }
 
 // Return Memory usage in MB
-func GetMemoryUsage() (allocMB, totalAllocMB, sysMB float64) {
+// Note: Removed TotalAlloc (cumulative counter) - was causing validation failures
+// Now returns only current allocation and system memory
+func GetMemoryUsage() (allocMB, sysMB float64) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
 	allocMB = float64(m.Alloc) / 1024 / 1024
-	totalAllocMB = float64(m.TotalAlloc) / 1024 / 1024
 	sysMB = float64(m.Sys) / 1024 / 1024
 
 	return
