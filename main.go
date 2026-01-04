@@ -525,10 +525,10 @@ func main() {
 	//	_ = app.GlobalLoggerDB.AddToOptimusLog("ELECTION", fmt.Sprintf("ELECTION Results: %v", electionNode), runtime.GOOS)
 	//}
 	//logger.Info("[METRICS] Initializing node health metrics...")
-	election.InitNodeMetrics(hostMain.ID().String())
-	logger.Election("Election METRICS ✅ Metrics collector running")
-	logger.Election("[RAFT] ELECTION Results: %v", electionNode)
-	logger.Election("[RAFT] ✅ Election node initialized and stored globally")
+	//election.InitNodeMetrics(hostMain.ID().String())
+	//logger.Election("Election METRICS ✅ Metrics collector running")
+	logger.Election("✅ ELECTION Results: %v", electionNode)
+	//logger.Election("  Election node initialized and stored globally")
 
 	// ===============================
 	// START BACKGROUND METADATA ENRICHER
