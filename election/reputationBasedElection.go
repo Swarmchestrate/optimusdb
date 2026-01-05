@@ -32,51 +32,45 @@ import (
 
 /*
 ===================================================================================
-OPTIMUSDB LEADER ELECTION - PRODUCTION VERSION v2.3 (MESH-HEALING ENFORCED)
+OPTIMUSDB LEADER ELECTION - PRODUCTION VERSION v2.3.1 (COMPLETE REWRITE)
 ===================================================================================
 
-CHANGELOG v2.3 (2025-01-05):
-✅ FIX #7: Block election participation when mesh is empty (CRITICAL)
+CHANGELOG v2.3.1 (2025-01-05):
+✅ FIX #12: Complete topic recreation (not just subscription cancel)
+✅ FIX #13: Faster healing trigger (2 checks = 20s instead of 30s)
+✅ FIX #14: Lower term threshold (>15 instead of >20)
+✅ FIX #15: Robust leader empty detection (multiple formats)
+✅ FIX #16: Startup term validation (checks on init)
+✅ FIX #17: Aggressive mesh recovery (5 test messages, longer wait)
+
+PREVIOUS FIXES (v2.3):
+✅ FIX #7: Block election participation when mesh is empty
 ✅ FIX #8: Aggressive mesh healing with forced re-subscription
 ✅ FIX #9: Continuous mesh monitoring during elections
 ✅ FIX #10: Term reconciliation to detect and fix split-brain
 ✅ FIX #11: Emergency re-sync when high term + no mesh + no leader
 
-PREVIOUS FIXES (v2.2):
-✅ FIX #1: Removed epoch-based election IDs (fixes clock skew issues)
-✅ FIX #2: Implemented consensus-based initiator selection (deterministic)
-✅ FIX #3: Extended discovery stabilization (5 checks instead of 3)
-✅ FIX #4: Added consecutive failure tracking (prevents false positives)
-✅ FIX #5: Improved mesh verification logic
-✅ FIX #6: Added peer list hashing for election ID uniqueness
-
-DEPLOYMENT CONFIDENCE (Updated):
-- Kubernetes 3-8 node cluster:  95% success rate ✅ (up from 85%)
-- Private Network, 3-5 nodes: 99% success rate ✅
-- Private Network, 21-50 nodes: 94% success rate ✅ (improved)
-
-KEY IMPROVEMENTS:
-1. Elections BLOCKED until mesh forms (prevents isolated elections)
-2. Automatic mesh healing (detects and fixes mesh partition)
-3. Term reconciliation (fixes split-brain when detected)
-4. Continuous monitoring (mesh health checked every 10s)
-5. Emergency recovery (high term + no mesh → force reset)
+CRITICAL CHANGES FROM v2.3:
+1. emergencyMeshHealing() now CLOSES topic completely and rejoins
+2. checkTermDivergence() triggers at term >15 (not >20)
+3. Leader empty check: handles "", "<peer.ID  >", "<peer.ID >", or len<10
+4. Mesh healing triggers after 2 consecutive checks (not 3)
+5. Sends 5 test messages (not 3) with longer delays
+6. Validates term on startup and resets if suspiciously high
 
 ===================================================================================
 */
 
-// Global variables for shared access across the application
+// Global variables
 var GlobalReputationDB *ReputationSQLite
 var GlobalElectionNode *Node
 var electionNodeMutex sync.RWMutex
 
-// ReputationSQLite wraps the SQLite database for thread-safe reputation storage
 type ReputationSQLite struct {
 	ReputationDB *sql.DB
 	mu           sync.Mutex
 }
 
-// TopicManager handles GossipSub topic and subscription lifecycle
 type TopicManager struct {
 	pubsub *pubsub.PubSub
 	topics map[string]*pubsub.Topic
@@ -106,8 +100,6 @@ func (tm *TopicManager) GetTopicAndSubscribe(name string) (*pubsub.Topic, *pubsu
 			return nil, nil, fmt.Errorf("failed to join topic '%s': %w", name, err)
 		}
 		tm.topics[name] = topic
-	} else {
-		logger.Election("Reusing existing topic: %s", name)
 	}
 
 	sub, ok := tm.subs[name]
@@ -124,7 +116,7 @@ func (tm *TopicManager) GetTopicAndSubscribe(name string) (*pubsub.Topic, *pubsu
 	return topic, sub, nil
 }
 
-// Election constants
+// Constants
 const (
 	electionTopic = "optimusdb"
 
@@ -194,7 +186,6 @@ type RoleMessage struct {
 	Term   int    `json:"term"`
 }
 
-// MessageRateLimiter for DoS protection
 type MessageRateLimiter struct {
 	mu          sync.Mutex
 	lastMessage map[peer.ID]map[string]time.Time
@@ -258,7 +249,7 @@ func (rl *MessageRateLimiter) AllowMessage(from peer.ID, msgType string) bool {
 	return true
 }
 
-// Node state structure
+// Node structure
 type Node struct {
 	ctx          context.Context
 	host         host.Host
@@ -300,15 +291,12 @@ type Node struct {
 	consecutiveHeartbeatFailures int
 	requiredConsecutiveFailures  int
 
-	// ✅ NEW v2.3: Mesh health tracking
 	meshHealthy                bool
 	lastMeshHealingAttempt     time.Time
 	consecutiveEmptyMeshChecks int
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CLOCK-INDEPENDENT ELECTION ID GENERATION
-// ═══════════════════════════════════════════════════════════════════════════
+// Utility functions
 func hashPeerList(peerIDs []string) string {
 	sorted := make([]string, len(peerIDs))
 	copy(sorted, peerIDs)
@@ -321,9 +309,6 @@ func hashPeerList(peerIDs []string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DETERMINISTIC INITIATOR SELECTION
-// ═══════════════════════════════════════════════════════════════════════════
 func selectInitiatorDeterministic(peerIDs []string) string {
 	if len(peerIDs) == 0 {
 		return ""
@@ -345,7 +330,6 @@ func selectInitiatorDeterministic(peerIDs []string) string {
 	return sorted[index]
 }
 
-// Reputation scoring
 func getReputationWeights() map[string]float64 {
 	return map[string]float64{
 		"uptime":          0.20,
@@ -428,6 +412,20 @@ func calculateReputation(nr NodeReputation) float64 {
 	return score
 }
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // Database initialization
 func InitReputationDB() (*ReputationSQLite, error) {
 	rdbmsCache := filepath.Join(
@@ -498,7 +496,21 @@ func (rep *ReputationSQLite) createReputationDB() error {
 	return nil
 }
 
-// Message publishing
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER: Check if leader is empty (multiple formats)
+// ═══════════════════════════════════════════════════════════════════════════
+func (n *Node) isLeaderEmpty() bool {
+	leaderStr := n.leader.String()
+	return leaderStr == "" ||
+		leaderStr == "<peer.ID  >" ||
+		leaderStr == "<peer.ID >" ||
+		leaderStr == "<peer.ID>" ||
+		len(leaderStr) < 10
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MESSAGE PUBLISHING
+// ═══════════════════════════════════════════════════════════════════════════
 func (n *Node) publishMessage(msgType string, payload interface{}) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -521,8 +533,6 @@ func (n *Node) publishMessage(msgType string, payload interface{}) error {
 		logger.Warn("No mesh peers! Message may not propagate")
 		allPeers := n.host.Network().Peers()
 		logger.Election("Connected peers: %d", len(allPeers))
-		topics := n.pubsub.GetTopics()
-		logger.Election("Subscribed topics: %v", topics)
 	}
 
 	for attempt := 0; attempt < 3; attempt++ {
@@ -542,24 +552,37 @@ func (n *Node) publishMessage(msgType string, payload interface{}) error {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FIX #7: BLOCK ELECTIONS WHEN MESH IS EMPTY (CRITICAL)
+// START ELECTION (WITH MESH BLOCKING)
 // ═══════════════════════════════════════════════════════════════════════════
 func (n *Node) StartElection(peers []NodeReputation, attempt int) {
-	// ✅ CRITICAL: Check mesh health BEFORE starting election
+	// CRITICAL: Check mesh health BEFORE starting election
 	meshPeers := n.electionTopic.ListPeers()
 	discoveredPeers := n.discovery.GetDiscoveredPeers()
 
 	if len(discoveredPeers) > 0 && len(meshPeers) == 0 {
-		logger.Error("🚫 ELECTION BLOCKED: Mesh is empty but %d peers discovered", len(discoveredPeers))
-		logger.Error("   LibP2P connected: YES ✅")
-		logger.Error("   Discovery working: YES ✅")
-		logger.Error("   GossipSub mesh: NO ❌")
-		logger.Error("   This node is ISOLATED from GossipSub mesh")
-		logger.Error("   Cannot participate in elections until mesh forms")
+		logger.Error("🚫 ELECTION BLOCKED: Mesh empty with %d discovered peers", len(discoveredPeers))
+		logger.Error("   LibP2P: ✅ Connected")
+		logger.Error("   Discovery: ✅ Working")
+		logger.Error("   GossipSub Mesh: ❌ BROKEN")
+		logger.Error("   Node is ISOLATED")
 		logger.Error("   Triggering emergency mesh healing...")
 
-		// Trigger immediate mesh healing
 		go n.emergencyMeshHealing()
+
+		// Also check for high term
+		n.electionMutex.Lock()
+		highTerm := n.currentTerm > 15
+		term := n.currentTerm
+		n.electionMutex.Unlock()
+
+		if highTerm {
+			logger.Error("🚫 High term (%d) detected, forcing reconciliation", term)
+			go func() {
+				time.Sleep(5 * time.Second)
+				n.checkTermDivergence()
+			}()
+		}
+
 		return
 	}
 
@@ -632,20 +655,6 @@ func (n *Node) StartElection(peers []NodeReputation, attempt int) {
 	<-electionCtx.Done()
 
 	n.finalizeElection(term, electionID, attempt, peers)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func (n *Node) selectCandidate(peers []NodeReputation) string {
@@ -781,7 +790,9 @@ func (n *Node) determineWinner() string {
 	return ""
 }
 
-// Message listener
+// ═══════════════════════════════════════════════════════════════════════════
+// MESSAGE LISTENER
+// ═══════════════════════════════════════════════════════════════════════════
 func (n *Node) ListenForElectionEvents() {
 	if !atomic.CompareAndSwapInt32(&n.listenerStarted, 0, 1) {
 		logger.Warn("Listener already started")
@@ -1186,7 +1197,7 @@ func (n *Node) CheckLeaderFailure() {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
-	logger.Election("Starting leader failure detection with consecutive failure tracking")
+	logger.Election("Starting leader failure detection with mesh-aware logic")
 
 	for range ticker.C {
 		n.mutex.Lock()
@@ -1216,6 +1227,33 @@ func (n *Node) CheckLeaderFailure() {
 
 				logger.Error("LEADER FAILURE CONFIRMED: %d consecutive timeouts", n.consecutiveHeartbeatFailures)
 
+				// ✅ CRITICAL: Check if this is mesh failure vs actual leader failure
+				meshPeers := n.electionTopic.ListPeers()
+				discoveredPeers := n.discovery.GetDiscoveredPeers()
+
+				if len(meshPeers) == 0 && len(discoveredPeers) > 0 {
+					logger.Error("═══════════════════════════════════════════════════")
+					logger.Error("ROOT CAUSE: MESH FAILURE (not leader failure)")
+					logger.Error("  Discovered peers: %d ✅", len(discoveredPeers))
+					logger.Error("  Mesh peers: %d ❌", len(meshPeers))
+					logger.Error("  Unable to receive heartbeats due to broken mesh")
+					logger.Error("  Triggering emergency mesh healing...")
+					logger.Error("═══════════════════════════════════════════════════")
+
+					// Reset counters (we're fixing mesh, not the leader)
+					n.heartbeatMissed = 0
+					n.consecutiveHeartbeatFailures = 0
+					n.mutex.Unlock()
+
+					// Trigger mesh healing instead of election
+					go n.emergencyMeshHealing()
+					continue
+				}
+
+				// Normal leader failure (mesh is fine, leader actually died)
+				logger.Election("Mesh is healthy (%d peers), leader actually failed", len(meshPeers))
+				logger.Election("Starting re-election...")
+
 				n.heartbeatMissed = 0
 				n.consecutiveHeartbeatFailures = 0
 				n.mutex.Unlock()
@@ -1224,11 +1262,10 @@ func (n *Node) CheckLeaderFailure() {
 				backoff := time.Duration(backoffMs) * time.Millisecond
 
 				logger.Election("Applying random backoff: %v", backoff)
-				logger.Election("(prevents thundering herd problem)")
 				time.Sleep(backoff)
 
 				if atomic.LoadInt32(&n.isElecting) == 0 {
-					logger.Election("Starting re-election after leader failure")
+					logger.Election("Starting re-election after confirmed leader failure")
 					go func() {
 						peers, _ := QueryAllReputations(GlobalReputationDB.ReputationDB)
 						n.StartElection(peers, 0)
@@ -1298,73 +1335,103 @@ func (n *Node) PeriodicReputationPublisher() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FIX #8: EMERGENCY MESH HEALING
+// FIX #12: COMPLETE TOPIC RECREATION (NOT JUST SUBSCRIPTION)
 // ═══════════════════════════════════════════════════════════════════════════
 func (n *Node) emergencyMeshHealing() {
+	// Rate limiting
 	if time.Since(n.lastMeshHealingAttempt) < 30*time.Second {
-		logger.Warn("[MESH-HEAL] Too soon since last healing attempt (<%v), waiting...",
+		logger.Warn("[MESH-HEAL] Too soon since last attempt (<%v ago)",
 			30*time.Second-time.Since(n.lastMeshHealingAttempt))
 		return
 	}
-
 	n.lastMeshHealingAttempt = time.Now()
 
 	logger.Error("[MESH-HEAL] ═══════════════════════════════════════")
 	logger.Error("[MESH-HEAL] 🚨 EMERGENCY MESH HEALING INITIATED")
 	logger.Error("[MESH-HEAL] ═══════════════════════════════════════")
 
-	// Step 1: Cancel and recreate subscription
-	logger.Election("[MESH-HEAL] Step 1: Forcing topic re-subscription...")
+	// CRITICAL FIX: Completely close and recreate topic
+	logger.Election("[MESH-HEAL] Step 1: Completely recreating GossipSub topic...")
+
+	// Cancel subscription
 	if n.electionSub != nil {
 		n.electionSub.Cancel()
-		logger.Election("[MESH-HEAL]    Cancelled old subscription")
+		logger.Election("[MESH-HEAL]    Cancelled subscription")
 	}
 
-	time.Sleep(2 * time.Second)
-
-	newSub, err := n.electionTopic.Subscribe()
-	if err != nil {
-		logger.Error("[MESH-HEAL]    ❌ Re-subscription failed: %v", err)
-	} else {
-		n.electionSub = newSub
-		logger.Election("[MESH-HEAL]    ✅ Re-subscribed successfully")
+	// CLOSE TOPIC COMPLETELY (this is the key fix!)
+	if n.electionTopic != nil {
+		n.electionTopic.Close()
+		logger.Election("[MESH-HEAL]    Closed topic completely")
 	}
 
-	// Step 2: Force connections to all discovered peers
+	// Wait for full cleanup
 	time.Sleep(3 * time.Second)
-	logger.Election("[MESH-HEAL] Step 2: Forcing connections to discovered peers...")
+
+	// Rejoin topic (fresh start)
+	newTopic, err := n.pubsub.Join("optimusdb")
+	if err != nil {
+		logger.Error("[MESH-HEAL]    ❌ Failed to rejoin topic: %v", err)
+		n.meshHealthy = false
+		return
+	}
+	n.electionTopic = newTopic
+	logger.Election("[MESH-HEAL]    ✅ Rejoined topic")
+
+	// Create new subscription
+	newSub, err := newTopic.Subscribe()
+	if err != nil {
+		logger.Error("[MESH-HEAL]    ❌ Failed to re-subscribe: %v", err)
+		n.meshHealthy = false
+		return
+	}
+	n.electionSub = newSub
+	logger.Election("[MESH-HEAL]    ✅ Created new subscription")
+
+	// Step 2: Force connections
+	time.Sleep(3 * time.Second)
+	logger.Election("[MESH-HEAL] Step 2: Forcing peer connections...")
 
 	discoveredPeers := n.discovery.GetDiscoveredPeers()
+	connectedCount := 0
+
 	for i, peerIDStr := range discoveredPeers {
 		peerID, err := peer.Decode(peerIDStr)
 		if err != nil {
-			logger.Error("[MESH-HEAL]    Failed to decode peer %s: %v", peerIDStr, err)
+			logger.Error("[MESH-HEAL]    Failed to decode peer %s", peerIDStr)
 			continue
 		}
 
 		connectedness := n.host.Network().Connectedness(peerID)
-		logger.Election("[MESH-HEAL]    [%d/%d] %s - %s",
-			i+1, len(discoveredPeers), peerIDStr[:16]+"...", connectedness)
+		logger.Election("[MESH-HEAL]    [%d/%d] %s... - %s",
+			i+1, len(discoveredPeers), peerIDStr[:16], connectedness)
 
 		if connectedness != 1 {
 			peerInfo := n.host.Peerstore().PeerInfo(peerID)
 			if len(peerInfo.Addrs) > 0 {
 				ctx, cancel := context.WithTimeout(n.ctx, 10*time.Second)
-				if err := n.host.Connect(ctx, peerInfo); err != nil {
+				err := n.host.Connect(ctx, peerInfo)
+				cancel()
+
+				if err != nil {
 					logger.Error("[MESH-HEAL]       ❌ Connection failed: %v", err)
 				} else {
 					logger.Election("[MESH-HEAL]       ✅ Connected")
+					connectedCount++
 				}
-				cancel()
 			}
+		} else {
+			connectedCount++
 		}
 	}
 
-	// Step 3: Send test messages to force mesh formation
-	time.Sleep(3 * time.Second)
-	logger.Election("[MESH-HEAL] Step 3: Sending test messages...")
+	logger.Election("[MESH-HEAL]    Connected to %d/%d peers", connectedCount, len(discoveredPeers))
 
-	for i := 0; i < 3; i++ {
+	// Step 3: Send 5 test messages (increased from 3)
+	time.Sleep(3 * time.Second)
+	logger.Election("[MESH-HEAL] Step 3: Sending test messages to force mesh...")
+
+	for i := 0; i < 5; i++ {
 		testMsg := map[string]interface{}{
 			"type":    "mesh_healing_ping",
 			"from":    n.host.ID().String(),
@@ -1372,18 +1439,18 @@ func (n *Node) emergencyMeshHealing() {
 			"attempt": i + 1,
 		}
 
-		if data, err := json.Marshal(testMsg); err == nil {
-			if err := n.electionTopic.Publish(n.ctx, data); err != nil {
-				logger.Error("[MESH-HEAL]    Test message %d failed: %v", i+1, err)
-			} else {
-				logger.Election("[MESH-HEAL]    ✅ Test message %d sent", i+1)
-			}
+		data, _ := json.Marshal(testMsg)
+		err := n.electionTopic.Publish(n.ctx, data)
+		if err != nil {
+			logger.Error("[MESH-HEAL]    Message %d failed: %v", i+1, err)
+		} else {
+			logger.Election("[MESH-HEAL]    ✅ Message %d sent", i+1)
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(2 * time.Second) // Increased delay
 	}
 
-	// Step 4: Verify mesh formation
-	time.Sleep(5 * time.Second)
+	// Step 4: Verify mesh (wait longer)
+	time.Sleep(8 * time.Second) // Increased from 5s
 
 	finalMeshPeers := n.electionTopic.ListPeers()
 	logger.Election("[MESH-HEAL] ═══════════════════════════════════════")
@@ -1391,22 +1458,33 @@ func (n *Node) emergencyMeshHealing() {
 
 	if len(finalMeshPeers) > 0 {
 		logger.Election("[MESH-HEAL] ✅ HEALING SUCCESSFUL")
+		logger.Election("[MESH-HEAL] Mesh peers:")
+		for i, p := range finalMeshPeers {
+			logger.Election("[MESH-HEAL]    [%d] %s", i+1, p.String())
+		}
+
 		n.meshHealthy = true
 		n.consecutiveEmptyMeshChecks = 0
 
-		// Check if we need to sync with cluster
+		// Check if we need term reconciliation
 		n.mutex.Lock()
-		role := n.role
-		leader := n.leader
+		hasNoLeader := n.isLeaderEmpty()
 		n.mutex.Unlock()
 
-		if role == "Follower" && (leader == peer.ID("") || leader.String() == "") {
-			logger.Election("[MESH-HEAL] No leader after healing, waiting for announcements...")
-			logger.Election("[MESH-HEAL] Will join elections dynamically via handleVote")
+		n.electionMutex.Lock()
+		highTerm := n.currentTerm > 15
+		term := n.currentTerm
+		n.electionMutex.Unlock()
+
+		if highTerm && hasNoLeader {
+			logger.Error("[MESH-HEAL] High term (%d) with no leader, forcing reconciliation", term)
+			go func() {
+				time.Sleep(2 * time.Second)
+				n.checkTermDivergence()
+			}()
 		}
 	} else {
 		logger.Error("[MESH-HEAL] ❌ HEALING FAILED: Mesh still empty")
-		logger.Error("[MESH-HEAL] This node remains isolated from cluster")
 		n.meshHealthy = false
 		n.consecutiveEmptyMeshChecks++
 	}
@@ -1415,7 +1493,7 @@ func (n *Node) emergencyMeshHealing() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FIX #9 & #10: CONTINUOUS MESH MONITORING + TERM RECONCILIATION
+// FIX #13 & #14: FASTER TRIGGER + LOWER THRESHOLD
 // ═══════════════════════════════════════════════════════════════════════════
 func (n *Node) MonitorAndHealMesh() {
 	ticker := time.NewTicker(10 * time.Second)
@@ -1451,8 +1529,9 @@ func (n *Node) checkMeshHealth() {
 		logger.Warn("[MESH-MONITOR] ⚠️  UNHEALTHY: Empty mesh with %d discovered peers (check #%d)",
 			discoveredSize, n.consecutiveEmptyMeshChecks)
 
-		if n.consecutiveEmptyMeshChecks >= 3 {
-			logger.Error("[MESH-MONITOR] 🚨 3 consecutive empty mesh checks, triggering healing")
+		// FIX #13: Trigger after 2 checks (20s instead of 30s)
+		if n.consecutiveEmptyMeshChecks >= 2 {
+			logger.Error("[MESH-MONITOR] 🚨 2 consecutive empty checks, triggering IMMEDIATE healing")
 			go n.emergencyMeshHealing()
 			n.consecutiveEmptyMeshChecks = 0
 		}
@@ -1473,6 +1552,17 @@ func (n *Node) checkMeshHealth() {
 	// Log mesh status
 	logger.Election("[MESH-MONITOR] Status: discovered=%d, connected=%d, mesh=%d",
 		discoveredSize, connectedSize, meshSize)
+
+	// Extra check: High term + empty mesh
+	n.electionMutex.Lock()
+	highTerm := n.currentTerm > 15
+	term := n.currentTerm
+	n.electionMutex.Unlock()
+
+	if highTerm && meshSize == 0 && discoveredSize > 0 {
+		logger.Error("[MESH-MONITOR] High term (%d) + empty mesh detected, forcing reconciliation", term)
+		go n.checkTermDivergence()
+	}
 }
 
 func (n *Node) checkTermDivergence() {
@@ -1482,45 +1572,49 @@ func (n *Node) checkTermDivergence() {
 
 	n.mutex.Lock()
 	ourRole := n.role
-	ourLeader := n.leader.String()
+	hasNoLeader := n.isLeaderEmpty()
 	n.mutex.Unlock()
 
 	meshPeers := n.electionTopic.ListPeers()
 	discoveredPeers := n.discovery.GetDiscoveredPeers()
 
-	// CRITICAL: Detect split-brain scenario
-	// High term + empty mesh + no leader = isolated elections
-	if ourTerm > 20 && len(meshPeers) == 0 && len(discoveredPeers) > 0 &&
-		(ourLeader == "" || ourLeader == "<peer.ID  >") {
-
+	// FIX #14: Lower threshold (term > 15 instead of > 20)
+	// FIX #15: Robust leader empty detection
+	if ourTerm > 15 && len(meshPeers) == 0 && len(discoveredPeers) > 0 && hasNoLeader {
 		logger.Error("[TERM-RECONCILE] 🚨 SPLIT-BRAIN DETECTED:")
 		logger.Error("[TERM-RECONCILE]    Our term: %d (suspiciously high)", ourTerm)
 		logger.Error("[TERM-RECONCILE]    Our role: %s", ourRole)
-		logger.Error("[TERM-RECONCILE]    Our leader: '%s' (empty/invalid)", ourLeader)
+		logger.Error("[TERM-RECONCILE]    Our leader: EMPTY/INVALID")
 		logger.Error("[TERM-RECONCILE]    Mesh peers: %d", len(meshPeers))
-		logger.Error("[TERM-RECONCILE]    Discovered peers: %d", len(discoveredPeers))
+		logger.Error("[TERM-RECONCILE]    Discovered: %d", len(discoveredPeers))
 
-		// Get cluster term from reputation data (proxy via leadership counts)
-		var maxLeadershipCount int
+		// Get cluster term from reputation (proxy)
+		clusterTerm := 1
 		if GlobalReputationDB != nil && GlobalReputationDB.ReputationDB != nil {
 			peers, err := QueryAllReputations(GlobalReputationDB.ReputationDB)
 			if err == nil {
+				maxLeadership := 0
 				for _, peer := range peers {
 					if peer.NodeID != n.host.ID().String() {
-						if peer.LeadershipCount > maxLeadershipCount {
-							maxLeadershipCount = peer.LeadershipCount
+						if peer.LeadershipCount > maxLeadership {
+							maxLeadership = peer.LeadershipCount
+							// Estimate term from leadership count
+							clusterTerm = maxLeadership * 3
+							if clusterTerm > 30 {
+								clusterTerm = 30 // Cap it
+							}
 						}
 					}
 				}
 			}
 		}
 
-		// Reset term to cluster value
+		// FORCE TERM RESET
 		logger.Election("[TERM-RECONCILE] 🔄 FORCING TERM RESET")
 
 		n.electionMutex.Lock()
 		oldTerm := n.currentTerm
-		n.currentTerm = maxLeadershipCount
+		n.currentTerm = clusterTerm
 		if n.currentTerm < 1 {
 			n.currentTerm = 1
 		}
@@ -1529,7 +1623,7 @@ func (n *Node) checkTermDivergence() {
 		n.votedNodes = make(map[string]string)
 		n.electionMutex.Unlock()
 
-		logger.Election("[TERM-RECONCILE]    Term: %d → %d", oldTerm, maxLeadershipCount)
+		logger.Election("[TERM-RECONCILE]    Term: %d → %d", oldTerm, clusterTerm)
 
 		// Reset to follower
 		n.mutex.Lock()
@@ -1540,21 +1634,51 @@ func (n *Node) checkTermDivergence() {
 		n.consecutiveHeartbeatFailures = 0
 		n.mutex.Unlock()
 
-		logger.Election("[TERM-RECONCILE]    Role reset to Follower")
-		logger.Election("[TERM-RECONCILE] Triggering emergency mesh healing...")
+		logger.Election("[TERM-RECONCILE]    Role: reset to Follower")
+		logger.Election("[TERM-RECONCILE] Waiting for announcements...")
 
-		// Force mesh healing
-		go n.emergencyMeshHealing()
+		// Trigger healing if mesh still empty
+		if len(meshPeers) == 0 {
+			logger.Election("[TERM-RECONCILE] Triggering emergency mesh healing...")
+			go n.emergencyMeshHealing()
+		}
 	}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FIX #11: MESH-AWARE INITIALIZATION
+// FIX #16: STARTUP TERM VALIDATION
+// ═══════════════════════════════════════════════════════════════════════════
+func (n *Node) validateStartupTerm() {
+	n.electionMutex.Lock()
+	currentTerm := n.currentTerm
+	n.electionMutex.Unlock()
+
+	// If starting with high term (from previous run), validate
+	if currentTerm > 15 {
+		logger.Warn("[STARTUP] Starting with high term: %d", currentTerm)
+		logger.Warn("[STARTUP] This may indicate previous split-brain")
+
+		// Wait for discovery
+		time.Sleep(10 * time.Second)
+
+		discoveredPeers := n.discovery.GetDiscoveredPeers()
+		meshPeers := n.electionTopic.ListPeers()
+
+		if len(discoveredPeers) > 0 && len(meshPeers) == 0 {
+			logger.Error("[STARTUP] High term + empty mesh detected on startup")
+			logger.Error("[STARTUP] Forcing immediate term reconciliation...")
+			n.checkTermDivergence()
+		}
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN NODE INITIALIZATION
 // ═══════════════════════════════════════════════════════════════════════════
 func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, discovery *app.KnowledgeBaseDB) *Node {
 	logger.Election("════════════════════════════════════════")
-	logger.Election("OptimusDB Election v2.3 - MESH-HEALING ENFORCED")
-	logger.Election("Elections blocked until mesh forms properly")
+	logger.Election("OptimusDB Election v2.3.1 - COMPLETE FIX")
+	logger.Election("Mesh healing enforced + Startup validation")
 	logger.Election("════════════════════════════════════════")
 
 	var electionTopic *pubsub.Topic
@@ -1597,18 +1721,19 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	go node.PeriodicReputationPublisher()
 	go node.CheckLeaderFailure()
 	go node.LogRoleStatus()
-	go node.MonitorAndHealMesh() // ✅ NEW: Continuous mesh monitoring
+	go node.MonitorAndHealMesh()
 
-	logger.Election("✅ Background services started (with mesh monitoring)")
+	logger.Election("✅ Background services started")
 
-	// ═══════════════════════════════════════════════════════════════
-	// AGGRESSIVE MESH FORMATION WITH BLOCKING
-	// ═══════════════════════════════════════════════════════════════
+	// FIX #16: Validate term on startup
+	go node.validateStartupTerm()
+
+	// PHASE 1: Mesh Formation
 	logger.Election("═══════════════════════════════════════")
 	logger.Election("PHASE 1: Mesh Formation (BLOCKING)")
 	logger.Election("═══════════════════════════════════════")
 
-	time.Sleep(5 * time.Second) // Initial wait for discovery
+	time.Sleep(5 * time.Second)
 
 	maxMeshAttempts := 10
 	meshCheckInterval := 5 * time.Second
@@ -1634,7 +1759,6 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 				logger.Error("🚨 Mesh still empty after %d attempts, forcing healing...", attempt)
 				node.emergencyMeshHealing()
 			} else {
-				// Send test messages to trigger mesh formation
 				testMsg := map[string]string{
 					"type":    "mesh_formation_test",
 					"from":    node.host.ID().String(),
@@ -1656,13 +1780,11 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 
 	if len(discoveredPeers) > 0 && len(finalMeshPeers) == 0 {
 		logger.Error("❌ CRITICAL: Mesh formation FAILED after %d attempts", maxMeshAttempts)
-		logger.Error("   This node is ISOLATED and cannot participate in elections")
-		logger.Error("   Continuous mesh healing will keep trying in background")
-		logger.Error("   Elections will be BLOCKED until mesh forms")
+		logger.Error("   Node is ISOLATED - elections BLOCKED")
+		logger.Error("   Continuous healing will retry in background")
 		node.meshHealthy = false
 	} else if len(finalMeshPeers) < len(discoveredPeers) {
-		logger.Warn("⚠️  PARTIAL MESH: %d/%d peers in mesh", len(finalMeshPeers), len(discoveredPeers))
-		logger.Warn("   Proceeding with reduced reliability")
+		logger.Warn("⚠️  PARTIAL MESH: %d/%d peers", len(finalMeshPeers), len(discoveredPeers))
 		node.meshHealthy = true
 	} else {
 		logger.Election("✅ MESH FORMATION COMPLETE: %d peers", len(finalMeshPeers))
@@ -1671,15 +1793,11 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 
 	logger.Election("═══════════════════════════════════════")
 
-	// ═══════════════════════════════════════════════════════════════
-	// PHASE 2: DISCOVERY STABILIZATION (ONLY IF MESH IS HEALTHY)
-	// ═══════════════════════════════════════════════════════════════
-
+	// PHASE 2: Discovery Stabilization (only if mesh healthy)
 	if !node.meshHealthy {
 		logger.Error("Skipping election initiation due to unhealthy mesh")
 		logger.Error("Node will join elections dynamically when mesh heals")
 
-		// Keep node alive for mesh healing
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
@@ -1767,10 +1885,6 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 		logger.Election("  [%d] %s", i+1, peerID)
 	}
 
-	// ═══════════════════════════════════════════════════════════════
-	// PHASE 3: ELECTION INITIATOR SELECTION
-	// ═══════════════════════════════════════════════════════════════
-
 	// Store self reputation
 	selfRep := NodeReputation{
 		NodeID:         node.host.ID().String(),
@@ -1798,10 +1912,10 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	if node.host.ID().String() == initiatorID {
 		logger.Election("👑 I AM THE CONSENSUS INITIATOR")
 
-		// ✅ FINAL MESH CHECK BEFORE STARTING ELECTION
+		// Final mesh check
 		finalCheck := electionTopic.ListPeers()
 		if len(finalCheck) == 0 && len(discoveredPeers) > 0 {
-			logger.Error("🚫 ELECTION BLOCKED: Mesh became empty just before initiation")
+			logger.Error("🚫 ELECTION BLOCKED: Mesh empty just before initiation")
 			logger.Error("   Triggering emergency healing...")
 			go node.emergencyMeshHealing()
 		} else {
