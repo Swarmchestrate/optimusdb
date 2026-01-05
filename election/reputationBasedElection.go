@@ -1383,12 +1383,6 @@ func (n *Node) PeriodicReputationPublisher() {
 // ═══════════════════════════════════════════════════════════════════════════
 // FIX #12: COMPLETE TOPIC RECREATION (NOT JUST SUBSCRIPTION)
 // ═══════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════
-// PERMANENT FIX: SMART MESH HEALING (NO TOPIC DESTRUCTION)
-// ═══════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════
-// PERMANENT FIX: SMART MESH HEALING (NO TOPIC DESTRUCTION)
-// ═══════════════════════════════════════════════════════════════════════════
 func (n *Node) emergencyMeshHealing() {
 	logger.Election("[MESH-HEAL] ═══════════════════════════════════════════")
 	logger.Election("[MESH-HEAL] INITIATING SMART MESH HEALING")
@@ -1418,9 +1412,9 @@ func (n *Node) emergencyMeshHealing() {
 	validPeerCount := 0
 
 	for i, peerIDStr := range discoveredPeers {
-		// ✅ USE HELPER FUNCTION FOR VALIDATION
-		if !isValidPeerID(peerIDStr) {
-			logger.Warn("[MESH-HEAL]   [%d/%d] Invalid peer ID format (skipping)",
+		// ✅ SIMPLE VALIDATION: Only check for obviously broken IDs
+		if peerIDStr == "" || len(peerIDStr) < 5 {
+			logger.Warn("[MESH-HEAL]   [%d/%d] Empty or too short peer ID (skipping)",
 				i+1, len(discoveredPeers))
 			continue
 		}
@@ -1429,6 +1423,7 @@ func (n *Node) emergencyMeshHealing() {
 
 		peerID, err := peer.Decode(peerIDStr)
 		if err != nil {
+			// This catches actual invalid peer IDs
 			logger.Error("[MESH-HEAL]   [%d/%d] Failed to decode peer: %v",
 				i+1, len(discoveredPeers), err)
 			continue
