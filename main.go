@@ -498,7 +498,8 @@ func main() {
 		}
 	}
 
-	// ✅ STEP 6: Create GossipSub instance
+	// ✅ STEP 6: Create GossipSub instance with better peer scoring
+	psOpts = append(psOpts, election.CreateBetterGossipSubParams())
 	ps, err = pubsub.NewGossipSub(termCtx, hostMain, psOpts...)
 	if err != nil {
 		logger.Error("[FATAL] Failed to initialize GossipSub: %v", err)

@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -205,44 +206,54 @@ func (rl *MessageRateLimiter) AllowMessage(from peer.ID, msgType string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
+	// Check if peer is banned
 	if banUntil, banned := rl.bannedPeers[from]; banned {
 		if time.Now().Before(banUntil) {
 			return false
 		}
+		// Ban expired, clear it
 		delete(rl.bannedPeers, from)
 		delete(rl.violators, from)
+		logger.Election("Rate limit ban expired for %s", from.String()[:12])
 	}
 
 	if rl.lastMessage[from] == nil {
 		rl.lastMessage[from] = make(map[string]time.Time)
 	}
 
+	// ✅ MORE LENIENT INTERVALS (5x longer)
 	var minInterval time.Duration
 	switch msgType {
 	case TypeVote:
-		minInterval = 1 * time.Second
+		minInterval = 5 * time.Second // Was 1s
 	case TypeHeartbeat:
-		minInterval = 3 * time.Second
+		minInterval = 4 * time.Second // Was 3s (heartbeat is 5s, so 4s is safe)
 	case TypeReputation:
-		minInterval = 10 * time.Second
+		minInterval = 25 * time.Second // Was 10s
 	default:
-		minInterval = 500 * time.Millisecond
+		minInterval = 2 * time.Second // Was 500ms
 	}
 
 	last, exists := rl.lastMessage[from][msgType]
 	if exists && time.Since(last) < minInterval {
 		rl.violators[from]++
 
-		if rl.violators[from] >= 5 {
-			rl.bannedPeers[from] = time.Now().Add(5 * time.Minute)
-			logger.Warn(" Peer %s BANNED for 5min due to too many send messages for elections(violations: %d)",
-				from.String(), rl.violators[from])
+		// ✅ INCREASED THRESHOLD (10 violations before ban, was 5)
+		if rl.violators[from] >= 10 {
+			rl.bannedPeers[from] = time.Now().Add(2 * time.Minute) // ✅ Reduced ban time (2min, was 5min)
+			logger.Warn("[SECURITY] Peer %s BANNED for 2min (violations: %d)",
+				from.String()[:12], rl.violators[from])
 		} else {
-			logger.Warn("Election Rate limit exceeded by %s (violation #%d)",
-				from.String(), rl.violators[from])
+			logger.Warn("Rate limit warning for %s: %s message (violation #%d/10)",
+				from.String()[:12], msgType, rl.violators[from])
 		}
 
 		return false
+	}
+
+	// ✅ RESET VIOLATION COUNT on successful message (forgiveness)
+	if rl.violators[from] > 0 {
+		rl.violators[from]--
 	}
 
 	rl.lastMessage[from][msgType] = time.Now()
@@ -799,10 +810,7 @@ func (n *Node) ListenForElectionEvents() {
 		return
 	}
 
-	logger.Election("════════════════════════════════════════")
-	logger.Election("Starting Election Message Listener")
-	logger.Election("Node: %s", n.host.ID().String())
-	logger.Election("════════════════════════════════════════")
+	logger.Election("Starting Election Message Listener, Node: %s", n.host.ID().String())
 
 	if n.electionSub == nil {
 		log.Fatal("[FATAL] No GossipSub subscription available!")
@@ -813,18 +821,15 @@ func (n *Node) ListenForElectionEvents() {
 		for {
 			msg, err := n.electionSub.Next(n.ctx)
 			if err != nil {
-				// ✅ FIX: Don't log "subscription cancelled" as error during mesh healing
-				if err.Error() == "subscription cancelled" {
-					logger.Election("Subscription cancelled (likely during mesh healing)")
-					return
-				}
-
+				// Check if context was cancelled (normal shutdown)
 				if n.ctx.Err() != nil {
 					logger.Election("Listener shutting down")
 					return
 				}
 
-				logger.Error("Failed to receive message: %v", err)
+				// All other subscription errors - log and retry
+				logger.Warn("Subscription error (continuing): %v", err)
+				time.Sleep(1 * time.Second)
 				continue
 			}
 
@@ -1146,6 +1151,9 @@ func (n *Node) sendHeartbeats(term int) {
 
 	logger.Election("Starting heartbeat broadcast (every %v)", heartbeatInterval)
 
+	failureCount := 0
+	maxFailures := 3
+
 	for {
 		select {
 		case <-ticker.C:
@@ -1157,16 +1165,49 @@ func (n *Node) sendHeartbeats(term int) {
 			}
 			n.mutex.Unlock()
 
+			// Check mesh before sending
+			meshPeers := n.electionTopic.ListPeers()
+			if len(meshPeers) == 0 {
+				failureCount++
+				logger.Warn("💔 No mesh peers, heartbeat not sent (failure #%d/%d)",
+					failureCount, maxFailures)
+
+				if failureCount >= maxFailures {
+					logger.Error("💔 Mesh empty for %d consecutive heartbeats, triggering healing",
+						maxFailures)
+					go n.emergencyMeshHealing()
+					failureCount = 0 // Reset after triggering healing
+				}
+				continue
+			}
+
+			// Reset failure count on successful mesh check
+			failureCount = 0
+
 			hb := HeartbeatMessage{
 				LeaderID: n.host.ID().String(),
 				Time:     time.Now().Unix(),
 				Term:     term,
 			}
 
-			if err := n.publishMessage(TypeHeartbeat, hb); err != nil {
-				logger.Error("Heartbeat publish failed: %v", err)
-			} else {
-				logger.Election("💓 Heartbeat sent (term %d)", term)
+			// ✅ RETRY LOGIC WITH EXPONENTIAL BACKOFF
+			var publishErr error
+			for attempt := 0; attempt < 3; attempt++ {
+				publishErr = n.publishMessage(TypeHeartbeat, hb)
+				if publishErr == nil {
+					logger.Election("💓 Heartbeat sent (term %d, %d mesh peers)",
+						term, len(meshPeers))
+					break
+				}
+
+				backoff := time.Duration(math.Pow(2, float64(attempt))) * 500 * time.Millisecond
+				logger.Warn("💔 Heartbeat attempt %d failed: %v (retry in %v)",
+					attempt+1, publishErr, backoff)
+				time.Sleep(backoff)
+			}
+
+			if publishErr != nil {
+				logger.Error("💔 Heartbeat failed after 3 attempts: %v", publishErr)
 			}
 
 		case <-n.ctx.Done():
@@ -1239,13 +1280,11 @@ func (n *Node) CheckLeaderFailure() {
 				discoveredPeers := n.discovery.GetDiscoveredPeers()
 
 				if len(meshPeers) == 0 && len(discoveredPeers) > 0 {
-					logger.Error("═══════════════════════════════════════════════════")
 					logger.Error("ROOT CAUSE: MESH FAILURE (not leader failure)")
 					logger.Error("  Discovered peers: %d ✅", len(discoveredPeers))
 					logger.Error("  Mesh peers: %d ❌", len(meshPeers))
 					logger.Error("  Unable to receive heartbeats due to broken mesh")
 					logger.Error("  Triggering emergency mesh healing...")
-					logger.Error("═══════════════════════════════════════════════════")
 
 					// Reset counters (we're fixing mesh, not the leader)
 					n.heartbeatMissed = 0
@@ -1344,93 +1383,44 @@ func (n *Node) PeriodicReputationPublisher() {
 // ═══════════════════════════════════════════════════════════════════════════
 // FIX #12: COMPLETE TOPIC RECREATION (NOT JUST SUBSCRIPTION)
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// PERMANENT FIX: SMART MESH HEALING (NO TOPIC DESTRUCTION)
+// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// PERMANENT FIX: SMART MESH HEALING (NO TOPIC DESTRUCTION)
+// ═══════════════════════════════════════════════════════════════════════════
 func (n *Node) emergencyMeshHealing() {
-
-	logger.Error("[ELECTION] GossipSub Mesh Limits:   "+
-		"Current mesh size: %d Connected LibP2P peers: %d Discovered peers: %d",
-		len(n.electionTopic.ListPeers()),
-		len(n.host.Network().Peers()),
-		len(n.discovery.GetDiscoveredPeers()))
+	logger.Election("[MESH-HEAL] ═══════════════════════════════════════════")
+	logger.Election("[MESH-HEAL] INITIATING SMART MESH HEALING")
+	logger.Election("[MESH-HEAL] ═══════════════════════════════════════════")
 
 	// Rate limiting
 	if time.Since(n.lastMeshHealingAttempt) < 30*time.Second {
-		logger.Warn("[MESH-HEAL] Too soon since last attempt (<%v ago)",
-			30*time.Second-time.Since(n.lastMeshHealingAttempt))
+		logger.Warn("[MESH-HEAL] Cooldown active, skipping heal (%.0fs remaining)",
+			(30*time.Second - time.Since(n.lastMeshHealingAttempt)).Seconds())
 		return
 	}
 	n.lastMeshHealingAttempt = time.Now()
-	logger.Error("[MESH-HEAL] EMERGENCY MESH HEALING INITIATED")
 
-	// CRITICAL FIX: Completely close and recreate topic
-	logger.Election("[MESH-HEAL] Step 1: Completely recreating GossipSub topic...")
-
-	// Cancel subscription
-	if n.electionSub != nil {
-		n.electionSub.Cancel()
-		logger.Election("[MESH-HEAL]    Cancelled subscription")
-	}
-
-	// CLOSE TOPIC COMPLETELY
-	if n.electionTopic != nil {
-		n.electionTopic.Close()
-		logger.Election("[MESH-HEAL]    Closed topic completely")
-	}
-
-	// Wait for full cleanup
-	time.Sleep(3 * time.Second)
-
-	// Rejoin topic (fresh start)
-	newTopic, err := n.pubsub.Join("optimusdb")
-	if err != nil {
-		logger.Error("[MESH-HEAL]    Failed to rejoin topic: %v", err)
-		n.meshHealthy = false
-		return
-	}
-	n.electionTopic = newTopic
-	logger.Election("[MESH-HEAL]    Rejoined topic")
-
-	// Create new subscription
-	newSub, err := newTopic.Subscribe()
-	if err != nil {
-		logger.Error("[MESH-HEAL]    Failed to re-subscribe: %v", err)
-		n.meshHealthy = false
-		return
-	}
-	n.electionSub = newSub
-	logger.Election("[MESH-HEAL]    Created new subscription")
-
-	// ✅ FIX: Restart listener since old subscription was cancelled
-	atomic.StoreInt32(&n.listenerStarted, 0)
-	go n.ListenForElectionEvents()
-	logger.Election("[MESH-HEAL]    Restarted message listener")
-
-	// Step 2: Force connections WITH VALIDATION
-	time.Sleep(3 * time.Second)
-	logger.Election("[MESH-HEAL] Step 2: Forcing peer connections...")
-
+	// Step 1: Get current state
+	meshPeers := n.electionTopic.ListPeers()
 	discoveredPeers := n.discovery.GetDiscoveredPeers()
+	connectedPeers := n.host.Network().Peers()
+
+	logger.Election("[MESH-HEAL] Current state:")
+	logger.Election("[MESH-HEAL]   Mesh peers: %d", len(meshPeers))
+	logger.Election("[MESH-HEAL]   Discovered peers: %d", len(discoveredPeers))
+	logger.Election("[MESH-HEAL]   Connected LibP2P peers: %d", len(connectedPeers))
+
+	// Step 2: Ensure LibP2P connections to all discovered peers
+	logger.Election("[MESH-HEAL] Step 1: Ensuring LibP2P connections...")
 	connectedCount := 0
 	validPeerCount := 0
 
 	for i, peerIDStr := range discoveredPeers {
-		// ✅ FIX: Validate peer ID BEFORE attempting to decode
-		if len(peerIDStr) < 10 || len(peerIDStr) > 100 {
-			logger.Warn("[MESH-HEAL]    [%d/%d] Invalid peer ID length: %d (skipping)",
-				i+1, len(discoveredPeers), len(peerIDStr))
-			continue
-		}
-
-		// Check for binary garbage (non-printable characters)
-		hasGarbage := false
-		for _, ch := range peerIDStr {
-			if ch < 32 || ch > 126 {
-				hasGarbage = true
-				break
-			}
-		}
-
-		if hasGarbage {
-			logger.Warn("[MESH-HEAL]    [%d/%d] Peer ID contains binary garbage (skipping)",
+		// ✅ USE HELPER FUNCTION FOR VALIDATION
+		if !isValidPeerID(peerIDStr) {
+			logger.Warn("[MESH-HEAL]   [%d/%d] Invalid peer ID format (skipping)",
 				i+1, len(discoveredPeers))
 			continue
 		}
@@ -1439,76 +1429,122 @@ func (n *Node) emergencyMeshHealing() {
 
 		peerID, err := peer.Decode(peerIDStr)
 		if err != nil {
-			logger.Error("[MESH-HEAL]    [%d/%d] Failed to decode peer %s: %v",
-				i+1, len(discoveredPeers), peerIDStr[:16]+"...", err)
+			logger.Error("[MESH-HEAL]   [%d/%d] Failed to decode peer: %v",
+				i+1, len(discoveredPeers), err)
 			continue
 		}
 
+		// Skip self
+		if peerID == n.host.ID() {
+			continue
+		}
+
+		// Check if already connected
 		connectedness := n.host.Network().Connectedness(peerID)
-		logger.Election("[MESH-HEAL]    [%d/%d] %s... - %s",
-			i+1, validPeerCount, peerIDStr[:16], connectedness)
+		if connectedness == 1 { // network.Connected
+			logger.Election("[MESH-HEAL]   ✅ Already connected to %s", peerID.String()[:12])
+			connectedCount++
+			continue
+		}
 
-		if connectedness != 1 {
-			peerInfo := n.host.Peerstore().PeerInfo(peerID)
-			if len(peerInfo.Addrs) > 0 {
-				ctx, cancel := context.WithTimeout(n.ctx, 10*time.Second)
-				err := n.host.Connect(ctx, peerInfo)
-				cancel()
+		// Get peer info from peerstore
+		addrs := n.host.Peerstore().Addrs(peerID)
+		if len(addrs) == 0 {
+			logger.Warn("[MESH-HEAL]   ⚠️  No addresses for peer %s", peerID.String()[:12])
+			continue
+		}
 
-				if err != nil {
-					logger.Error("[MESH-HEAL]       Connection failed: %v", err)
-				} else {
-					logger.Election("[MESH-HEAL]       Connected")
-					connectedCount++
-				}
-			}
+		// Try to connect with timeout
+		peerInfo := peer.AddrInfo{
+			ID:    peerID,
+			Addrs: addrs,
+		}
+
+		ctx, cancel := context.WithTimeout(n.ctx, 10*time.Second)
+		err = n.host.Connect(ctx, peerInfo)
+		cancel()
+
+		if err != nil {
+			logger.Warn("[MESH-HEAL]   ❌ Failed to connect to %s: %v",
+				peerID.String()[:12], err)
 		} else {
+			logger.Election("[MESH-HEAL]   ✅ Connected to %s", peerID.String()[:12])
 			connectedCount++
 		}
 	}
 
-	logger.Election("[MESH-HEAL]    Valid peer IDs: %d/%d", validPeerCount, len(discoveredPeers))
-	logger.Election("[MESH-HEAL]    Connected to %d/%d valid peers", connectedCount, validPeerCount)
+	logger.Election("[MESH-HEAL] LibP2P connections: %d/%d successful",
+		connectedCount, validPeerCount)
 
-	// Step 3: Send 5 test messages
+	// Step 3: Wait for connections to stabilize
+	logger.Election("[MESH-HEAL] Step 2: Waiting for connections to stabilize (3s)...")
 	time.Sleep(3 * time.Second)
-	logger.Election("[MESH-HEAL] Step 3: Sending test messages to force mesh...")
 
-	for i := 0; i < 5; i++ {
-		testMsg := map[string]interface{}{
-			"type":    "mesh_healing_ping",
-			"from":    n.host.ID().String(),
-			"time":    time.Now().Unix(),
-			"attempt": i + 1,
+	// Step 4: Trigger GossipSub mesh refresh by publishing
+	logger.Election("[MESH-HEAL] Step 3: Triggering GossipSub mesh refresh...")
+
+	// Publishing forces GossipSub to evaluate mesh and send GRAFT messages
+	for i := 0; i < 3; i++ {
+		refreshMsg := map[string]interface{}{
+			"type":      "mesh_refresh",
+			"from":      n.host.ID().String(),
+			"timestamp": time.Now().Unix(),
+			"attempt":   i + 1,
 		}
 
-		data, _ := json.Marshal(testMsg)
-		err := n.electionTopic.Publish(n.ctx, data)
+		data, err := json.Marshal(refreshMsg)
 		if err != nil {
-			logger.Error("[MESH-HEAL]    Message %d failed: %v", i+1, err)
-		} else {
-			logger.Election("[MESH-HEAL]    Message %d sent", i+1)
+			logger.Error("[MESH-HEAL] Failed to marshal refresh message: %v", err)
+			continue
 		}
+
+		ctx, cancel := context.WithTimeout(n.ctx, 5*time.Second)
+		err = n.electionTopic.Publish(ctx, data)
+		cancel()
+
+		if err != nil {
+			logger.Error("[MESH-HEAL] Publish attempt %d failed: %v", i+1, err)
+		} else {
+			logger.Election("[MESH-HEAL] Refresh message %d/3 published", i+1)
+		}
+
 		time.Sleep(2 * time.Second)
 	}
 
-	// Step 4: Verify mesh (wait longer)
-	time.Sleep(8 * time.Second)
+	// Step 5: Wait for mesh to form
+	logger.Election("[MESH-HEAL] Step 4: Waiting for mesh to form (5s)...")
+	time.Sleep(5 * time.Second)
 
-	finalMeshPeers := n.electionTopic.ListPeers()
-	logger.Election("[MESH-HEAL] Healing result: %d peers in mesh", len(finalMeshPeers))
+	// Step 6: Check results
+	newMeshPeers := n.electionTopic.ListPeers()
 
-	if len(finalMeshPeers) > 0 {
-		logger.Election("[MESH-HEAL] HEALING SUCCESSFUL")
-		logger.Election("[MESH-HEAL] Mesh peers:")
-		for i, p := range finalMeshPeers {
-			logger.Election("[MESH-HEAL]    [%d] %s", i+1, p.String())
+	logger.Election("[MESH-HEAL] ═══════════════════════════════════════════")
+	logger.Election("[MESH-HEAL] HEALING COMPLETE")
+	logger.Election("[MESH-HEAL]   Before: %d mesh peers", len(meshPeers))
+	logger.Election("[MESH-HEAL]   After:  %d mesh peers", len(newMeshPeers))
+
+	if len(newMeshPeers) > len(meshPeers) {
+		logger.Election("[MESH-HEAL] ✅ SUCCESS: Mesh improved")
+		for i, p := range newMeshPeers {
+			logger.Election("[MESH-HEAL]   [%d] %s", i+1, p.String()[:12])
 		}
-
 		n.meshHealthy = true
 		n.consecutiveEmptyMeshChecks = 0
+	} else if len(newMeshPeers) == 0 {
+		logger.Error("[MESH-HEAL] ❌ FAILED: Mesh still empty")
+		logger.Error("[MESH-HEAL] Valid peers found: %d", validPeerCount)
+		logger.Error("[MESH-HEAL] Connected peers: %d", connectedCount)
+		n.meshHealthy = false
+		n.consecutiveEmptyMeshChecks++
+	} else {
+		logger.Election("[MESH-HEAL] ⚠️  PARTIAL: Mesh unchanged at %d peers", len(newMeshPeers))
+		n.meshHealthy = len(newMeshPeers) > 0
+	}
 
-		// Check if we need term reconciliation
+	logger.Election("[MESH-HEAL] ═══════════════════════════════════════════")
+
+	// Step 7: Check if we need term reconciliation
+	if len(newMeshPeers) > 0 {
 		n.mutex.Lock()
 		hasNoLeader := n.isLeaderEmpty()
 		n.mutex.Unlock()
@@ -1525,12 +1561,6 @@ func (n *Node) emergencyMeshHealing() {
 				n.checkTermDivergence()
 			}()
 		}
-	} else {
-		logger.Error("[MESH-HEAL] HEALING FAILED: Mesh still empty")
-		logger.Error("[MESH-HEAL] Valid peers found: %d", validPeerCount)
-		logger.Error("[MESH-HEAL] Connected peers: %d", connectedCount)
-		n.meshHealthy = false
-		n.consecutiveEmptyMeshChecks++
 	}
 }
 
@@ -1565,6 +1595,9 @@ func (n *Node) checkMeshHealth() {
 	discoveredSize := len(discoveredPeers)
 	connectedSize := len(connectedPeers)
 
+	logger.Election("[MESH-MONITOR] Mesh size: mesh=%d, discovered=%d, connected=%d",
+		meshSize, discoveredSize, connectedSize)
+
 	// Calculate mesh health
 	if meshSize == 0 && discoveredSize > 0 {
 		n.consecutiveEmptyMeshChecks++
@@ -1581,19 +1614,18 @@ func (n *Node) checkMeshHealth() {
 		n.consecutiveEmptyMeshChecks = 0
 		n.meshHealthy = true
 
-		var meshCoverage float64
-		if discoveredSize > 0 {
-			meshCoverage = float64(meshSize) / float64(discoveredSize)
-		} else {
-			meshCoverage = 1.0
+		// ✅ ONLY LOG EVERY 6TH CHECK (once per minute instead of every 10s)
+		if time.Now().Unix()%60 < 10 {
+			var meshCoverage float64
+			if discoveredSize > 0 {
+				meshCoverage = float64(meshSize) / float64(discoveredSize) * 100
+			} else {
+				meshCoverage = 100.0
+			}
+			logger.Election("[MESH-MONITOR] ✅ Healthy: mesh=%d, discovered=%d, coverage=%.0f%%",
+				meshSize, discoveredSize, meshCoverage)
 		}
-		logger.Election("[MESH-MONITOR] ✅ Healthy: %d mesh peers (%.1f%% coverage)",
-			meshSize, meshCoverage*100)
 	}
-
-	// Log mesh status
-	logger.Election("[MESH-MONITOR] Status: discovered=%d, connected=%d, mesh=%d",
-		discoveredSize, connectedSize, meshSize)
 
 	// Extra check: High term + empty mesh
 	n.electionMutex.Lock()
@@ -2211,4 +2243,85 @@ func GetLatestElectionInfo() (leaderID string, term int, timestamp string, err e
 	}
 
 	return leaderID, term, timestamp, err
+}
+
+// createGossipSubWithBetterScoring creates GossipSub with lenient peer scoring
+// to prevent legitimate peers from being dropped from the mesh
+// CreateBetterGossipSubParams creates GossipSub with lenient peer scoring
+// to prevent legitimate peers from being dropped from the mesh
+func CreateBetterGossipSubParams() pubsub.Option {
+	// Lenient peer scoring parameters
+	peerScoreParams := &pubsub.PeerScoreParams{
+		// Give all peers positive score by default
+		AppSpecificScore: func(p peer.ID) float64 {
+			return 100.0 // Everyone starts with high score
+		},
+		AppSpecificWeight: 0.5, // Reduced weight
+
+		Topics: map[string]*pubsub.TopicScoreParams{
+			"optimusdb": {
+				TopicWeight:                     0.5,   // Reduced from 1.0
+				TimeInMeshWeight:                0.001, // Very low (was 0.01)
+				TimeInMeshQuantum:               time.Second,
+				TimeInMeshCap:                   100.0,
+				FirstMessageDeliveriesWeight:    0.5, // Reduced from 1.0
+				FirstMessageDeliveriesDecay:     0.99,
+				FirstMessageDeliveriesCap:       100,
+				MeshMessageDeliveriesWeight:     -0.5, // Less penalty
+				MeshMessageDeliveriesDecay:      0.99,
+				MeshMessageDeliveriesCap:        100,
+				MeshMessageDeliveriesThreshold:  1, // Lower threshold
+				MeshMessageDeliveriesWindow:     2 * time.Second,
+				MeshMessageDeliveriesActivation: 10 * time.Second,
+				MeshFailurePenaltyWeight:        -0.5, // Less penalty
+				MeshFailurePenaltyDecay:         0.99,
+				InvalidMessageDeliveriesWeight:  -10.0, // Reduced from -100
+				InvalidMessageDeliveriesDecay:   0.99,
+			},
+		},
+
+		DecayInterval: time.Second,
+		DecayToZero:   0.01,
+		RetainScore:   10 * time.Minute,
+	}
+
+	// ✅ SIMPLIFIED: Only use the core threshold fields that exist in all versions
+	peerScoreThresholds := &pubsub.PeerScoreThresholds{
+		GossipThreshold:   -100,  // Very lenient (peers can gossip even with low score)
+		PublishThreshold:  -500,  // Very lenient (peers can publish even with low score)
+		GraylistThreshold: -1000, // Very lenient (only ban truly malicious peers)
+	}
+
+	return pubsub.WithPeerScore(peerScoreParams, peerScoreThresholds)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER: Validate peer ID format before decoding
+// ═══════════════════════════════════════════════════════════════════════════
+func isValidPeerID(peerIDStr string) bool {
+	// Length check
+	if len(peerIDStr) < 10 || len(peerIDStr) > 100 {
+		return false
+	}
+
+	// Check for binary garbage (non-printable characters)
+	// Valid peer IDs are base58 encoded, so only alphanumeric chars
+	for _, ch := range peerIDStr {
+		// Allow: 0-9, A-Z, a-z (base58 charset)
+		if !((ch >= '0' && ch <= '9') ||
+			(ch >= 'A' && ch <= 'Z') ||
+			(ch >= 'a' && ch <= 'z')) {
+			return false
+		}
+	}
+
+	// Check for common invalid patterns
+	if strings.Contains(peerIDStr, "peer.ID") ||
+		strings.Contains(peerIDStr, "<") ||
+		strings.Contains(peerIDStr, ">") ||
+		strings.Contains(peerIDStr, " ") {
+		return false
+	}
+
+	return true
 }
