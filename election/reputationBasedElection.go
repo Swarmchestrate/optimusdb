@@ -813,10 +813,17 @@ func (n *Node) ListenForElectionEvents() {
 		for {
 			msg, err := n.electionSub.Next(n.ctx)
 			if err != nil {
+				// ✅ FIX: Don't log "subscription cancelled" as error during mesh healing
+				if err.Error() == "subscription cancelled" {
+					logger.Election("Subscription cancelled (likely during mesh healing)")
+					return
+				}
+
 				if n.ctx.Err() != nil {
 					logger.Election("Listener shutting down")
 					return
 				}
+
 				logger.Error("Failed to receive message: %v", err)
 				continue
 			}
@@ -1338,6 +1345,13 @@ func (n *Node) PeriodicReputationPublisher() {
 // FIX #12: COMPLETE TOPIC RECREATION (NOT JUST SUBSCRIPTION)
 // ═══════════════════════════════════════════════════════════════════════════
 func (n *Node) emergencyMeshHealing() {
+
+	logger.Error("[ELECTION] GossipSub Mesh Limits:   "+
+		"Current mesh size: %d Connected LibP2P peers: %d Discovered peers: %d",
+		len(n.electionTopic.ListPeers()),
+		len(n.host.Network().Peers()),
+		len(n.discovery.GetDiscoveredPeers()))
+
 	// Rate limiting
 	if time.Since(n.lastMeshHealingAttempt) < 30*time.Second {
 		logger.Warn("[MESH-HEAL] Too soon since last attempt (<%v ago)",
@@ -1345,10 +1359,7 @@ func (n *Node) emergencyMeshHealing() {
 		return
 	}
 	n.lastMeshHealingAttempt = time.Now()
-
-	logger.Error("[MESH-HEAL] ═══════════════════════════════════════")
-	logger.Error("[MESH-HEAL] 🚨 EMERGENCY MESH HEALING INITIATED")
-	logger.Error("[MESH-HEAL] ═══════════════════════════════════════")
+	logger.Error("[MESH-HEAL] EMERGENCY MESH HEALING INITIATED")
 
 	// CRITICAL FIX: Completely close and recreate topic
 	logger.Election("[MESH-HEAL] Step 1: Completely recreating GossipSub topic...")
@@ -1359,7 +1370,7 @@ func (n *Node) emergencyMeshHealing() {
 		logger.Election("[MESH-HEAL]    Cancelled subscription")
 	}
 
-	// CLOSE TOPIC COMPLETELY (this is the key fix!)
+	// CLOSE TOPIC COMPLETELY
 	if n.electionTopic != nil {
 		n.electionTopic.Close()
 		logger.Election("[MESH-HEAL]    Closed topic completely")
@@ -1371,40 +1382,71 @@ func (n *Node) emergencyMeshHealing() {
 	// Rejoin topic (fresh start)
 	newTopic, err := n.pubsub.Join("optimusdb")
 	if err != nil {
-		logger.Error("[MESH-HEAL]    ❌ Failed to rejoin topic: %v", err)
+		logger.Error("[MESH-HEAL]    Failed to rejoin topic: %v", err)
 		n.meshHealthy = false
 		return
 	}
 	n.electionTopic = newTopic
-	logger.Election("[MESH-HEAL]    ✅ Rejoined topic")
+	logger.Election("[MESH-HEAL]    Rejoined topic")
 
 	// Create new subscription
 	newSub, err := newTopic.Subscribe()
 	if err != nil {
-		logger.Error("[MESH-HEAL]    ❌ Failed to re-subscribe: %v", err)
+		logger.Error("[MESH-HEAL]    Failed to re-subscribe: %v", err)
 		n.meshHealthy = false
 		return
 	}
 	n.electionSub = newSub
-	logger.Election("[MESH-HEAL]    ✅ Created new subscription")
+	logger.Election("[MESH-HEAL]    Created new subscription")
 
-	// Step 2: Force connections
+	// ✅ FIX: Restart listener since old subscription was cancelled
+	atomic.StoreInt32(&n.listenerStarted, 0)
+	go n.ListenForElectionEvents()
+	logger.Election("[MESH-HEAL]    Restarted message listener")
+
+	// Step 2: Force connections WITH VALIDATION
 	time.Sleep(3 * time.Second)
 	logger.Election("[MESH-HEAL] Step 2: Forcing peer connections...")
 
 	discoveredPeers := n.discovery.GetDiscoveredPeers()
 	connectedCount := 0
+	validPeerCount := 0
 
 	for i, peerIDStr := range discoveredPeers {
+		// ✅ FIX: Validate peer ID BEFORE attempting to decode
+		if len(peerIDStr) < 10 || len(peerIDStr) > 100 {
+			logger.Warn("[MESH-HEAL]    [%d/%d] Invalid peer ID length: %d (skipping)",
+				i+1, len(discoveredPeers), len(peerIDStr))
+			continue
+		}
+
+		// Check for binary garbage (non-printable characters)
+		hasGarbage := false
+		for _, ch := range peerIDStr {
+			if ch < 32 || ch > 126 {
+				hasGarbage = true
+				break
+			}
+		}
+
+		if hasGarbage {
+			logger.Warn("[MESH-HEAL]    [%d/%d] Peer ID contains binary garbage (skipping)",
+				i+1, len(discoveredPeers))
+			continue
+		}
+
+		validPeerCount++
+
 		peerID, err := peer.Decode(peerIDStr)
 		if err != nil {
-			logger.Error("[MESH-HEAL]    Failed to decode peer %s", peerIDStr)
+			logger.Error("[MESH-HEAL]    [%d/%d] Failed to decode peer %s: %v",
+				i+1, len(discoveredPeers), peerIDStr[:16]+"...", err)
 			continue
 		}
 
 		connectedness := n.host.Network().Connectedness(peerID)
 		logger.Election("[MESH-HEAL]    [%d/%d] %s... - %s",
-			i+1, len(discoveredPeers), peerIDStr[:16], connectedness)
+			i+1, validPeerCount, peerIDStr[:16], connectedness)
 
 		if connectedness != 1 {
 			peerInfo := n.host.Peerstore().PeerInfo(peerID)
@@ -1414,9 +1456,9 @@ func (n *Node) emergencyMeshHealing() {
 				cancel()
 
 				if err != nil {
-					logger.Error("[MESH-HEAL]       ❌ Connection failed: %v", err)
+					logger.Error("[MESH-HEAL]       Connection failed: %v", err)
 				} else {
-					logger.Election("[MESH-HEAL]       ✅ Connected")
+					logger.Election("[MESH-HEAL]       Connected")
 					connectedCount++
 				}
 			}
@@ -1425,9 +1467,10 @@ func (n *Node) emergencyMeshHealing() {
 		}
 	}
 
-	logger.Election("[MESH-HEAL]    Connected to %d/%d peers", connectedCount, len(discoveredPeers))
+	logger.Election("[MESH-HEAL]    Valid peer IDs: %d/%d", validPeerCount, len(discoveredPeers))
+	logger.Election("[MESH-HEAL]    Connected to %d/%d valid peers", connectedCount, validPeerCount)
 
-	// Step 3: Send 5 test messages (increased from 3)
+	// Step 3: Send 5 test messages
 	time.Sleep(3 * time.Second)
 	logger.Election("[MESH-HEAL] Step 3: Sending test messages to force mesh...")
 
@@ -1444,20 +1487,19 @@ func (n *Node) emergencyMeshHealing() {
 		if err != nil {
 			logger.Error("[MESH-HEAL]    Message %d failed: %v", i+1, err)
 		} else {
-			logger.Election("[MESH-HEAL]    ✅ Message %d sent", i+1)
+			logger.Election("[MESH-HEAL]    Message %d sent", i+1)
 		}
-		time.Sleep(2 * time.Second) // Increased delay
+		time.Sleep(2 * time.Second)
 	}
 
 	// Step 4: Verify mesh (wait longer)
-	time.Sleep(8 * time.Second) // Increased from 5s
+	time.Sleep(8 * time.Second)
 
 	finalMeshPeers := n.electionTopic.ListPeers()
-	logger.Election("[MESH-HEAL] ═══════════════════════════════════════")
 	logger.Election("[MESH-HEAL] Healing result: %d peers in mesh", len(finalMeshPeers))
 
 	if len(finalMeshPeers) > 0 {
-		logger.Election("[MESH-HEAL] ✅ HEALING SUCCESSFUL")
+		logger.Election("[MESH-HEAL] HEALING SUCCESSFUL")
 		logger.Election("[MESH-HEAL] Mesh peers:")
 		for i, p := range finalMeshPeers {
 			logger.Election("[MESH-HEAL]    [%d] %s", i+1, p.String())
@@ -1484,12 +1526,12 @@ func (n *Node) emergencyMeshHealing() {
 			}()
 		}
 	} else {
-		logger.Error("[MESH-HEAL] ❌ HEALING FAILED: Mesh still empty")
+		logger.Error("[MESH-HEAL] HEALING FAILED: Mesh still empty")
+		logger.Error("[MESH-HEAL] Valid peers found: %d", validPeerCount)
+		logger.Error("[MESH-HEAL] Connected peers: %d", connectedCount)
 		n.meshHealthy = false
 		n.consecutiveEmptyMeshChecks++
 	}
-
-	logger.Election("[MESH-HEAL] ═══════════════════════════════════════")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

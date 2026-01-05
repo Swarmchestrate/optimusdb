@@ -13,6 +13,7 @@ import (
 	"github.com/lukesampson/figlet/figletlib"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
+	"math"
 	"optimusdb/api"
 	"optimusdb/app"
 	"optimusdb/config"
@@ -23,6 +24,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -48,7 +50,7 @@ func (mt *MeshTracer) Trace(evt *pubsub_pb.TraceEvent) {
 					peerID = pid.String()
 				}
 			}
-			logger.Mesh("[MESH] 🌿 GRAFT: Peer %s joined mesh for topic %s",
+			logger.Mesh("[MESH] GRAFT: Peer %s joined mesh for topic %s",
 				peerID, *evt.Graft.Topic)
 		}
 	case pubsub_pb.TraceEvent_PRUNE:
@@ -60,12 +62,12 @@ func (mt *MeshTracer) Trace(evt *pubsub_pb.TraceEvent) {
 					peerID = peerID[:8] + "..."
 				}
 			}
-			logger.Mesh("[MESH] ✂️ PRUNE: Peer %s left mesh for topic %s",
+			logger.Mesh("[MESH] PRUNE: Peer %s left mesh for topic %s",
 				peerID, *evt.Prune.Topic)
 		}
 	case pubsub_pb.TraceEvent_JOIN:
 		if evt.Join != nil && evt.Join.Topic != nil {
-			logger.Mesh("[MESH] ➕ JOIN: Subscribed to topic %s", *evt.Join.Topic)
+			logger.Mesh("[MESH] JOIN: Subscribed to topic %s", *evt.Join.Topic)
 		}
 	case pubsub_pb.TraceEvent_ADD_PEER:
 		peerID := ""
@@ -75,13 +77,13 @@ func (mt *MeshTracer) Trace(evt *pubsub_pb.TraceEvent) {
 				peerID = peerID[:8] + "..."
 			}
 		}
-		logger.Mesh("[MESH] 👥 ADD_PEER: Connected to %s", peerID)
+		logger.Mesh("[MESH] ADD_PEER: Connected to %s", peerID)
 	}
 }
 
 // MonitorMeshStatus monitors and logs mesh formation
 func MonitorMeshStatus(ctx context.Context, ps *pubsub.PubSub, topic *pubsub.Topic, host host.Host) {
-	ticker := time.NewTicker(5 * time.Second) // Increased from 3s to 5s
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -93,7 +95,8 @@ func MonitorMeshStatus(ctx context.Context, ps *pubsub.PubSub, topic *pubsub.Top
 			allPeers := host.Network().Peers()
 			meshPeers := ps.ListPeers("optimusdb")
 
-			logger.Mesh("[Connected peers: %d , Topic 'optimusdb' subscribers: %d , Mesh peers: %d", len(allPeers), len(topicPeers), len(meshPeers))
+			logger.Mesh("[MESH-STATUS] Connected: %d, Topic subscribers: %d, Mesh peers: %d",
+				len(allPeers), len(topicPeers), len(meshPeers))
 
 			for i, p := range meshPeers {
 				shortID := p.String()
@@ -105,6 +108,14 @@ func MonitorMeshStatus(ctx context.Context, ps *pubsub.PubSub, topic *pubsub.Top
 			}
 		}
 	}
+}
+
+// max returns the maximum of two integers
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func main() {
@@ -139,7 +150,7 @@ func main() {
 			}
 			diskUsage, f4, err := utilities.GetDiskUsage(interval)
 			if err != nil {
-				logger.Error("Problem faced in GetNetworkUsage, %v %v with error: %v", diskUsage, f4, err)
+				logger.Error("Problem faced in GetDiskUsage, %v %v with error: %v", diskUsage, f4, err)
 				return
 			}
 		}
@@ -203,16 +214,16 @@ func main() {
 
 	llmClient, err := contextualmetadata.NewTinyLlamaHTTP()
 	if err != nil {
-		logger.AI("[METADATA] ⚠️  TinyLlama not available: %v", err)
-		logger.AI("[METADATA] ℹ️  Will use basic metadata generation")
+		logger.AI("[METADATA] TinyLlama not available: %v", err)
+		logger.AI("[METADATA] Will use basic metadata generation")
 		llmClient = nil
 	} else {
 		healthCtx, healthCancel := context.WithTimeout(termCtx, 20*time.Second)
 		if err := llmClient.HealthCheck(healthCtx); err != nil {
-			logger.AI("[METADATA] ⚠️  TinyLlama health check failed: %v", err)
+			logger.AI("[METADATA] TinyLlama health check failed: %v", err)
 			llmClient = nil
 		} else {
-			logger.AI("[METADATA] ✅ TinyLlama client initialized and healthy")
+			logger.AI("[METADATA] TinyLlama client initialized and healthy")
 		}
 		healthCancel()
 	}
@@ -230,7 +241,7 @@ func main() {
 		}
 	}
 	knowledgeBaseDB.MetadataCache = contextualmetadata.NewMetadataCache(cacheTTL)
-	logger.AI("[METADATA] 📦 Metadata cache initialized (TTL: %v)", cacheTTL)
+	logger.AI("[METADATA] Metadata cache initialized (TTL: %v)", cacheTTL)
 
 	if os.Getenv("METADATA_AUTO_ENRICH") == "true" || os.Getenv("METADATA_AUTO_ENRICH") == "1" {
 		dbPaths := []string{
@@ -252,11 +263,11 @@ func main() {
 		}
 		metadataEnricher.SetInterval(enrichInterval)
 
-		logger.AI("[METADATA] 🔄 Background enricher enabled (interval: %v)", enrichInterval)
+		logger.AI("[METADATA] Background enricher enabled (interval: %v)", enrichInterval)
 	} else {
 		logger.AI("[METADATA] Background enricher disabled (set METADATA_AUTO_ENRICH=true to enable)")
 	}
-	logger.AI("[METADATA] ✅ Metadata enrichment system initialized")
+	logger.AI("[METADATA] Metadata enrichment system initialized")
 
 	// EMS subscriber (ActiveMQ/STOMP)
 	emsCtx, emsCancel := context.WithCancel(termCtx)
@@ -332,7 +343,7 @@ func main() {
 	go app.Service(&knowledgeBaseDB, reqChan, resChan, hostMain, logChan, &rdbms)
 
 	// ===============================
-	// PEER DISCOVERY (MUST START FIRST - IT CREATES GOSSIPSUB)
+	// PEER DISCOVERY
 	// ===============================
 	var discoveryService *api.Service
 
@@ -349,113 +360,178 @@ func main() {
 		} else {
 			prMsg = "No Auto-Discovery method selected"
 		}
-		logger.DISc("DISCOVERY Flag %v", prMsg)
+		logger.DISc("[DISCOVERY] %v", prMsg)
 
-		// Start discovery - this will create GossipSub if PubSub discovery is enabled
+		// Start discovery (discovery service no longer creates GossipSub)
 		discoveryService = api.StartDiscovery(hostMain, &knowledgeBaseDB)
 		if discoveryService == nil {
 			logger.Error("[ERROR] Discovery service failed to start")
 		} else {
-			logger.DISc("[DISCOVERY] ✅ Discovery service started on unified host, Waiting for peer discovery...")
+			logger.DISc("[DISCOVERY] Discovery service started, waiting for peers...")
 			time.Sleep(5 * time.Second) // Initial discovery wait
 			go api.PrintDiscoveredPeers(&knowledgeBaseDB)
 		}
 	}
 
-	// ===============================
-	// GOSSIPSUB CONFIGURATION - OPTIMIZED FOR KUBERNETES
-	// ===============================
+	// ═══════════════════════════════════════════════════════════════════════════
+	// DYNAMIC GOSSIPSUB CONFIGURATION (SCALES 3-100+ NODES)
+	// ═══════════════════════════════════════════════════════════════════════════
 	var ps *pubsub.PubSub
 	var electionTopic *pubsub.Topic
 	var electionSub *pubsub.Subscription
 
-	if discoveryService != nil && discoveryService.Pubsub != nil {
-		// Reuse the GossipSub instance from discovery
-		ps = discoveryService.Pubsub
-		electionTopic = discoveryService.Topic
-		electionSub = discoveryService.Sub
-		logger.Election("[INIT] ✅ Reusing GossipSub from discovery service,Topic: 'optimusdb' already joined")
+	logger.Election("════════════════════════════════════════════════════════════")
+	logger.Election("INITIALIZING GOSSIPSUB WITH DYNAMIC PARAMETERS")
+	logger.Election("════════════════════════════════════════════════════════════")
+
+	// ✅ STEP 1: Determine cluster size (from env or auto-detect)
+	expectedClusterSize := 8 // Safe default for small clusters
+
+	if envSize := os.Getenv("CLUSTER_SIZE"); envSize != "" {
+		if size, err := strconv.Atoi(envSize); err == nil && size > 0 {
+			expectedClusterSize = size
+			logger.Election("[CONFIG] Using CLUSTER_SIZE from environment: %d nodes", expectedClusterSize)
+		}
 	} else {
-		// ═══════════════════════════════════════════════════════════════
-		// FIX #1: CREATE GOSSIPSUB WITH PRODUCTION-READY CONFIGURATION
-		// ═══════════════════════════════════════════════════════════════
-		logger.Election("Creating new GossipSub instance with Kubernetes optimizations...")
+		// Auto-detect cluster size from discovery
+		logger.Election("[CONFIG] CLUSTER_SIZE not set, auto-detecting from discovery...")
+		time.Sleep(10 * time.Second) // Wait for discovery to stabilize
 
-		messageIDFunc := func(pmsg *pubsub_pb.Message) string {
-			h := sha256.New()
-			h.Write(pmsg.Data)
-			h.Write(pmsg.From)
-			return hex.EncodeToString(h.Sum(nil))[:20]
+		discoveredPeers := knowledgeBaseDB.GetDiscoveredPeers()
+		if len(discoveredPeers) > 0 {
+			expectedClusterSize = len(discoveredPeers) + 1 // +1 for self
+			logger.Election("[CONFIG] Auto-detected cluster size: %d nodes (discovered: %d + self: 1)",
+				expectedClusterSize, len(discoveredPeers))
+		} else {
+			logger.Election("[CONFIG] No peers discovered yet, using default: %d nodes", expectedClusterSize)
 		}
-
-		// Optimized GossipSub parameters for 8-node Kubernetes cluster
-		gparams := pubsub.DefaultGossipSubParams()
-		gparams.D = 4                                 // Degree: target number of mesh peers (increased from 3)
-		gparams.Dlo = 3                               // Lower bound: minimum mesh peers (increased from 2)
-		gparams.Dhi = 8                               // Upper bound: maximum mesh peers (increased from 6)
-		gparams.Dscore = 3                            // Peer score threshold (increased from 2)
-		gparams.Dout = 2                              // Outbound connections
-		gparams.Dlazy = 4                             // Gossip peers (increased from 3)
-		gparams.HeartbeatInterval = 1 * time.Second   // Increased from 700ms for stability
-		gparams.HistoryLength = 12                    // Message history (increased from 10)
-		gparams.HistoryGossip = 6                     // Gossip history (increased from 5)
-		gparams.GossipFactor = 0.3                    // Gossip probability (increased from 0.25)
-		gparams.OpportunisticGraftTicks = 40          // Opportunistic grafting (increased from 30)
-		gparams.OpportunisticGraftPeers = 3           // Opportunistic peers (increased from 2)
-		gparams.PruneBackoff = 15 * time.Second       // Prune backoff (increased from 10s)
-		gparams.GraftFloodThreshold = 3 * time.Second // Graft flood threshold (increased from 2s)
-		gparams.FanoutTTL = 45 * time.Second          // Fanout TTL (increased from 30s)
-
-		psOpts := []pubsub.Option{
-			pubsub.WithMessageIdFn(messageIDFunc),
-			pubsub.WithSeenMessagesTTL(3 * time.Minute), // Increased from 2min
-
-			// CRITICAL FIX: Enable FloodPublish for small clusters
-			pubsub.WithFloodPublish(true), // ← THIS IS THE MOST IMPORTANT FIX!
-
-			pubsub.WithPeerExchange(true),
-			pubsub.WithDirectPeers([]peer.AddrInfo{}),
-			pubsub.WithGossipSubParams(gparams),
-			pubsub.WithDirectConnectTicks(5),
-			pubsub.WithEventTracer(&MeshTracer{}),
-		}
-
-		if trace := os.Getenv("GOSSIPSUB_TRACE"); trace != "" {
-			if tr, err := pubsub.NewJSONTracer(trace); err == nil {
-				psOpts = append(psOpts, pubsub.WithEventTracer(tr))
-				logger.Debug("[ELECTION] GossipSub trace enabled: %s", trace)
-			}
-		}
-
-		ps, err = pubsub.NewGossipSub(termCtx, hostMain, psOpts...)
-		if err != nil {
-			logger.Error("[ERROR] Failed to initialize GossipSub for ELECTION: %v", err)
-			os.Exit(1)
-		}
-		logger.Election("✅ GossipSub initialized with Kubernetes-optimized parameters   D=%d, Dlo=%d, Dhi=%d, Heartbeat=%v",
-			gparams.D, gparams.Dlo, gparams.Dhi, gparams.HeartbeatInterval)
-
-		electionTopic, err = ps.Join("optimusdb")
-		if err != nil {
-			logger.Error("[ERROR] Failed to join election topic: %v", err)
-			os.Exit(1)
-		}
-		logger.Election("Agent ✅ Joined election topic 'optimusdb'")
-
-		electionSub, err = electionTopic.Subscribe()
-		if err != nil {
-			logger.Error("[ELECTION] Failed to subscribe to election topic: %v", err)
-			os.Exit(1)
-		}
-		logger.Election("Agent ✅ Subscribed to election topic")
 	}
 
-	// Store in knowledgeBaseDB for election to use
+	// ✅ STEP 2: Calculate optimal GossipSub parameters based on cluster size
+	var D, Dlo, Dhi int
+	var meshType string
+
+	if expectedClusterSize <= 10 {
+		// FULL MESH for small clusters (3-10 nodes)
+		// Every node connects to every other node for maximum reliability
+		D = expectedClusterSize - 1
+		Dlo = max(2, D-1)
+		Dhi = expectedClusterSize + 2
+		meshType = "FULL MESH"
+		logger.Election("[CONFIG] Small cluster detected: configuring for FULL MESH")
+	} else if expectedClusterSize <= 50 {
+		// PARTIAL MESH for medium clusters (11-50 nodes)
+		// Each node connects to sqrt(N) + 5 peers for good coverage
+		D = int(math.Sqrt(float64(expectedClusterSize))) + 5
+		Dlo = D - 2
+		Dhi = D + 5
+		meshType = "PARTIAL MESH"
+		logger.Election("[CONFIG] Medium cluster detected: configuring for PARTIAL MESH")
+	} else {
+		// SPARSE MESH for large clusters (51+ nodes)
+		// Each node connects to log10(N) * 10 peers for efficiency
+		D = int(math.Log10(float64(expectedClusterSize))) * 10
+		Dlo = D - 3
+		Dhi = D + 10
+		meshType = "SPARSE MESH"
+		logger.Election("[CONFIG] Large cluster detected: configuring for SPARSE MESH")
+	}
+
+	// Apply safety bounds
+	D = max(3, D)
+	Dlo = max(2, Dlo)
+	Dhi = max(D+2, Dhi)
+
+	logger.Election("[CONFIG] ════════════════════════════════════════════════════════════")
+	logger.Election("[CONFIG] Mesh Configuration:")
+	logger.Election("[CONFIG]   Type: %s", meshType)
+	logger.Election("[CONFIG]   Cluster size: %d nodes", expectedClusterSize)
+	logger.Election("[CONFIG]   D (target peers): %d", D)
+	logger.Election("[CONFIG]   Dlo (minimum): %d", Dlo)
+	logger.Election("[CONFIG]   Dhi (maximum): %d", Dhi)
+	logger.Election("[CONFIG]   Expected coverage: %.1f%%", (float64(D)/float64(expectedClusterSize-1))*100)
+	logger.Election("[CONFIG] ════════════════════════════════════════════════════════════")
+
+	// ✅ STEP 3: Create message ID function for deduplication
+	messageIDFunc := func(pmsg *pubsub_pb.Message) string {
+		h := sha256.New()
+		h.Write(pmsg.Data)
+		h.Write(pmsg.From)
+		return hex.EncodeToString(h.Sum(nil))[:20]
+	}
+
+	// ✅ STEP 4: Configure GossipSub parameters
+	gparams := pubsub.DefaultGossipSubParams()
+	gparams.D = D                                 // ✅ DYNAMIC - scales with cluster
+	gparams.Dlo = Dlo                             // ✅ DYNAMIC - scales with cluster
+	gparams.Dhi = Dhi                             // ✅ DYNAMIC - scales with cluster
+	gparams.Dscore = max(2, D/2)                  // Peer score threshold
+	gparams.Dout = max(2, D/3)                    // Outbound connections
+	gparams.Dlazy = max(3, D/2)                   // Gossip peers
+	gparams.HeartbeatInterval = 1 * time.Second   // Heartbeat frequency
+	gparams.HistoryLength = 12                    // Message history
+	gparams.HistoryGossip = 6                     // Gossip history
+	gparams.GossipFactor = 0.3                    // Gossip probability
+	gparams.OpportunisticGraftTicks = 40          // Opportunistic grafting
+	gparams.OpportunisticGraftPeers = 3           // Opportunistic peers
+	gparams.PruneBackoff = 15 * time.Second       // Prune backoff
+	gparams.GraftFloodThreshold = 3 * time.Second // Graft flood threshold
+	gparams.FanoutTTL = 45 * time.Second          // Fanout TTL
+
+	// ✅ STEP 5: Build GossipSub options
+	psOpts := []pubsub.Option{
+		pubsub.WithMessageIdFn(messageIDFunc),
+		pubsub.WithSeenMessagesTTL(3 * time.Minute),
+		pubsub.WithFloodPublish(expectedClusterSize <= 10), // ✅ DYNAMIC - only for small clusters
+		pubsub.WithPeerExchange(true),
+		pubsub.WithDirectPeers([]peer.AddrInfo{}),
+		pubsub.WithGossipSubParams(gparams),
+		pubsub.WithDirectConnectTicks(5),
+		pubsub.WithEventTracer(&MeshTracer{}),
+	}
+
+	// Optional: Enable JSON trace logging
+	if trace := os.Getenv("GOSSIPSUB_TRACE"); trace != "" {
+		if tr, err := pubsub.NewJSONTracer(trace); err == nil {
+			psOpts = append(psOpts, pubsub.WithEventTracer(tr))
+			logger.Debug("[GOSSIPSUB] Trace logging enabled: %s", trace)
+		}
+	}
+
+	// ✅ STEP 6: Create GossipSub instance
+	ps, err = pubsub.NewGossipSub(termCtx, hostMain, psOpts...)
+	if err != nil {
+		logger.Error("[FATAL] Failed to initialize GossipSub: %v", err)
+		os.Exit(1)
+	}
+	logger.Election("[GOSSIPSUB] Successfully created with D=%d, Dlo=%d, Dhi=%d", D, Dlo, Dhi)
+
+	// ✅ STEP 7: Join election topic
+	electionTopic, err = ps.Join("optimusdb")
+	if err != nil {
+		logger.Error("[FATAL] Failed to join election topic: %v", err)
+		os.Exit(1)
+	}
+	logger.Election("[GOSSIPSUB] Joined topic 'optimusdb'")
+
+	// ✅ STEP 8: Subscribe to election topic
+	electionSub, err = electionTopic.Subscribe()
+	if err != nil {
+		logger.Error("[FATAL] Failed to subscribe to election topic: %v", err)
+		os.Exit(1)
+	}
+	logger.Election("[GOSSIPSUB] Subscribed to topic 'optimusdb'")
+
+	// ✅ STEP 9: Store in knowledgeBaseDB for election to use
 	knowledgeBaseDB.ElectionTopic = electionTopic
 	knowledgeBaseDB.ElectionSub = electionSub
 	knowledgeBaseDB.PubSub = ps
 
-	logger.Election(" ✅ Election topic and subscription ready")
+	logger.Election("════════════════════════════════════════════════════════════")
+	logger.Election("GOSSIPSUB INITIALIZATION COMPLETE")
+	logger.Election("  Scales from 3 to 100+ nodes automatically")
+	logger.Election("  Current configuration: %s for %d nodes", meshType, expectedClusterSize)
+	logger.Election("════════════════════════════════════════════════════════════")
 
 	// ===============================
 	// START MESH MONITORING
@@ -463,13 +539,11 @@ func main() {
 	go MonitorMeshStatus(termCtx, ps, electionTopic, hostMain)
 
 	// ═══════════════════════════════════════════════════════════════
-	// FIX #2: EXTENDED MESH STABILIZATION FOR KUBERNETES
+	// MESH STABILIZATION WITH PROGRESSIVE VERIFICATION
 	// ═══════════════════════════════════════════════════════════════
+	logger.Election("[MESH] Waiting for mesh formation...")
+	time.Sleep(10 * time.Second) // Initial wait for discovery
 
-	// Initial wait for discovery
-	time.Sleep(10 * time.Second)
-
-	// Progressive mesh verification with retries
 	maxMeshWaitAttempts := 6
 	meshCheckInterval := 5 * time.Second
 	requiredMeshCoverage := 0.8 // Require 80% mesh coverage
@@ -483,7 +557,8 @@ func main() {
 		meshCount := len(meshPeers)
 		connectedCount := len(connectedPeers)
 
-		logger.Election("[ELECTION] Mesh check %d/%d , Discovered peers: %d , Connected peers: %d , Mesh peers: %d", attempt, maxMeshWaitAttempts, discoveredCount, connectedCount, meshCount)
+		logger.Election("[MESH] Check %d/%d: discovered=%d, connected=%d, mesh=%d",
+			attempt, maxMeshWaitAttempts, discoveredCount, connectedCount, meshCount)
 
 		// Calculate mesh coverage
 		var meshCoverage float64
@@ -493,39 +568,38 @@ func main() {
 			meshCoverage = 0
 		}
 
-		logger.Election("[ELECTION]   Mesh coverage: %.1f%%", meshCoverage*100)
+		logger.Election("[MESH]   Coverage: %.1f%% (target: %.1f%%)", meshCoverage*100, requiredMeshCoverage*100)
 
 		// Check if mesh is sufficiently formed
 		if meshCoverage >= requiredMeshCoverage && meshCount >= 2 {
-			logger.Election("[ELECTION] ✅ Mesh stabilization COMPLETE, Coverage: %.1f%% (target: %.1f%%)",
-				meshCoverage*100, requiredMeshCoverage*100)
+			logger.Election("[MESH] Stabilization COMPLETE - Coverage: %.1f%%", meshCoverage*100)
 			break
 		}
 
 		if attempt < maxMeshWaitAttempts {
-			logger.Warn("[ELECTION] ⚠️  Mesh coverage insufficient, waiting %v...", meshCheckInterval)
+			logger.Warn("[MESH] Coverage insufficient, waiting %v...", meshCheckInterval)
 			time.Sleep(meshCheckInterval)
 		} else {
-			logger.Warn("[ELECTION] ⚠️  Mesh stabilization incomplete after %d attempts", maxMeshWaitAttempts)
-			logger.Warn("[ELECTION]    Proceeding with partial mesh (coverage: %.1f%%)", meshCoverage*100)
-			logger.Warn("[ELECTION]    Elections may have reduced reliability")
+			logger.Warn("[MESH] Stabilization incomplete after %d attempts", maxMeshWaitAttempts)
+			logger.Warn("[MESH]   Proceeding with partial mesh (%.1f%% coverage)", meshCoverage*100)
+			logger.Warn("[MESH]   Elections may have reduced reliability")
 		}
 	}
 
 	// Final verification
 	finalMeshPeers := electionTopic.ListPeers()
 	finalDiscovered := knowledgeBaseDB.GetDiscoveredPeers()
-	logger.Election("Final mesh status with  Mesh peers: %d, Discovered peers: %d", len(finalMeshPeers), len(finalDiscovered))
+	logger.Election("[MESH] Final status: mesh=%d peers, discovered=%d peers",
+		len(finalMeshPeers), len(finalDiscovered))
 
 	// Additional stabilization buffer
-	//logger.Info("[ELECTION] Applying final stabilization buffer (5s)...")
 	time.Sleep(5 * time.Second)
 
 	// ===============================
 	// START ELECTION CONTROLLER
 	// ===============================
 	electionNode := election.RunFullNode(termCtx, hostMain, ps, &knowledgeBaseDB)
-	logger.Election("✅ ELECTION CONTROLLER INITIALIZED, Agent stored globally: %v", electionNode != nil)
+	logger.Election("[ELECTION] Controller initialized (node stored globally: %v)", electionNode != nil)
 
 	// ===============================
 	// START BACKGROUND METADATA ENRICHER
@@ -541,7 +615,7 @@ func main() {
 			metadataEnricher.EnrichNow()
 		}()
 
-		logger.Info("[METADATA] ✅ Background enricher started")
+		logger.Info("[METADATA] Background enricher started")
 	}
 
 	// Register shutdown handlers
@@ -565,13 +639,13 @@ func main() {
 	// Persist config & benchmark
 	err = config.SaveStructAsJSON(knowledgeBaseDB.Config, *config.FlagRepo+"_config")
 	if err != nil {
-		logger.Error("Problem faced in SaveStructAsJSON, with error: %v", err)
+		logger.Error("Problem saving config: %v", err)
 		return
 	}
 	benchmarkPath := *config.FlagRepo + "_benchmark"
 	err = config.SaveStructAsJSON(knowledgeBaseDB.Benchmark, benchmarkPath)
 	if err != nil {
-		logger.Error("Problem faced in SaveStructAsJSON in benchmark, with error: %v", err)
+		logger.Error("Problem saving benchmark: %v", err)
 		return
 	}
 
@@ -579,13 +653,13 @@ func main() {
 	if knowledgeBaseDB.Orbit != nil {
 		err := (*knowledgeBaseDB.Orbit).Close()
 		if err != nil {
-			logger.Error("Problem faced in Closing Optimusdb Data Store pointer, with error: %v", err)
+			logger.Error("Problem closing OrbitDB: %v", err)
 			return
 		}
 	}
 
 	log.Println("[SHUTDOWN] Complete")
-	logger.Info("[SHUTDOWN] Shutting down OptimusDB node...Complete")
+	logger.Info("[SHUTDOWN] OptimusDB node shutdown complete")
 }
 
 func printSwarmchestrate() {
@@ -593,12 +667,12 @@ func printSwarmchestrate() {
 	var font *figletlib.Font
 
 	if _, err := os.Stat(fontsDir); os.IsNotExist(err) {
-		logger.Debug("Directory does not exist:%v and it will be created", fontsDir)
+		logger.Debug("Directory does not exist: %v, will create", fontsDir)
 		fontsDir = figletlib.GuessFontsDirectory()
 		f, err := figletlib.GetFontByName(fontsDir, "standard")
 		if err != nil {
 			fmt.Println("Error loading font:", err)
-			logger.Error("Error loading font:", err)
+			logger.Error("Error loading font: %v", err)
 			return
 		}
 		font = f
@@ -607,7 +681,7 @@ func printSwarmchestrate() {
 		f, err := figletlib.GetFontByName(fontsDir, "standard")
 		if err != nil {
 			fmt.Println("Error loading font:", err)
-			logger.Error("Error loading font:", err)
+			logger.Error("Error loading font: %v", err)
 			return
 		}
 		font = f
@@ -631,16 +705,16 @@ func handleShutdown(service *api.Service, knowledgeBaseDB *app.KnowledgeBaseDB, 
 	if knowledgeBaseDB != nil && knowledgeBaseDB.Orbit != nil {
 		err := (*knowledgeBaseDB.Orbit).Close()
 		if err != nil {
-			logger.Error("Problem faced in Closing knowledgeBaseDB Data Store pointer, with error: %v", err)
+			logger.Error("Problem closing OrbitDB: %v", err)
 			return
 		}
 		logger.Info("[SHUTDOWN] OrbitDB instance closed.")
 	}
 
 	if err := h.Close(); err != nil {
-		logger.Error("[ERROR] Error while closing LibP2P host: %v", err)
+		logger.Error("[SHUTDOWN] Error closing LibP2P host: %v", err)
 	} else {
-		logger.Info("[SHUTDOWN] LibP2P host shut down successfully.")
+		logger.Info("[SHUTDOWN] LibP2P host closed successfully.")
 	}
 
 	os.Exit(0)

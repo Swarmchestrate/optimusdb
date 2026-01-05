@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/ipfs/go-cid"
@@ -13,11 +15,13 @@ import (
 	mdns "github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
+	"math"
 	"optimusdb/app"
 	"optimusdb/config"
 	"optimusdb/logger"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -55,23 +59,23 @@ func isOwnAddress(h host.Host, addr string) bool {
 	return false
 }
 
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // PrintDiscoveredPeers periodically prints the list of discovered peers
-// Writes discovered peer information to contributions
-// Periodically writes new peers to the contributions database.
-// Each peer discovery event is added as a JSON entry.
-// awaitWriteEvent (service.go) - Listens for write events.
-// awaitStoreExchange (service.go) - Replicates contributions DB from peers.
-// PrintDiscoveredPeers (discovery.go) - Stores discovered peers in contributions.
-// getContri (service.go) - Handles CONTRI command to retrieve contributions.
 func PrintDiscoveredPeers(optimusdb *app.KnowledgeBaseDB) {
 	ctx := context.Background()
 	dbContri := optimusdb.Contributions
 
-	ticker := time.NewTicker(100 * time.Second) // Runs every 100 seconds
+	ticker := time.NewTicker(100 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		peerList.Lock() // Prevent concurrent modification
+		peerList.Lock()
 		if len(peerList.peers) == 0 {
 			logger.DISc("No peers discovered yet")
 		} else {
@@ -79,13 +83,11 @@ func PrintDiscoveredPeers(optimusdb *app.KnowledgeBaseDB) {
 			logger.DISc("Contributions Store: %v", (*dbContri).Address().String())
 
 			for id, info := range peerList.peers {
-				// Ensure the peer has valid addresses before proceeding
 				if len(info.Addrs) == 0 {
 					logger.Warn("Skipping peer %s due to empty address list", id)
 					continue
 				}
 
-				// Add the event to the contributions store
 				optimusdb.ContributionsMtx.Lock()
 				err := (*dbContri).Load(ctx, -1)
 				if err != nil {
@@ -152,7 +154,6 @@ func extractIPFrom(addr multiaddr.Multiaddr) (string, error) {
 	return "", fmt.Errorf("no IP component found in multiaddr: %s", addr.String())
 }
 
-// Converts Multiaddr array to string array
 func convertMultiaddrsToString(addrs []multiaddr.Multiaddr) []string {
 	var strAddrs []string
 	for _, addr := range addrs {
@@ -161,25 +162,17 @@ func convertMultiaddrsToString(addrs []multiaddr.Multiaddr) []string {
 	return strAddrs
 }
 
-// HandlePeerFound is triggered when a new peer is discovered via any method
 func (n *DiscoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 	logger.DISc("Found peer: %v", pi.ID)
 
-	// Add to peer tracker for HTTP API
 	TrackPeer(pi)
-
-	// Register into discovered peer DB
 	n.db.AddDiscoveredPeer(string(pi.ID))
-
-	// Add peer to peerstore
 	n.host.Peerstore().AddAddr(pi.ID, pi.Addrs[0], peerstore.PermanentAddrTTL)
 
-	// Add peer to global list
 	peerList.Lock()
 	peerList.peers[pi.ID] = pi
 	peerList.Unlock()
 
-	// Attempt connection
 	err := n.host.Connect(context.Background(), pi)
 	if err != nil {
 		logger.Warn("Failed to connect to discovered peer %v: %v", pi.ID, err)
@@ -188,10 +181,8 @@ func (n *DiscoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 	}
 }
 
-// extractIP extracts the IP part from a multiaddr.Multiaddr
 func extractIP(addr multiaddr.Multiaddr) string {
 	components := strings.Split(addr.String(), "/")
-
 	for i, component := range components {
 		if component == "ip4" || component == "ip6" {
 			if i+1 < len(components) {
@@ -199,16 +190,11 @@ func extractIP(addr multiaddr.Multiaddr) string {
 			}
 		}
 	}
-
 	return "no IP component found in multiaddr: " + addr.String()
 }
 
-// StartMdnsDiscovery initializes mDNS-based peer discovery
 func StartMdnsDiscovery(h host.Host, mdnsServiceName string) *Service {
-	// Define the discovery handler
 	peerHandler := &DiscoveryNotifee{host: h}
-
-	// Start mDNS service
 	mdnsService := mdns.NewMdnsService(h, mdnsServiceName, peerHandler)
 	if mdnsService == nil {
 		logger.Error("Failed to start mDNS: Service is nil")
@@ -228,7 +214,6 @@ func StartMdnsDiscovery(h host.Host, mdnsServiceName string) *Service {
 	}
 }
 
-// stopMdnsDiscovery stops the mDNS service
 func (s *Service) stopMdnsDiscovery() {
 	if s.mdns != nil {
 		s.mdns.Close()
@@ -236,20 +221,15 @@ func (s *Service) stopMdnsDiscovery() {
 	}
 }
 
-// WaitForExit listens for termination signals and cleans up
 func WaitForExit(service *Service) {
-	// Listen for OS termination signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	<-sigChan // Block until a signal is received
-
+	<-sigChan
 	logger.Warn("Received termination signal in Discovery. Cleaning up...")
 	service.stopMdnsDiscovery()
 	os.Exit(0)
 }
 
-// listenPubSub listens for new peer announcements
 func (s *Service) listenPubSub(handler *DiscoveryNotifee) {
 	for {
 		msg, err := s.Sub.Next(context.Background())
@@ -268,21 +248,17 @@ func (s *Service) listenPubSub(handler *DiscoveryNotifee) {
 	}
 }
 
-// StopDiscovery cleans up discovery services
 func (s *Service) StopDiscovery() {
-	// mDNS service
 	if s.mdns != nil {
 		s.mdns.Close()
 		logger.DISc("mDNS discovery stopped")
 	}
 
-	// PubSub service
 	if s.Pubsub != nil && s.Topic != nil {
 		s.Topic.Close()
 		logger.DISc("PubSub discovery stopped")
 	}
 
-	// DHT service
 	if s.dht != nil {
 		logger.DISc("Stopping DHT discovery")
 		err := s.dht.Close()
@@ -296,7 +272,97 @@ func (s *Service) StopDiscovery() {
 	logger.DISc("All discovery services stopped")
 }
 
-// StartDiscovery initializes all enabled discovery mechanisms
+// ═══════════════════════════════════════════════════════════════════════════
+// ✅ FIX: CreateGossipSubWithDynamicParams - REPLACES OLD HARDCODED VERSION
+// ═══════════════════════════════════════════════════════════════════════════
+func CreateGossipSubWithDynamicParams(ctx context.Context, h host.Host) (*pubsub.PubSub, error) {
+	// Get expected cluster size from environment or use default
+	expectedClusterSize := 8 // Default for small clusters
+	if envSize := os.Getenv("CLUSTER_SIZE"); envSize != "" {
+		if size, err := strconv.Atoi(envSize); err == nil && size > 0 {
+			expectedClusterSize = size
+			logger.DISc("Using CLUSTER_SIZE from environment: %d", expectedClusterSize)
+		}
+	}
+
+	// Calculate optimal GossipSub parameters based on cluster size
+	var D, Dlo, Dhi int
+
+	if expectedClusterSize <= 10 {
+		// FULL MESH for small clusters (3-10 nodes)
+		D = expectedClusterSize - 1
+		Dlo = max(2, D-1)
+		Dhi = expectedClusterSize + 2
+		logger.DISc("Configuring for SMALL cluster (full mesh): D=%d, Dlo=%d, Dhi=%d", D, Dlo, Dhi)
+	} else if expectedClusterSize <= 50 {
+		// PARTIAL MESH for medium clusters (11-50 nodes)
+		D = int(math.Sqrt(float64(expectedClusterSize))) + 5
+		Dlo = D - 2
+		Dhi = D + 5
+		logger.DISc("Configuring for MEDIUM cluster (partial mesh): D=%d, Dlo=%d, Dhi=%d", D, Dlo, Dhi)
+	} else {
+		// SPARSE MESH for large clusters (51+ nodes)
+		D = int(math.Log10(float64(expectedClusterSize))) * 10
+		Dlo = D - 3
+		Dhi = D + 10
+		logger.DISc("Configuring for LARGE cluster (sparse mesh): D=%d, Dlo=%d, Dhi=%d", D, Dlo, Dhi)
+	}
+
+	// Ensure minimum safety bounds
+	D = max(3, D)
+	Dlo = max(2, Dlo)
+	Dhi = max(D+2, Dhi)
+
+	logger.DISc("Final GossipSub parameters: D=%d, Dlo=%d, Dhi=%d (cluster size: %d)",
+		D, Dlo, Dhi, expectedClusterSize)
+
+	// Message ID function for deduplication
+	messageIDFunc := func(pmsg *pubsub.Message) string {
+		h := sha256.New()
+		h.Write(pmsg.Data)
+		h.Write(pmsg.From)
+		return hex.EncodeToString(h.Sum(nil))[:20]
+	}
+
+	// Configure GossipSub parameters
+	gparams := pubsub.DefaultGossipSubParams()
+	gparams.D = D
+	gparams.Dlo = Dlo
+	gparams.Dhi = Dhi
+	gparams.Dscore = max(2, D/2)
+	gparams.Dout = max(2, D/3)
+	gparams.Dlazy = max(3, D/2)
+	gparams.HeartbeatInterval = 1 * time.Second
+	gparams.HistoryLength = 12
+	gparams.HistoryGossip = 6
+	gparams.GossipFactor = 0.3
+	gparams.OpportunisticGraftTicks = 40
+	gparams.OpportunisticGraftPeers = 3
+	gparams.PruneBackoff = 15 * time.Second
+	gparams.GraftFloodThreshold = 3 * time.Second
+	gparams.FanoutTTL = 45 * time.Second
+
+	// Create GossipSub with dynamic parameters
+	ps, err := pubsub.NewGossipSub(ctx, h,
+		pubsub.WithMessageIdFn(messageIDFunc),
+		pubsub.WithSeenMessagesTTL(3*time.Minute),
+		pubsub.WithFloodPublish(expectedClusterSize <= 10), // Only for small clusters
+		pubsub.WithPeerExchange(true),
+		pubsub.WithGossipSubParams(gparams),
+		pubsub.WithDirectConnectTicks(5),
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GossipSub: %w", err)
+	}
+
+	logger.DISc("✅ GossipSub created successfully with dynamic parameters")
+	return ps, nil
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ✅ UPDATED: StartDiscovery - NOW RETURNS NIL FOR PUBSUB DISCOVERY
+// ═══════════════════════════════════════════════════════════════════════════
 func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service {
 	logger.DISc("Starting enhanced peer discovery")
 
@@ -323,7 +389,6 @@ func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service 
 	if *config.FlagAutodiscoveryDHT {
 		logger.DISc("Enabling DHT discovery")
 
-		// Initialize Kademlia DHT (full routing mode)
 		kademliaDHT, err := dht.New(context.Background(), h, dht.Mode(dht.ModeServer))
 		if err != nil {
 			logger.Error("Failed to initialize DHT: %v", err)
@@ -331,7 +396,7 @@ func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service 
 			service.dht = kademliaDHT
 			logger.DISc("DHT routing discovery initialized")
 
-			// Start advertising our presence
+			// Start advertising
 			go func() {
 				for {
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -356,7 +421,7 @@ func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service 
 				}
 			}()
 
-			// Start finding peers periodically
+			// Start finding peers
 			go func() {
 				for {
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -379,38 +444,12 @@ func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service 
 		}
 	}
 
-	// Start PubSub discovery if enabled
+	// ✅ CRITICAL CHANGE: DO NOT create GossipSub here anymore
+	// Let main.go create it with unified parameters
 	if *config.FlagAutodiscoveryipfsPubSub {
-		logger.DISc("Enabling PubSub-based discovery")
-
-		// FIX #3: Added FloodPublish to improve message delivery in small clusters
-		// FloodPublish ensures all peers receive messages even if mesh isn't perfect
-		ps, err := pubsub.NewGossipSub(context.Background(), h,
-			pubsub.WithPeerExchange(true),
-			pubsub.WithFloodPublish(true), // FIX #3: Ensure delivery in 3-node cluster
-		)
-
-		if err != nil {
-			logger.Error("Failed to initialize PubSub: %v", err)
-		} else {
-			logger.DISc("GossipSub created with default mesh (crash-safe)")
-
-			topic, err := ps.Join("optimusdb")
-			if err != nil {
-				logger.Error("Failed to join PubSub topic: %v", err)
-			} else {
-				sub, err := topic.Subscribe()
-				if err != nil {
-					logger.Error("Failed to subscribe to topic: %v", err)
-				} else {
-					service.Pubsub = ps
-					service.Topic = topic
-					service.Sub = sub
-					go service.listenPubSub(peerHandler)
-					logger.DISc("Subscribed to optimusdb topic")
-				}
-			}
-		}
+		logger.DISc("PubSub discovery flag enabled")
+		logger.DISc("⚠️  GossipSub will be created by main.go with unified parameters")
+		logger.DISc("   (Discovery service will NOT create separate GossipSub)")
 	}
 
 	logger.DISc("Discovery service initialization complete")
