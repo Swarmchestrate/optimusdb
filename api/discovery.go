@@ -6,19 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/ipfs/go-cid"
-	dht "github.com/libp2p/go-libp2p-kad-dht"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/peerstore"
-	mdns "github.com/libp2p/go-libp2p/p2p/discovery/mdns"
-	"github.com/multiformats/go-multiaddr"
-	"github.com/multiformats/go-multihash"
 	"math"
-	"optimusdb/app"
-	"optimusdb/config"
-	"optimusdb/logger"
 	"os"
 	"os/signal"
 	"strconv"
@@ -26,6 +14,21 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/ipfs/go-cid"
+	dht "github.com/libp2p/go-libp2p-kad-dht"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	pubsub_pb "github.com/libp2p/go-libp2p-pubsub/pb"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
+	mdns "github.com/libp2p/go-libp2p/p2p/discovery/mdns"
+	"github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multihash"
+
+	"optimusdb/app"
+	"optimusdb/config"
+	"optimusdb/logger"
 )
 
 // Service represents the discovery service
@@ -316,8 +319,8 @@ func CreateGossipSubWithDynamicParams(ctx context.Context, h host.Host) (*pubsub
 	logger.DISc("Final GossipSub parameters: D=%d, Dlo=%d, Dhi=%d (cluster size: %d)",
 		D, Dlo, Dhi, expectedClusterSize)
 
-	// Message ID function for deduplication
-	messageIDFunc := func(pmsg *pubsub.Message) string {
+	// ✅ FIXED: Message ID function with correct signature (uses pubsub_pb.Message)
+	messageIDFunc := func(pmsg *pubsub_pb.Message) string {
 		h := sha256.New()
 		h.Write(pmsg.Data)
 		h.Write(pmsg.From)
