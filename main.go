@@ -410,7 +410,7 @@ func main() {
 			pubsub.WithMessageIdFn(messageIDFunc),
 			pubsub.WithSeenMessagesTTL(3 * time.Minute), // Increased from 2min
 
-			// ✅ CRITICAL FIX: Enable FloodPublish for small clusters
+			// CRITICAL FIX: Enable FloodPublish for small clusters
 			pubsub.WithFloodPublish(true), // ← THIS IS THE MOST IMPORTANT FIX!
 
 			pubsub.WithPeerExchange(true),
