@@ -671,8 +671,7 @@ func printSwarmchestrate() {
 		fontsDir = figletlib.GuessFontsDirectory()
 		f, err := figletlib.GetFontByName(fontsDir, "standard")
 		if err != nil {
-			fmt.Println("Error loading font:", err)
-			logger.Error("Error loading font: %v", err)
+			logger.Warn("Could not load figlet fonts: %v", err)
 			return
 		}
 		font = f
@@ -680,8 +679,7 @@ func printSwarmchestrate() {
 		logger.Info("Directory exists: %v", fontsDir)
 		f, err := figletlib.GetFontByName(fontsDir, "standard")
 		if err != nil {
-			fmt.Println("Error loading font:", err)
-			logger.Error("Error loading font: %v", err)
+			logger.Warn("Could not load figlet fonts: %v", err)
 			return
 		}
 		font = f

@@ -235,10 +235,10 @@ func (rl *MessageRateLimiter) AllowMessage(from peer.ID, msgType string) bool {
 
 		if rl.violators[from] >= 5 {
 			rl.bannedPeers[from] = time.Now().Add(5 * time.Minute)
-			logger.Error("[SECURITY] Peer %s BANNED for 5min (violations: %d)",
+			logger.Warn(" Peer %s BANNED for 5min due to too many send messages for elections(violations: %d)",
 				from.String(), rl.violators[from])
 		} else {
-			logger.Warn("[SECURITY] Rate limit exceeded by %s (violation #%d)",
+			logger.Warn("Election Rate limit exceeded by %s (violation #%d)",
 				from.String(), rl.violators[from])
 		}
 

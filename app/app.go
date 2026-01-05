@@ -13,7 +13,6 @@ import (
 	"optimusdb/logger"
 	"optimusdb/mq"
 	"optimusdb/queryengine"
-
 	"os"
 	"path/filepath"
 	"runtime"
@@ -1040,6 +1039,96 @@ func sanitizeSQLQuery(query string) string {
 }
 
 /*
+fixTuplegetterQuotes fixes SQL syntax errors caused by unescaped quotes in _tuplegetter strings.
+
+External services (catalogfrontend, catalogmetadata) sometimes send queries like:
+
+	WHERE relation_type='_tuplegetter(0, 'Alias for field number 0')'
+
+This breaks SQL parsing because the internal quotes aren't escaped. This function
+converts them to SQLite-safe double quotes:
+
+	WHERE relation_type='_tuplegetter(0, ''Alias for field number 0'')'
+
+Example:
+
+	Input:  WHERE r.relation_type='_tuplegetter(0, 'Alias for field number 0')'
+	Output: WHERE r.relation_type='_tuplegetter(0, ''Alias for field number 0'')'
+*/
+func fixTuplegetterQuotes(query string) string {
+	// Pattern: find text inside _tuplegetter(...) that contains unescaped quotes
+	// We need to escape quotes ONLY inside the _tuplegetter parentheses
+
+	result := query
+
+	// Find all _tuplegetter occurrences
+	tupleStart := 0
+	for {
+		tupleStart = strings.Index(result[tupleStart:], "_tuplegetter")
+		if tupleStart == -1 {
+			break
+		}
+
+		// Find the opening parenthesis
+		parenStart := strings.Index(result[tupleStart:], "(")
+		if parenStart == -1 {
+			break
+		}
+		parenStart += tupleStart
+
+		// Find the matching closing parenthesis
+		depth := 1
+		parenEnd := parenStart + 1
+		for parenEnd < len(result) && depth > 0 {
+			if result[parenEnd] == '(' {
+				depth++
+			} else if result[parenEnd] == ')' {
+				depth--
+			}
+			parenEnd++
+		}
+
+		if depth != 0 {
+			// Unbalanced parentheses, skip this one
+			tupleStart = parenEnd
+			continue
+		}
+
+		// Extract the content inside parentheses
+		tupleContent := result[parenStart+1 : parenEnd-1]
+
+		// Escape single quotes inside by doubling them, but only if not already doubled
+		fixedContent := ""
+		i := 0
+		for i < len(tupleContent) {
+			if tupleContent[i] == '\'' {
+				// Check if next char is also a quote (already escaped)
+				if i+1 < len(tupleContent) && tupleContent[i+1] == '\'' {
+					// Already escaped, keep both
+					fixedContent += "''"
+					i += 2
+				} else {
+					// Not escaped, double it
+					fixedContent += "''"
+					i++
+				}
+			} else {
+				fixedContent += string(tupleContent[i])
+				i++
+			}
+		}
+
+		// Rebuild the query with fixed content
+		result = result[:parenStart+1] + fixedContent + result[parenEnd-1:]
+
+		// Move past this _tuplegetter for next iteration
+		tupleStart = parenEnd
+	}
+
+	return result
+}
+
+/*
 sqlDML executes SQL statements and returns results if it's a SELECT query.
 
 FIX #4 NOTE: If you encounter 'near "Alias": syntax error' or similar SQLite errors,
@@ -1066,7 +1155,11 @@ func (kb *KnowledgeBaseSQLite) SqlDML(stmt string, logChan chan Log) (interface{
 		return nil, errors.New("ERROR: kb.DB obj in SQL DML is nil")
 	}
 
-	// FIX #4: Auto-sanitize SELECT queries to prevent reserved word errors
+	// ✅ FIX #1: Fix unescaped quotes in _tuplegetter strings FIRST
+	// This must happen before sanitizeSQLQuery
+	stmt = fixTuplegetterQuotes(stmt)
+
+	// ✅ FIX #2: Auto-sanitize SELECT queries to prevent reserved word errors
 	if strings.HasPrefix(strings.TrimSpace(strings.ToUpper(stmt)), "SELECT") {
 		stmt = sanitizeSQLQuery(stmt)
 	}
@@ -1076,7 +1169,6 @@ func (kb *KnowledgeBaseSQLite) SqlDML(stmt string, logChan chan Log) (interface{
 		// Execute SELECT query and fetch results
 		rows, err := kb.DB.Query(stmt)
 		if err != nil {
-			//logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("ERROR: Problem executing SELECT statement: %v", err)}
 			logger.Error("[ERROR] Problem executing SELECT statement: %v , statement: %s", err, stmt)
 			return nil, err
 		}
@@ -1119,7 +1211,6 @@ func (kb *KnowledgeBaseSQLite) SqlDML(stmt string, logChan chan Log) (interface{
 	// If it's an INSERT, UPDATE, DELETE statement
 	result, err := kb.DB.Exec(stmt)
 	if err != nil {
-		//logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("ERROR: Problem executing DML statement: %v", err)}
 		logger.Error("[ERROR] Problem executing DML statement: %v", err)
 		return nil, err
 	}
@@ -1130,7 +1221,7 @@ func (kb *KnowledgeBaseSQLite) SqlDML(stmt string, logChan chan Log) (interface{
 		return nil, err
 	}
 	logger.Info("[INFO] SQL statement executed successfully, affected rows: %d", rowsAffected)
-	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("SQL statement executed successfully, affected rows: %d", rowsAffected), runtime.GOOS)
+
 	// Return success response
 	return fmt.Sprintf("SQL statement executed successfully, affected rows: %d", rowsAffected), nil
 }
