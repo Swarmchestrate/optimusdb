@@ -528,11 +528,9 @@ func main() {
 	knowledgeBaseDB.ElectionSub = electionSub
 	knowledgeBaseDB.PubSub = ps
 
-	logger.Election("════════════════════════════════════════════════════════════")
 	logger.Election("GOSSIPSUB INITIALIZATION COMPLETE")
 	logger.Election("  Scales from 3 to 100+ nodes automatically")
 	logger.Election("  Current configuration: %s for %d nodes", meshType, expectedClusterSize)
-	logger.Election("════════════════════════════════════════════════════════════")
 
 	// ===============================
 	// START MESH MONITORING

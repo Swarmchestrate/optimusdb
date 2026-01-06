@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ipfs/interface-go-ipfs-core/options"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"log"
@@ -29,7 +30,6 @@ import (
 	"berty.tech/go-orbit-db/iface"
 	"berty.tech/go-orbit-db/stores"
 	files "github.com/ipfs/go-ipfs-files"
-	"github.com/ipfs/interface-go-ipfs-core/options"
 	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -500,8 +500,6 @@ func awaitStoreExchange(optimusdb *KnowledgeBaseDB, logChan chan Log) {
 	}
 
 	for {
-		// TODO : refactor to return if contributions is present
-
 		// received data should contain the id of the peers db
 		msg, err := sub.Next(context.Background())
 		if err != nil {
@@ -1917,40 +1915,81 @@ func validationMapToStruct(m map[string]interface{}) Validation {
 }
 
 // wait for the replicated event and pin data if full replication is enabled
-// TODO : this is very similar to awaitWriteEvent, try to combine the two and see
-// if it makes sense
+// awaitReplicateEvent waits for replication events across ALL datastores
+// awaitReplicateEvent waits for replication events across ALL datastores
 func awaitReplicateEvent(optimusdb *KnowledgeBaseDB, logChan chan Log) {
-	// since contributions datastore may be nil, wait till it isn't
-	for optimusdb.Contributions == nil {
+	// Wait for at least one datastore to be initialized
+	for optimusdb.Contributions == nil &&
+		optimusdb.DsSWres == nil &&
+		optimusdb.KBMetadata == nil &&
+		optimusdb.KBdata == nil {
 		time.Sleep(time.Second)
 	}
 
-	// subscribe to replicated event
-	contributions := *optimusdb.Contributions
-	subdb, err := contributions.EventBus().Subscribe([]interface{}{
+	// =========================================================================
+	// SUBSCRIBE TO ALL DATASTORES (not just Contributions!)
+	// =========================================================================
+
+	// 1. Contributions EventLog
+	if optimusdb.Contributions != nil {
+		go awaitReplicateForStore(*optimusdb.Contributions, "Contributions", optimusdb, logChan)
+	}
+
+	// 2. DsSWres DocumentStore
+	if optimusdb.DsSWres != nil {
+		go awaitReplicateForDocStore(*optimusdb.DsSWres, "DsSWres", optimusdb, logChan)
+	}
+
+	// 3. DsSWresaloc DocumentStore
+	if optimusdb.DsSWresaloc != nil {
+		go awaitReplicateForDocStore(*optimusdb.DsSWresaloc, "DsSWresaloc", optimusdb, logChan)
+	}
+
+	// 4. KBMetadata DocumentStore
+	if optimusdb.KBMetadata != nil {
+		go awaitReplicateForDocStore(*optimusdb.KBMetadata, "KBMetadata", optimusdb, logChan)
+	}
+
+	// 5. KBdata DocumentStore
+	if optimusdb.KBdata != nil {
+		go awaitReplicateForDocStore(*optimusdb.KBdata, "KBdata", optimusdb, logChan)
+	}
+
+	// Keep main goroutine alive
+	select {}
+}
+
+// awaitReplicateForStore handles replication events for EventLogStore (Contributions)
+func awaitReplicateForStore(store iface.EventLogStore, storeName string,
+	optimusdb *KnowledgeBaseDB, logChan chan Log) {
+
+	subdb, err := store.EventBus().Subscribe([]interface{}{
 		new(stores.EventReplicated),
 	})
 	if err != nil {
-		logChan <- Log{RecoverableErr, err}
+		logChan <- Log{RecoverableErr, fmt.Errorf("failed to subscribe to %s replication: %w", storeName, err)}
 		return
 	}
 	defer subdb.Close()
 
+	logger.Info("[REPLICATION] Listening for replication events on %s", storeName)
+
+	// Get CoreAPI from orbit instance (like original code)
 	coreAPI := (*optimusdb.Orbit).IPFS()
 
 	subChan := subdb.Out()
 	for {
-		// get the new entry
 		e := <-subChan
 		re := e.(stores.EventReplicated)
 
-		// check if the replication was executed on the contributions db
-		if re.Address.GetPath() != contributions.Address().GetPath() {
+		// Check if event is for this store
+		if re.Address.GetPath() != store.Address().GetPath() {
 			continue
 		}
-		entries := re.Entries
 
-		logChan <- Log{Info, fmt.Sprintf("Replicated event with %d entries", len(entries))}
+		entries := re.Entries
+		logger.Info("[REPLICATION] %s: Replicated %d entries from peer", storeName, len(entries))
+
 		for _, entry := range entries {
 			// get the ipfs-log operation from the entry
 			opStr := entry.GetPayload()
@@ -1978,11 +2017,64 @@ func awaitReplicateEvent(optimusdb *KnowledgeBaseDB, logChan chan Log) {
 			// replicate by adding pin
 			if *config.FlagFullReplica {
 				pth := contribution.Path
-
 				ctx := context.Background()
 				parsedPth := path.New(pth)
 				opts := options.Pin.Recursive(true)
 				coreAPI.Pin().Add(ctx, parsedPth, opts)
+			}
+		}
+	}
+}
+
+// awaitReplicateForDocStore handles replication events for DocumentStores
+func awaitReplicateForDocStore(store iface.DocumentStore, storeName string,
+	optimusdb *KnowledgeBaseDB, logChan chan Log) {
+
+	subdb, err := store.EventBus().Subscribe([]interface{}{
+		new(stores.EventReplicated),
+	})
+	if err != nil {
+		logChan <- Log{RecoverableErr, fmt.Errorf("failed to subscribe to %s replication: %w", storeName, err)}
+		return
+	}
+	defer subdb.Close()
+
+	logger.Info("[REPLICATION] Listening for replication events on %s", storeName)
+
+	subChan := subdb.Out()
+	for {
+		e := <-subChan
+		re := e.(stores.EventReplicated)
+
+		// Check if event is for this store
+		if re.Address.GetPath() != store.Address().GetPath() {
+			continue
+		}
+
+		entries := re.Entries
+		logger.Info("[REPLICATION] %s: Replicated %d documents from peer", storeName, len(entries))
+
+		// Optional: Process replicated documents
+		for i, entry := range entries {
+			opStr := entry.GetPayload()
+			var op opDoc
+			err := json.Unmarshal(opStr, &op)
+			if err != nil {
+				logger.Warn("[REPLICATION] %s: Failed to parse entry %d: %v", storeName, i, err)
+				continue
+			}
+
+			// Parse document
+			var doc map[string]interface{}
+			err = json.Unmarshal(op.Value, &doc)
+			if err != nil {
+				logger.Warn("[REPLICATION] %s: Failed to parse document %d: %v", storeName, i, err)
+				continue
+			}
+
+			// Log replicated document ID
+			if docID, ok := doc["_id"]; ok {
+				logger.Info("[REPLICATION] %s: Document %v replicated successfully", storeName, docID)
 			}
 		}
 	}
