@@ -54,11 +54,12 @@
 							"raw": "{\n  \"file\": \"{{webapp_adt_base64}}\",\n  \"filename\": \"webapp_adt.yaml\",\n  \"store_full_structure\": true\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/upload",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/upload",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"upload"
 							]
@@ -103,11 +104,12 @@
 							"raw": "{\n  \"file\": \"{{capacity_profile_base64}}\",\n  \"filename\": \"capacity_profile.yaml\",\n  \"store_full_structure\": true\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/upload",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/upload",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"upload"
 							]
@@ -148,11 +150,12 @@
 							"raw": "{\n  \"file\": \"{{opentofu_hybrid_base64}}\",\n  \"filename\": \"opentofu_hybrid.yaml\",\n  \"store_full_structure\": true\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/upload",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/upload",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"upload"
 							]
@@ -193,11 +196,12 @@
 							"raw": "{\n  \"file\": \"{{deployment_plan_base64}}\",\n  \"filename\": \"deployment_plan.yaml\",\n  \"store_full_structure\": true\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/upload",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/upload",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"upload"
 							]
@@ -238,11 +242,12 @@
 							"raw": "{\n  \"file\": \"{{app_requirements_base64}}\",\n  \"filename\": \"app_requirements.yaml\",\n  \"store_full_structure\": true\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/upload",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/upload",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"upload"
 							]
@@ -296,11 +301,54 @@
 									"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": []\n}\n\n// Or get all documents in the datastore"
 								},
 								"url": {
-									"raw": "{{base_url}}/{{context}}/command",
+									"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 									"host": [
 										"{{base_url}}"
 									],
 									"path": [
+										"optimusdb1",
+										"{{context}}",
+										"command"
+									]
+								},
+								"description": "Retrieve all TOSCA templates from the dsswres DocumentStore.\n\n**Expected:** Returns all uploaded TOSCA templates (should be 5 if all uploads succeeded)"
+							},
+							"response": []
+						},
+						{
+							"name": "Delete All TOSCA Templates",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											""
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"^.*$\"}}]\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/optimusdb1/{{context}}/command",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"optimusdb1",
 										"{{context}}",
 										"command"
 									]
@@ -341,11 +389,12 @@
 									"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"{{webapp_template_id}}\"\n    }\n  ]\n}"
 								},
 								"url": {
-									"raw": "{{base_url}}/{{context}}/command",
+									"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 									"host": [
 										"{{base_url}}"
 									],
 									"path": [
+										"optimusdb1",
 										"{{context}}",
 										"command"
 									]
@@ -369,11 +418,12 @@
 									"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"tosca_definitions_version\": \"tosca_simple_yaml_1_3\"\n    }\n  ]\n}"
 								},
 								"url": {
-									"raw": "{{base_url}}/{{context}}/command",
+									"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 									"host": [
 										"{{base_url}}"
 									],
 									"path": [
+										"optimusdb1",
 										"{{context}}",
 										"command"
 									]
@@ -416,14 +466,15 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n    \"method\": {\n        \"argcnt\": 10000,\n        \"cmd\": \"crudput\"\n    },\n    \"args\": [\"tosca_webapp_microservices_v1_0_0\", \"tosca_template\"],\n    \"dstype\": \"kbdata\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n        {\n            \"_id\": \"tosca_webapp_microservices_v1_0_0\",\n            \"document_type\": \"tosca_template\",\n            \"tosca_version\": \"tosca_simple_yaml_1_3\",\n            \"template_name\": \"WebApp-MicroservicesApplication\",\n            \"template_author\": \"Swarmchestrate Orchestrator\",\n            \"template_version\": \"1.0.0\",\n            \"kb_datastore\": \"ADT\",\n            \"creation_timestamp\": \"2025-11-05T10:30:00Z\",\n            \"description\": \"E-commerce web application with frontend, backend API, and database components\",\n            \n            \"components\": {\n                \"web_frontend\": {\n                    \"type\": \"tosca.nodes.Container.Application.Docker\",\n                    \"image\": \"swarmchestrate/webapp-frontend:v1.2.3\",\n                    \"ports\": [\"80:80\", \"443:443\"],\n                    \"environment\": {\n                        \"API_ENDPOINT\": \"http://backend:8080/api\",\n                        \"NODE_ENV\": \"production\"\n                    },\n                    \"endpoint_protocol\": \"http\",\n                    \"endpoint_port\": 80,\n                    \"endpoint_path\": \"/\",\n                    \"dependencies\": [\"api_gateway\"],\n                    \"host\": \"frontend_container_runtime\"\n                },\n                \"api_gateway\": {\n                    \"type\": \"tosca.nodes.Container.Application.Docker\",\n                    \"image\": \"swarmchestrate/api-gateway:v2.1.0\",\n                    \"ports\": [\"8080:8080\"],\n                    \"environment\": {\n                        \"DATABASE_URL\": \"postgresql://dbuser:dbpass@postgres_db:5432/appdb\",\n                        \"REDIS_URL\": \"redis://cache:6379\",\n                        \"JWT_SECRET\": \"encrypted_secret_placeholder\"\n                    },\n                    \"endpoint_protocol\": \"http\",\n                    \"endpoint_port\": 8080,\n                    \"endpoint_path\": \"/api\",\n                    \"dependencies\": [\"postgres_db\", \"redis_cache\"],\n                    \"host\": \"backend_container_runtime\"\n                },\n                \"postgres_db\": {\n                    \"type\": \"tosca.nodes.Database.PostgreSQL\",\n                    \"name\": \"appdb\",\n                    \"port\": 5432,\n                    \"user\": \"dbuser\",\n                    \"password\": \"encrypted_password_placeholder\",\n                    \"endpoint_protocol\": \"postgresql\",\n                    \"endpoint_port\": 5432,\n                    \"host\": \"database_container_runtime\"\n                },\n                \"redis_cache\": {\n                    \"type\": \"tosca.nodes.Database.Redis\",\n                    \"port\": 6379,\n                    \"max_memory\": \"1GB\",\n                    \"eviction_policy\": \"allkeys-lru\",\n                    \"endpoint_protocol\": \"redis\",\n                    \"endpoint_port\": 6379,\n                    \"host\": \"cache_container_runtime\"\n                }\n            },\n            \n            \"container_runtimes\": {\n                \"frontend_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 2,\n                    \"mem_size_gb\": 4\n                },\n                \"backend_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 4,\n                    \"mem_size_gb\": 8\n                },\n                \"database_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 4,\n                    \"mem_size_gb\": 16,\n                    \"disk_size_gb\": 100\n                },\n                \"cache_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 2,\n                    \"mem_size_gb\": 2\n                }\n            },\n            \n            \"resource_totals\": {\n                \"total_cpu_cores\": 12,\n                \"total_memory_gb\": 30,\n                \"total_disk_gb\": 100\n            },\n            \n            \"deployment_tiers\": [\"frontend\", \"backend\", \"data\"],\n            \n            \"groups\": {\n                \"frontend_tier\": [\"web_frontend\"],\n                \"backend_tier\": [\"api_gateway\", \"redis_cache\"],\n                \"data_tier\": [\"postgres_db\"]\n            },\n            \n            \"policies\": {\n                \"scaling\": {\n                    \"enabled\": true,\n                    \"targets\": [\"frontend_tier\", \"backend_tier\"],\n                    \"min_instances\": 2,\n                    \"max_instances\": 10,\n                    \"default_instances\": 3\n                },\n                \"placement\": {\n                    \"enabled\": true,\n                    \"targets\": [\"data_tier\"],\n                    \"constraint\": \"region=eu-central\",\n                    \"anti_affinity\": true,\n                    \"placement_region\": \"eu-central\"\n                },\n                \"monitoring\": {\n                    \"enabled\": true,\n                    \"targets\": [\"web_frontend\", \"api_gateway\", \"postgres_db\"],\n                    \"interval\": \"30s\",\n                    \"metrics\": [\"cpu_utilization\", \"memory_usage\", \"response_time\", \"error_rate\"]\n                }\n            },\n            \n            \"technology_stack\": [\"Docker\", \"PostgreSQL\", \"Redis\", \"Node.js\"],\n            \n            \"node_types\": [\n                \"tosca.nodes.Container.Application.Docker\",\n                \"tosca.nodes.Database.PostgreSQL\",\n                \"tosca.nodes.Database.Redis\",\n                \"tosca.nodes.Container.Runtime.Docker\"\n            ],\n            \n            \"endpoints\": {\n                \"application_endpoint\": \"http://web_frontend:80/\",\n                \"api_endpoint\": \"http://api_gateway:8080/api\"\n            },\n            \n            \"imports\": [\n                \"https://swarmchestrate.eu/tosca/types/nodes.yaml\",\n                \"https://swarmchestrate.eu/tosca/types/relationships.yaml\"\n            ],\n            \n            \"created_at\": \"2025-11-05T10:30:00Z\",\n            \"updated_at\": \"auto-calculate\",\n            \"kbagent\": \"swarmchestrate-orchestrator\",\n            \"kbagent_type\": \"TOSCA\"\n        }\n    ]\n}"
+									"raw": "{\n    \"method\": {\n        \"argcnt\": 1,\n        \"cmd\": \"crudput\"\n    },\n    \"args\": [\"tosca_webapp_microservices_v1_0_0\", \"tosca_template\"],\n    \"dstype\": \"dsswres\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n        {\n            \"_id\": \"tosca_webapp_microservices_v1_0_0\",\n            \"document_type\": \"tosca_template\",\n            \"tosca_version\": \"tosca_simple_yaml_1_3\",\n            \"template_name\": \"WebApp-MicroservicesApplication\",\n            \"template_author\": \"Swarmchestrate Orchestrator\",\n            \"template_version\": \"1.0.0\",\n            \"kb_datastore\": \"ADT\",\n            \"creation_timestamp\": \"2025-11-05T10:30:00Z\",\n            \"description\": \"E-commerce web application with frontend, backend API, and database components\",\n            \n            \"components\": {\n                \"web_frontend\": {\n                    \"type\": \"tosca.nodes.Container.Application.Docker\",\n                    \"image\": \"swarmchestrate/webapp-frontend:v1.2.3\",\n                    \"ports\": [\"80:80\", \"443:443\"],\n                    \"environment\": {\n                        \"API_ENDPOINT\": \"http://backend:8080/api\",\n                        \"NODE_ENV\": \"production\"\n                    },\n                    \"endpoint_protocol\": \"http\",\n                    \"endpoint_port\": 80,\n                    \"endpoint_path\": \"/\",\n                    \"dependencies\": [\"api_gateway\"],\n                    \"host\": \"frontend_container_runtime\"\n                },\n                \"api_gateway\": {\n                    \"type\": \"tosca.nodes.Container.Application.Docker\",\n                    \"image\": \"swarmchestrate/api-gateway:v2.1.0\",\n                    \"ports\": [\"8080:8080\"],\n                    \"environment\": {\n                        \"DATABASE_URL\": \"postgresql://dbuser:dbpass@postgres_db:5432/appdb\",\n                        \"REDIS_URL\": \"redis://cache:6379\",\n                        \"JWT_SECRET\": \"encrypted_secret_placeholder\"\n                    },\n                    \"endpoint_protocol\": \"http\",\n                    \"endpoint_port\": 8080,\n                    \"endpoint_path\": \"/api\",\n                    \"dependencies\": [\"postgres_db\", \"redis_cache\"],\n                    \"host\": \"backend_container_runtime\"\n                },\n                \"postgres_db\": {\n                    \"type\": \"tosca.nodes.Database.PostgreSQL\",\n                    \"name\": \"appdb\",\n                    \"port\": 5432,\n                    \"user\": \"dbuser\",\n                    \"password\": \"encrypted_password_placeholder\",\n                    \"endpoint_protocol\": \"postgresql\",\n                    \"endpoint_port\": 5432,\n                    \"host\": \"database_container_runtime\"\n                },\n                \"redis_cache\": {\n                    \"type\": \"tosca.nodes.Database.Redis\",\n                    \"port\": 6379,\n                    \"max_memory\": \"1GB\",\n                    \"eviction_policy\": \"allkeys-lru\",\n                    \"endpoint_protocol\": \"redis\",\n                    \"endpoint_port\": 6379,\n                    \"host\": \"cache_container_runtime\"\n                }\n            },\n            \n            \"container_runtimes\": {\n                \"frontend_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 2,\n                    \"mem_size_gb\": 4\n                },\n                \"backend_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 4,\n                    \"mem_size_gb\": 8\n                },\n                \"database_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 4,\n                    \"mem_size_gb\": 16,\n                    \"disk_size_gb\": 100\n                },\n                \"cache_container_runtime\": {\n                    \"type\": \"tosca.nodes.Container.Runtime.Docker\",\n                    \"num_cpus\": 2,\n                    \"mem_size_gb\": 2\n                }\n            },\n            \n            \"resource_totals\": {\n                \"total_cpu_cores\": 12,\n                \"total_memory_gb\": 30,\n                \"total_disk_gb\": 100\n            },\n            \n            \"deployment_tiers\": [\"frontend\", \"backend\", \"data\"],\n            \n            \"groups\": {\n                \"frontend_tier\": [\"web_frontend\"],\n                \"backend_tier\": [\"api_gateway\", \"redis_cache\"],\n                \"data_tier\": [\"postgres_db\"]\n            },\n            \n            \"policies\": {\n                \"scaling\": {\n                    \"enabled\": true,\n                    \"targets\": [\"frontend_tier\", \"backend_tier\"],\n                    \"min_instances\": 2,\n                    \"max_instances\": 10,\n                    \"default_instances\": 3\n                },\n                \"placement\": {\n                    \"enabled\": true,\n                    \"targets\": [\"data_tier\"],\n                    \"constraint\": \"region=eu-central\",\n                    \"anti_affinity\": true,\n                    \"placement_region\": \"eu-central\"\n                },\n                \"monitoring\": {\n                    \"enabled\": true,\n                    \"targets\": [\"web_frontend\", \"api_gateway\", \"postgres_db\"],\n                    \"interval\": \"30s\",\n                    \"metrics\": [\"cpu_utilization\", \"memory_usage\", \"response_time\", \"error_rate\"]\n                }\n            },\n            \n            \"technology_stack\": [\"Docker\", \"PostgreSQL\", \"Redis\", \"Node.js\"],\n            \n            \"node_types\": [\n                \"tosca.nodes.Container.Application.Docker\",\n                \"tosca.nodes.Database.PostgreSQL\",\n                \"tosca.nodes.Database.Redis\",\n                \"tosca.nodes.Container.Runtime.Docker\"\n            ],\n            \n            \"endpoints\": {\n                \"application_endpoint\": \"http://web_frontend:80/\",\n                \"api_endpoint\": \"http://api_gateway:8080/api\"\n            },\n            \n            \"imports\": [\n                \"https://swarmchestrate.eu/tosca/types/nodes.yaml\",\n                \"https://swarmchestrate.eu/tosca/types/relationships.yaml\"\n            ],\n            \n            \"created_at\": \"2025-11-05T10:30:00Z\",\n            \"updated_at\": \"auto-calculate\",\n            \"kbagent\": \"swarmchestrate-orchestrator\",\n            \"kbagent_type\": \"TOSCA\"\n        }\n    ]\n}"
 								},
 								"url": {
-									"raw": "{{base_url}}/{{context}}/command",
+									"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 									"host": [
 										"{{base_url}}"
 									],
 									"path": [
+										"optimusdb1",
 										"{{context}}",
 										"command"
 									]
@@ -461,14 +512,15 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n    \"method\": {\n        \"argcnt\": 10000,\n        \"cmd\": \"query\"\n    },\n    \"args\": [\"tosca_webapp_microservices_v1_0_0\", \"tosca_template\"],\n    \"dstype\": \"kbdata\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n        {\n           \"document_type\": \"tosca_template\",\n           \"kb_datastore\": \"ADT\"\n        }\n    ],\n    \"options\": {\n        \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n        \"time_budget_ms\": 1000,\n        \"annotate_source\": true\n    }\n}\n\n//Query 1: Find tosca templates from ADT Datastore"
+									"raw": "{\n    \"method\": {\n        \"argcnt\": 10000,\n        \"cmd\": \"query\"\n    },\n    \"args\": [\"tosca_webapp_microservices_v1_0_0\", \"tosca_template\"],\n    \"dstype\": \"dsswres\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n        {\n           \"document_type\": \"tosca_template\",\n           \"kb_datastore\": \"ADT\"\n        }\n    ],\n    \"options\": {\n        \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n        \"time_budget_ms\": 1000,\n        \"annotate_source\": true\n    }\n}\n\n//Query 1: Find tosca templates from ADT Datastore"
 								},
 								"url": {
-									"raw": "{{base_url}}/{{context}}/command",
+									"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 									"host": [
 										"{{base_url}}"
 									],
 									"path": [
+										"optimusdb1",
 										"{{context}}",
 										"command"
 									]
@@ -506,14 +558,15 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n    \"method\": {\n        \"argcnt\": 10000,\n        \"cmd\": \"query\"\n    },\n    \"args\": [\"tosca_webapp_microservices_v1_0_0\", \"tosca_template\"],\n    \"dstype\": \"kbdata\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n    {\n      \"document_type\": \"tosca_template\",\n      \"template_author\": \"Swarmchestrate Orchestrator\"\n    }\n    ],\n    \"options\": {\n        \"strategy\": \"LOCAL_ONLY\",\n        \"time_budget_ms\": 500\n    }\n}\n\n//Query 1: Find tosca templates from ADT Datastore"
+									"raw": "{\n    \"method\": {\n        \"argcnt\": 10000,\n        \"cmd\": \"query\"\n    },\n    \"args\": [\"tosca_webapp_microservices_v1_0_0\", \"tosca_template\"],\n    \"dstype\": \"dsswres\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n    {\n      \"document_type\": \"tosca_template\",\n      \"template_author\": \"Swarmchestrate Orchestrator\"\n    }\n    ],\n    \"options\": {\n        \"strategy\": \"LOCAL_ONLY\",\n        \"time_budget_ms\": 500\n    }\n}\n\n//Query 1: Find tosca templates from ADT Datastore"
 								},
 								"url": {
-									"raw": "{{base_url}}/{{context}}/command",
+									"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 									"host": [
 										"{{base_url}}"
 									],
 									"path": [
+										"optimusdb1",
 										"{{context}}",
 										"command"
 									]
@@ -551,14 +604,15 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n    \"method\": {\n        \"argcnt\": 10000,\n        \"cmd\": \"query\"\n    },\n    \"args\": [\"*\", \"capacity_description\"],\n    \"dstype\": \"kbdata\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n        {\n            \"document_type\": \"capacity_description\",\n            \"metadata_status\": \"available\"\n        }\n    ],\n    \"options\": {\n        \"strategy\": \"PARALLEL_AGGREGATE\",\n        \"time_budget_ms\": 2000,\n        \"annotate_source\": true,\n        \"client_filters\": {\n            \"node_types\": {\n                \"$contains\": \"tosca.nodes.Compute.GPU\"\n            },\n            \"topology.edge_compute_node_01.properties.available_memory\": {\n                \"$regex\": \".*[0-9]{2,}.*GB.*\"\n            }\n        }\n    }\n}\n\n//Returns: EdgeCluster-CapacityProfile (has NVIDIA A100 GPU and 96GB available memory)"
+									"raw": "{\n    \"method\": {\n        \"argcnt\": 10000,\n        \"cmd\": \"query\"\n    },\n    \"args\": [\"*\", \"capacity_description\"],\n    \"dstype\": \"dsswres\",\n    \"sqlselect\": \"\",\n    \"criteria\": [\n        {\n            \"document_type\": \"capacity_description\",\n            \"metadata_status\": \"available\"\n        }\n    ],\n    \"options\": {\n        \"strategy\": \"PARALLEL_AGGREGATE\",\n        \"time_budget_ms\": 2000,\n        \"annotate_source\": true,\n        \"client_filters\": {\n            \"node_types\": {\n                \"$contains\": \"tosca.nodes.Compute.GPU\"\n            },\n            \"topology.edge_compute_node_01.properties.available_memory\": {\n                \"$regex\": \".*[0-9]{2,}.*GB.*\"\n            }\n        }\n    }\n}\n\n//Returns: EdgeCluster-CapacityProfile (has NVIDIA A100 GPU and 96GB available memory)"
 								},
 								"url": {
-									"raw": "{{base_url}}/{{context}}/command",
+									"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 									"host": [
 										"{{base_url}}"
 									],
 									"path": [
+										"optimusdb1",
 										"{{context}}",
 										"command"
 									]
@@ -590,11 +644,12 @@
 											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"crudput\"\n  },\n  \"args\": [\"tosca_webapp_microservicesapplication_v1_0_0\", \"application_description\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"_id\": \"tosca_webapp_microservicesapplication_v1_0_0\",\n      \"document_type\": \"application_description\",\n      \"tosca_version\": \"tosca_simple_yaml_1_3\",\n      \n      \"metadata\": {\n        \"template_name\": \"WebApp-MicroservicesApplication\",\n        \"template_author\": \"Swarmchestrate Orchestrator\",\n        \"template_version\": \"1.0.0\",\n        \"kb_datastore\": \"ADT\",\n        \"creation_timestamp\": \"2025-11-05T10:30:00Z\"\n      },\n      \n      \"description\": \"E-commerce web application with frontend, backend API, and database components\",\n      \n      \"node_types\": [\n        \"tosca.nodes.Container.Application.Docker\",\n        \"tosca.nodes.Database.PostgreSQL\",\n        \"tosca.nodes.Database.Redis\",\n        \"tosca.nodes.Container.Runtime.Docker\"\n      ],\n      \n      \"policy_types\": [\n        \"tosca.policies.Scaling\",\n        \"tosca.policies.Placement\",\n        \"tosca.policies.Monitoring\"\n      ],\n      \n      \"groups\": [\"frontend_tier\", \"backend_tier\", \"data_tier\"],\n      \n      \"created_at\": \"2025-11-05T10:30:00Z\",\n      \"kbagent\": \"swarmchestrate_orchestrator\"\n    }\n  ]\n}\n//1. WebApp MicroservicesApplication (Application Description)"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -618,11 +673,12 @@
 											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"crudput\"\n  },\n  \"args\": [\"tosca_edgecluster_capacityprofile_v1_0_0\", \"capacity_description\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"_id\": \"tosca_edgecluster_capacityprofile_v1_0_0\",\n      \"document_type\": \"capacity_description\",\n      \"tosca_version\": \"tosca_simple_yaml_1_3\",\n      \n      \"metadata\": {\n        \"template_name\": \"EdgeCluster-CapacityProfile\",\n        \"template_author\": \"Capacity Provider\",\n        \"template_version\": \"1.0.0\",\n        \"kb_datastore\": \"Capacity_Descriptions\",\n        \"region\": \"eu-central-1\",\n        \"status\": \"available\"\n      },\n      \n      \"description\": \"Available capacity at edge location including compute, storage, and network resources\",\n      \n      \"node_types\": [\n        \"tosca.nodes.Compute.Physical\",\n        \"tosca.nodes.Storage.BlockStorage\",\n        \"tosca.nodes.Compute.GPU\",\n        \"tosca.nodes.Container.Runtime.Kubernetes\"\n      ],\n      \n      \"topology\": {\n        \"edge_compute_node_01\": {\n          \"properties\": {\n            \"available_cpu_cores\": 24,\n            \"available_memory\": \"96 GB\"\n          }\n        },\n        \"gpu_accelerator_01\": {\n          \"properties\": {\n            \"gpu_model\": \"NVIDIA A100\",\n            \"gpu_memory\": \"40 GB\",\n            \"available\": true\n          }\n        },\n        \"local_storage_01\": {\n          \"properties\": {\n            \"available_size\": \"1.5 TB\"\n          }\n        }\n      },\n      \n      \"created_at\": \"2025-11-05T10:30:00Z\",\n      \"kbagent\": \"capacity_provider\"\n    }\n  ]\n}\n// EdgeCluster CapacityProfile (Capacity Description)"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb2/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb2",
 												"{{context}}",
 												"command"
 											]
@@ -646,11 +702,12 @@
 											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"crudput\"\n  },\n  \"args\": [\"tosca_hybridinfrastructure_swarmdeployment_v1_0_0\", \"opentofu_tosca_template\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"_id\": \"tosca_hybridinfrastructure_swarmdeployment_v1_0_0\",\n      \"document_type\": \"opentofu_tosca_template\",\n      \"tosca_version\": \"tosca_simple_yaml_1_3\",\n      \n      \"metadata\": {\n        \"template_name\": \"HybridInfrastructure-SwarmDeployment\",\n        \"template_author\": \"Swarmchestrate Orchestrator\",\n        \"template_version\": \"1.0.0\",\n        \"kb_datastore\": \"OpenTofu_TOSCA_Templates\",\n        \"creation_timestamp\": \"2025-11-05T10:30:00Z\"\n      },\n      \n      \"description\": \"Hybrid infrastructure template combining TOSCA service descriptions with OpenTofu infrastructure provisioning\",\n      \n      \"node_types\": [\n        \"tosca.nodes.Container.Runtime.Kubernetes.Namespace\",\n        \"tosca.nodes.LoadBalancer.Nginx\",\n        \"tosca.nodes.ServiceMesh.Istio\",\n        \"tosca.nodes.Monitoring.Prometheus\"\n      ],\n      \n      \"groups\": [\"infrastructure_layer\", \"observability_layer\", \"security_layer\"],\n      \n      \"swarm_status\": {\n        \"total_nodes\": 12,\n        \"active_nodes\": 11\n      },\n      \n      \"opentofu_config\": {\n        \"providers\": {\n          \"kubernetes\": {\n            \"source\": \"hashicorp/kubernetes\"\n          }\n        }\n      },\n      \n      \"created_at\": \"2025-11-05T10:30:00Z\",\n      \"kbagent\": \"swarmchestrate_orchestrator\"\n    }\n  ]\n}\n//HybridInfrastructure SwarmDeployment (OpenTofu/TOSCA Template)\n"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -674,11 +731,12 @@
 											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"crudput\"\n  },\n  \"args\": [\"tosca_deploymentplan_webapp_release_v1_0_0\", \"deployment_release_plan\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"_id\": \"tosca_deploymentplan_webapp_release_v1_0_0\",\n      \"document_type\": \"deployment_release_plan\",\n      \"tosca_version\": \"tosca_simple_yaml_1_3\",\n      \n      \"metadata\": {\n        \"template_name\": \"DeploymentPlan-WebApp-Release\",\n        \"template_author\": \"Swarmchestrate Orchestrator\",\n        \"template_version\": \"1.0.0\",\n        \"execution_status\": \"ready_for_deployment\"\n      },\n      \n      \"description\": \"Executable deployment plan with specific resource assignments and orchestration instructions\",\n      \n      \"capacity_matching\": {\n        \"status\": \"successful\",\n        \"match_score\": 0.92\n      },\n      \n      \"workflows\": [\"deployment_workflow\", \"rollback_workflow\"],\n      \n      \"created_at\": \"2025-11-05T10:30:45Z\",\n      \"kbagent\": \"swarmchestrate_orchestrator\"\n    }\n  ]\n}\n//DeploymentPlan WebApp Release (Deployment/Release Plan)"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -702,11 +760,12 @@
 											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"crudput\"\n  },\n  \"args\": [\"tosca_applicationrequirements_mltrainingworkload_v1_0_0\", \"application_requirements\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"_id\": \"tosca_applicationrequirements_mltrainingworkload_v1_0_0\",\n      \"document_type\": \"application_requirements\",\n      \"tosca_version\": \"tosca_simple_yaml_1_3\",\n      \n      \"metadata\": {\n        \"template_name\": \"ApplicationRequirements-MLTrainingWorkload\",\n        \"template_author\": \"Application Owner\",\n        \"template_version\": \"1.0.0\",\n        \"priority\": \"high\",\n        \"sla_tier\": \"gold\"\n      },\n      \n      \"description\": \"Machine Learning training workload requirements for computer vision model\",\n      \n      \"node_types\": [\n        \"tosca.nodes.Application.Requirements\",\n        \"tosca.nodes.Compute.GPU.Requirements\",\n        \"tosca.nodes.Storage.Requirements\"\n      ],\n      \n      \"policy_types\": [\n        \"tosca.policies.Placement.Requirements\",\n        \"tosca.policies.Performance.Requirements\"\n      ],\n      \n      \"topology\": {\n        \"gpu_requirements\": {\n          \"properties\": {\n            \"gpu_count_min\": 2,\n            \"gpu_memory_min\": \"32 GB\"\n          }\n        },\n        \"placement_constraints\": {\n          \"properties\": {\n            \"geographical_region\": [\"eu-central\", \"eu-west\"]\n          }\n        }\n      },\n      \n      \"created_at\": \"2025-11-05T09:45:00Z\",\n      \"kbagent\": \"application_owner\"\n    }\n  ]\n}\n//ApplicationRequirements MLTrainingWorkload (Application Requirements)"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -736,11 +795,12 @@
 											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"query\"\n  },\n  \"args\": [\"*\", \"application_description\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"document_type\": \"application_description\",\n      \"metadata.kb_datastore\": \"ADT\"\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"time_budget_ms\": 1000,\n    \"annotate_source\": true\n  }\n}\n// 1 Result search document_type to of smthing AND metadata.kb_datastore (nested) to be of smthing"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -764,11 +824,12 @@
 											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"metadata.region\": \"eu-central-1\",\n      \"metadata.status\": \"available\"\n    }\n  ]\n}\n//Returns (1 record)  EdgeCluster Capacity template, Find available capacity providers in EU, use of nested fields of metadata\n"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -792,11 +853,12 @@
 											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"query\"\n  },\n  \"args\": [\"*\", \"tosca_template\"],\n  \"dstype\": \"{{dataStore}}\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"metadata.template_author\": \"Swarmchestrate Orchestrator\"\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_ONLY\",\n    \"time_budget_ms\": 500\n  }\n}\n// Returns 1 record based on the template author as part of a nested collection named as 'metadata'"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -826,11 +888,12 @@
 											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"document_type\": \"capacity_description\",\n      \"metadata.status\": \"available\",\n      \"node_types\": {\n        \"$contains\": \"tosca.nodes.Compute.GPU\"\n      },\n      \"topology.edge_compute_node_01.properties.available_cpu_cores\": {\n        \"$gte\": 20\n      }\n    }\n  ]\n}\n//Return (1 Record) Find GPU Capacity with Min 20 CPU Cores\n"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -854,11 +917,12 @@
 											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"topology.gpu_accelerator_01.properties.available\": true,\n      \"topology.gpu_accelerator_01.properties.gpu_model\": \"NVIDIA A100\"\n    }\n  ]\n}\n//Returns (1 Record) EdgeCluster Capacity template, Find nodes with available NVIDIA A100 GPUs"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -882,11 +946,12 @@
 											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"document_type\": \"application_requirements\",\n      \"metadata.priority\": \"high\"\n    }\n  ]\n}\n//Expected Result: ML Training Requirements template\n//Use Case: Find all high-priority application requests"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -910,11 +975,12 @@
 											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"document_type\": \"deployment_release_plan\",\n      \"metadata.execution_status\": \"ready_for_deployment\"\n    }\n  ]\n}\n//Expected Result: Deployment Plan template\n//Use Case: Find deployment plans ready to execute"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -938,11 +1004,12 @@
 											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"capacity_matching.status\": \"successful\",\n      \"capacity_matching.match_score\": {\n        \"$gte\": 0.9\n      }\n    }\n  ]\n}\n//Expected Result: Deployment Plan template\n//Use Case: Find high-quality deployment matches"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -972,11 +1039,12 @@
 											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"$and\": [\n        {\n          \"document_type\": \"capacity_description\"\n        },\n        {\n          \"metadata.status\": \"available\"\n        },\n        {\n          \"metadata.region\": {\n            \"$regex\": \"eu-.*\"\n          }\n        },\n        {\n          \"topology.gpu_accelerator_01.properties.available\": true\n        },\n        {\n          \"topology.edge_compute_node_01.properties.available_cpu_cores\": {\n            \"$gte\": 20\n          }\n        }\n      ]\n    }\n  ]\n}\n\n//Expected Result: EdgeCluster Capacity template\n//Use Case: Comprehensive capacity matching - find EU nodes with GPUs and sufficient CPU>20"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -1000,11 +1068,12 @@
 											"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 10000\n  },\n  \"dstype\": \"{{dataStore}}\",\n  \"criteria\": [\n    {\n      \"swarm_status.total_nodes\": {\n        \"$gte\": 10\n      },\n      \"swarm_status.active_nodes\": {\n        \"$gte\": 10\n      }\n    }\n  ]\n}\n//Expected Result: OpenTofu Hybrid template\n//Use Case: Find large active swarm clusters"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -1034,11 +1103,12 @@
 											"raw": "{\n  \"method\": {\n    \"argcnt\": 10000,\n    \"cmd\": \"query\"\n  },\n  \"args\": [\"*\", \"capacity_description\"],\n  \"dstype\": \"kbdata\",\n  \"sqlselect\": \"\",\n  \"criteria\": [\n    {\n      \"document_type\": \"capacity_description\",\n      \"metadata.status\": \"available\",\n      \"metadata.region\": {\n        \"$regex\": \"eu-central.*\"\n      },\n      \"topology.edge_compute_node_01.properties.available_cpu_cores\": {\n        \"$gte\": 16\n      },\n      \"node_types\": {\n        \"$contains\": \"tosca.nodes.Compute.GPU\"\n      },\n      \"topology.gpu_accelerator_01.properties.available\": true,\n      \"topology.local_storage_01.properties.available_size\": {\n        \"$regex\": \".*[1-9].*TB.*\"\n      }\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"PARALLEL_AGGREGATE\",\n    \"time_budget_ms\": 2500,\n    \"annotate_source\": true\n  }\n}\n\n\n//Finds capacity descriptions that match ALL of these criteria:\n/*\nDocument type is \"capacity_description\"\n Status is \"available\"\n Region matches \"eu-central*\" (eu-central-1, eu-central-2, etc.)\n Has at least 16 available CPU cores\n Node types include GPU compute nodes\n GPU accelerator is available\n Storage has at least 1TB available (regex matches \"1TB\", \"2TB\", etc.)\n\nExpected Result: 1 Record\n*/"
 										},
 										"url": {
-											"raw": "{{base_url}}/{{context}}/command",
+											"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 											"host": [
 												"{{base_url}}"
 											],
 											"path": [
+												"optimusdb1",
 												"{{context}}",
 												"command"
 											]
@@ -1074,11 +1144,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"LOCAL_ONLY\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 800\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1101,11 +1172,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"REMOTE_ONLY\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": false,\n    \"annotate_source\": true,\n    \"max_peers\": 5,\n    \"time_budget_ms\": 1000\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1128,11 +1200,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 1500\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1155,11 +1228,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"PARALLEL_MERGE\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"max_peers\": 5,\n    \"time_budget_ms\": 1800\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1182,11 +1256,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"QUORUM\",\n    \"consistency\": \"QUORUM\",\n    \"quorum_n\": 4,\n    \"min_rows\": 2,\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 2500\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1209,11 +1284,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"REMOTE_ONLY\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"max_peers\": 2,\n    \"include_local\": false,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 1200\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1236,11 +1312,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"stale_ok_ttl_ms\": 10000,\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 1200\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1263,11 +1340,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_all}}\"}}],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": true,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 2200,\n    \"force_remote\": true\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1290,11 +1368,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"demo-*\"}}],\n  \"trace_id\":  \"99a09e41\",\n    \"options\":  {\n                    \"include_local\":  true,\n                    \"time_budget_ms\":  800,\n                    \"annotate_source\":  true,\n                    \"consistency\":  \"BEST_EFFORT\",\n                    \"strategy\":  \"LOCAL_ONLY\"\n                }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1317,11 +1396,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\"},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"{{regex_none}}\"}}],\n  \"options\": {\n    \"strategy\": \"REMOTE_ONLY\",\n    \"consistency\": \"BEST_EFFORT\",\n    \"include_local\": false,\n    \"annotate_source\": true,\n    \"time_budget_ms\": 1200\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1335,6 +1415,90 @@
 		{
 			"name": "4. CRUD Operations",
 			"item": [
+				{
+					"name": "INFO - RETRIEVE ALL DOCUMENTS",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									""
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": []\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"optimusdb1",
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "Insert a test renewable energy resource document.\n\n**Note:** This demonstrates CRUD operations work correctly."
+					},
+					"response": []
+				},
+				{
+					"name": "INFO - DELETE ALL DOCUMENTS",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									""
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [{\"_id\": {\"$regex\": \"^.*$\"}}]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"optimusdb1",
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "Insert a test renewable energy resource document.\n\n**Note:** This demonstrates CRUD operations work correctly."
+					},
+					"response": []
+				},
 				{
 					"name": "INSERT - Test Document",
 					"event": [
@@ -1367,11 +1531,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudput\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\",\n      \"name\": \"Athens Solar Farm Test\",\n      \"type\": \"solar\",\n      \"capacity_mw\": 500,\n      \"location\": {\n        \"country\": \"Greece\",\n        \"region\": \"Attica\",\n        \"coordinates\": {\n          \"lat\": 37.9838,\n          \"lon\": 23.7275\n        }\n      },\n      \"status\": \"operational\",\n      \"commissioned_date\": \"2024-06-15\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1413,11 +1578,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1441,11 +1607,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"query\",\n    \"argcnt\": 0\n  },\n  \"criteria\": [\n    {\n      \"type\": \"solar\",\n      \"status\": \"operational\",\n      \"capacity_mw\": {\"$gte\": 500}   /// experiment with other value as well\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"time_budget_ms\": 1500,\n    \"annotate_source\": true\n  }\n}\n\n/*\n\n\ncriteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\",\n      \"name\": \"Athens Solar Farm Test\",\n      \"type\": \"solar\",\n      \"capacity_mw\": 500,\n      \"location\": {\n        \"country\": \"Greece\",\n        \"region\": \"Attica\",\n        \"coordinates\": {\n          \"lat\": 37.9838,\n          \"lon\": 23.7275\n        }\n      },\n      \"status\": \"operational\",\n      \"commissioned_date\": \"2024-06-15\"\n      */"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1469,11 +1636,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"query\",\n    \"argcnt\": 0\n  },\n  \"criteria\": [\n    {\n      \"location.country\": \"Greece\"\n    }\n  ],\n  \"options\": {\n    \"strategy\": \"LOCAL_THEN_REMOTE_MERGE\",\n    \"time_budget_ms\": 1500,\n    \"annotate_source\": true\n  }\n}\n\n/*\n\n\ncriteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\",\n      \"name\": \"Athens Solar Farm Test\",\n      \"type\": \"solar\",\n      \"capacity_mw\": 500,\n      \"location\": {\n        \"country\": \"Greece\",\n        \"region\": \"Attica\",\n        \"coordinates\": {\n          \"lat\": 37.9838,\n          \"lon\": 23.7275\n        }\n      },\n      \"status\": \"operational\",\n      \"commissioned_date\": \"2024-06-15\"\n      */"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1513,11 +1681,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudupdate\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ],\n  \"UpdateData\": [\n    {\n      \"status\": \"maintenance\",\n      \"maintenance_reason\": \"Scheduled panel cleaning\",\n      \"capacity_mw\": 550\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1569,11 +1738,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1613,11 +1783,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1641,11 +1812,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"status\": \"maintenance\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1686,11 +1858,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"test_solar_farm_001\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1736,11 +1909,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudput\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"batch_wind_001\",\n      \"name\": \"Crete Wind Farm\",\n      \"type\": \"wind\",\n      \"capacity_mw\": 300,\n      \"location\": {\"country\": \"Greece\", \"region\": \"Crete\"},\n      \"status\": \"operational\"\n    },\n    {\n      \"_id\": \"batch_hydro_001\",\n      \"name\": \"Pindus Hydroelectric\",\n      \"type\": \"hydro\",\n      \"capacity_mw\": 150,\n      \"location\": {\"country\": \"Greece\", \"region\": \"Epirus\"},\n      \"status\": \"operational\"\n    },\n    {\n      \"_id\": \"batch_geothermal_001\",\n      \"name\": \"Thessaloniki Geothermal\",\n      \"type\": \"geothermal\",\n      \"capacity_mw\": 80,\n      \"location\": {\"country\": \"Greece\", \"region\": \"Central Macedonia\"},\n      \"status\": \"under_construction\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1764,11 +1938,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"crudget\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"type\": \"wind\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1792,11 +1967,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"type\": \"wind\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1840,11 +2016,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"crudput\", \"argcnt\": 1},\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\n      \"_id\": \"replication_test_{{$timestamp}}\",\n      \"name\": \"Replication Test Product\",\n      \"description\": \"Testing cross-node replication in distributed cluster\",\n      \"node_source\": \"Agent1\",\n      \"test_timestamp\": \"{{$isoTimestamp}}\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1940,11 +2117,12 @@
 							"raw": "{\n  \"method\": {\"cmd\": \"query\", \"argcnt\": 0},\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ],\n  \"options\": {\n    \"strategy\": \"PARALLEL_MERGE\",\n    \"time_budget_ms\": 2000,\n    \"annotate_source\": true\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -1968,11 +2146,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"cruddelete\",\n    \"argcnt\": 1\n  },\n  \"dstype\": \"dsswres\",\n  \"criteria\": [\n    {\"node_source\": \"Agent1\"}\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -2036,11 +2215,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/agent/status",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/agent/status",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"agent",
 								"status"
@@ -2065,11 +2245,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"contri\",\n    \"argcnt\": 1\n  },\n  \"criteria\": []\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -2084,11 +2265,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/peers",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/peers",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"peers"
 							]
@@ -2103,22 +2285,23 @@
 						"method": "POST",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/log?date=2025-12-25&hour=04",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/log?date=2026-01-01&hour=17",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"log"
 							],
 							"query": [
 								{
 									"key": "date",
-									"value": "2025-12-25"
+									"value": "2026-01-01"
 								},
 								{
 									"key": "hour",
-									"value": "04"
+									"value": "17"
 								}
 							]
 						},
@@ -2132,11 +2315,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/benchmarks",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/benchmarks",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"benchmarks"
 							]
@@ -2160,11 +2344,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"benchmark\",\n    \"argcnt\": 0\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -2188,11 +2373,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"cachestats\",\n    \"argcnt\": 0\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -2216,11 +2402,12 @@
 							"raw": "{\n  \"method\": {\n    \"cmd\": \"clearcache\",\n    \"argcnt\": 0\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -2235,11 +2422,12 @@
 						"method": "POST",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/agent/inventory",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/agent/inventory",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"agent",
 								"inventory"
@@ -2250,35 +2438,68 @@
 					"response": []
 				},
 				{
-					"name": "List All uploaded FIles",
+					"name": "Mesh Status CRUD#1",
 					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "default"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\r\n  \"method\": {\r\n    \"cmd\": \"sqldml\",\r\n    \"argcnt\": 1\r\n  },\r\n  \"sqldml\": \"SELECT id, template_id, filename, filesize_bytes, content_sha256, uploader, source_pod, created_at FROM toscametadata ORDER BY created_at DESC LIMIT 10;\"\r\n}\r\n//### **2. Count Total Files**\r\n\r\n//**Request:**\r\n//Method: POST\r\n//URL: http://localhost:18001/swarmkb/command\r\n//Headers:\r\n // Content-Type: application/json",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
+						"method": "GET",
+						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/debug/optimusdb/mesh",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
-								"command"
+								"debug",
+								"optimusdb",
+								"mesh"
 							]
-						}
+						},
+						"description": "StartFragment\n\n### **GET** `/{context}/agent/inventory`\n\nReturns agent inventory (node resources, datasets, services)\n\nReturn the current status of Agent if it is Follower/Coordinator"
+					},
+					"response": []
+				},
+				{
+					"name": "Mesh Status CRUD#2",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/optimusdb2/{{context}}/debug/optimusdb/mesh",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"optimusdb2",
+								"{{context}}",
+								"debug",
+								"optimusdb",
+								"mesh"
+							]
+						},
+						"description": "StartFragment\n\n### **GET** `/{context}/agent/inventory`\n\nReturns agent inventory (node resources, datasets, services)\n\nReturn the current status of Agent if it is Follower/Coordinator"
+					},
+					"response": []
+				},
+				{
+					"name": "Mesh Status CRUD#3",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/optimusdb3/{{context}}/debug/optimusdb/mesh",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"optimusdb3",
+								"{{context}}",
+								"debug",
+								"optimusdb",
+								"mesh"
+							]
+						},
+						"description": "StartFragment\n\n### **GET** `/{context}/agent/inventory`\n\nReturns agent inventory (node resources, datasets, services)\n\nReturn the current status of Agent if it is Follower/Coordinator"
 					},
 					"response": []
 				}
@@ -2294,11 +2515,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/ems",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/ems",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"ems"
 							]
@@ -2313,11 +2535,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/ems/logs?limit=50&level=ERROR&since_min=60",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/ems/logs?limit=50&level=ERROR&since_min=60",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"ems",
 								"logs"
@@ -2350,11 +2573,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/ems/events?limit=50&since_min=30",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/ems/events?limit=50&since_min=30",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"ems",
 								"events"
@@ -2382,11 +2606,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/ems/sql?q=SELECT * FROM optimusLogger WHERE level='ERROR' LIMIT 10",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/ems/sql?q=SELECT * FROM optimusLogger WHERE level='ERROR' LIMIT 10",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"ems",
 								"sql"
@@ -2409,11 +2634,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/ems/sql?q=SELECT leader_id, term, timestamp FROM optimusLogger ORDER BY timestamp DESC LIMIT 1",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/ems/sql?q=SELECT leader_id, term, timestamp FROM optimusLogger ORDER BY timestamp DESC LIMIT 1",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"ems",
 								"sql"
@@ -2445,11 +2671,12 @@
 							"raw": "{\n  \"sql\": \"SELECT * from ems_events\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/ems/sql",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/ems/sql",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"ems",
 								"sql"
@@ -2479,11 +2706,12 @@
 							"raw": "{\n  \"@context\": [\n    \"https://www.w3.org/2018/credentials/v1\"\n  ],\n  \"id\": \"http://example.edu/credentials/3732\",\n  \"type\": [\"VerifiableCredential\"],\n  \"issuer\": \"did:example:issuer123\",\n  \"issuanceDate\": \"2025-01-01T00:00:00Z\",\n  \"credentialSubject\": {\n    \"id\": \"did:example:subject456\",\n    \"name\": \"John Doe\",\n    \"degree\": \"Bachelor of Science\"\n  },\n  \"proof\": {\n    \"type\": \"Ed25519Signature2020\",\n    \"created\": \"2025-01-01T00:00:00Z\",\n    \"verificationMethod\": \"did:example:issuer123#key-1\",\n    \"proofPurpose\": \"assertionMethod\",\n    \"proofValue\": \"z3FXQi...\"\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/credentials",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/credentials",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"credentials"
 							]
@@ -2498,11 +2726,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/credentials?limit=50&offset=0",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/credentials?limit=50&offset=0",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"credentials"
 							],
@@ -2529,11 +2758,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/credentials/get/http%3A%2F%2Fexample.edu%2Fcredentials%2F3732",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/credentials/get/http%3A%2F%2Fexample.edu%2Fcredentials%2F3732",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"credentials",
 								"get",
@@ -2559,11 +2789,12 @@
 							"raw": "{\n  \"issuer\": \"did:example:issuer123\",\n  \"type\": \"VerifiableCredential\",\n  \"issuedAfter\": \"2025-01-01T00:00:00Z\",\n  \"revoked\": false\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/credentials/query",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/credentials/query",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"credentials",
 								"query"
@@ -2579,11 +2810,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/credentials/issuer/did%3Aexample%3Aissuer123",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/credentials/issuer/did%3Aexample%3Aissuer123",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"credentials",
 								"issuer",
@@ -2600,11 +2832,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/{{context}}/credentials/subject/did%3Aexample%3Asubject456",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/credentials/subject/did%3Aexample%3Asubject456",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"credentials",
 								"subject",
@@ -2630,11 +2863,12 @@
 							"raw": "{\n  \"credentialId\": \"http://example.edu/credentials/3732\",\n  \"reason\": \"Credential no longer valid\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/credentials/revoke",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/credentials/revoke",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"credentials",
 								"revoke"
@@ -2659,11 +2893,12 @@
 							"raw": "{\n  \"@context\": [\n    \"https://www.w3.org/2018/credentials/v1\"\n  ],\n  \"id\": \"http://example.edu/credentials/3732\",\n  \"type\": [\"VerifiableCredential\"],\n  \"issuer\": \"did:example:issuer123\",\n  \"issuanceDate\": \"2025-01-01T00:00:00Z\",\n  \"credentialSubject\": {\n    \"id\": \"did:example:subject456\"\n  },\n  \"proof\": {\n    \"type\": \"Ed25519Signature2020\",\n    \"proofValue\": \"z3FXQi...\"\n  }\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/credentials/verify",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/credentials/verify",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"credentials",
 								"verify"
@@ -2693,11 +2928,12 @@
 							"raw": "{\n  \"database\": \"renewable_energy\",\n  \"table\": \"solar_telemetry\",\n  \"max_rows\": 200\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/api/v1/metadata/enrich",
+							"raw": "{{base_url}}/optimusdb1/api/v1/metadata/enrich",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"api",
 								"v1",
 								"metadata",
@@ -2723,11 +2959,12 @@
 							"raw": "{\n  \"datasets\": [\n    {\n      \"database\": \"renewable_energy\",\n      \"table\": \"solar_telemetry\"\n    },\n    {\n      \"database\": \"renewable_energy\",\n      \"table\": \"wind_telemetry\"\n    }\n  ]\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/api/v1/metadata/enrich-batch",
+							"raw": "{{base_url}}/optimusdb1/api/v1/metadata/enrich-batch",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"api",
 								"v1",
 								"metadata",
@@ -2744,11 +2981,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/api/v1/metadata/profile?db=renewable_energy&table=solar_telemetry&max_rows=200",
+							"raw": "{{base_url}}/optimusdb1/api/v1/metadata/profile?db=renewable_energy&table=solar_telemetry&max_rows=200",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"api",
 								"v1",
 								"metadata",
@@ -2782,11 +3020,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/api/v1/metadata/metrics",
+							"raw": "{{base_url}}/optimusdb1/api/v1/metadata/metrics",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"api",
 								"v1",
 								"metadata",
@@ -2803,11 +3042,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/api/v1/metadata/health",
+							"raw": "{{base_url}}/optimusdb1/api/v1/metadata/health",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"api",
 								"v1",
 								"metadata",
@@ -2824,11 +3064,12 @@
 						"method": "DELETE",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/api/v1/metadata/cache",
+							"raw": "{{base_url}}/optimusdb1/api/v1/metadata/cache",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"api",
 								"v1",
 								"metadata",
@@ -2856,19 +3097,49 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE, phone TEXT, address TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)\"\n}"
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"CREATE TABLE IF NOT EXISTS products ( id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,description TEXT,category TEXT NOT NULL,price REAL NOT NULL CHECK (price >= 0),stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
 						},
 						"description": "Create new table in SQLite database."
+					},
+					"response": []
+				},
+				{
+					"name": "SQL INSERT",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"INSERT INTO products (name, description, category, price, stock) VALUES ('Mechanical Keyboard Pro', 'Professional mechanical keyboard with Cherry MX Red switches, RGB per-key backlighting, aluminum frame, USB-C connection, N-key rollover, dedicated media controls', 'Accessories', 179.99, 50);\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"optimusdb1",
+								"{{context}}",
+								"command"
+							]
+						},
+						"description": "**SQL INSERT with automatic metadata generation.**\n\n### Automatic Metadata Process:\n1. **SQL INSERT** executed in local SQLite\n2. **System metadata** generated:\n   - Unique ID (hash-based)\n   - Timestamps (created_at, updated_at)\n   - Source information (node, IP)\n   - Author/creator tracking\n3. **Contextual metadata** attempted:\n   - TinyLlama generates description summary\n   - Keywords extracted from content\n   - Tags auto-generated\n   - Name/title inference\n4. **Metadata storage**:\n   - **OrbitDB KBMetadata**: Distributed catalog\n   - **SQLite metadata_catalog**: Local index\n5. **Replication**: Metadata synced to cluster\n\n### Generated Metadata Example:\n```json\n{\n  \"id\": \"meta_a1b2c3d4\",\n  \"metadata_type\": \"dataset\",\n  \"component\": \"products\",\n  \"behaviour\": \"transactional\",\n  \"description\": \"Professional mechanical keyboard for gaming and productivity\",\n  \"name\": \"Mechanical Keyboard Pro\",\n  \"tags\": [\"keyboard\", \"mechanical\", \"gaming\", \"rgb\"],\n  \"created_by\": \"optimusdb-node1\",\n  \"created_at\": \"2025-01-15T10:30:00Z\",\n  \"updated_at\": \"2025-01-15T10:30:00Z\"\n}\n```\n\n### Fallback Behavior:\n- If TinyLlama unavailable, basic metadata still generated\n- Description set to fallback message\n- System metadata always created\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"status\": \"success\",\n    \"message\": \"SQL statement executed successfully\"\n  }\n}\n```"
 					},
 					"response": []
 				},
@@ -2884,47 +3155,20 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"SELECT * FROM products WHERE price > 1000 ORDER BY price DESC LIMIT 10\"\n}"
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"SELECT * FROM products WHERE price > 10 ORDER BY price DESC LIMIT 10;\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
 						},
 						"description": "**Execute SQL SELECT query against local SQLite database.**\n\n### Process:\n1. Execute query on local SQLite\n2. If no results, automatically query remote peers\n3. Deduplicate results from multiple sources\n4. Return merged dataset\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"records\": [\n      {\"id\": 1, \"name\": \"Product A\", \"price\": 1500},\n      {\"id\": 2, \"name\": \"Product B\", \"price\": 1200}\n    ]\n  }\n}\n```\n\n### Features:\n- **Automatic peer fallback**: Queries peers if local DB is empty\n- **Deduplication**: Removes duplicate rows from merged results\n- **Full SQL support**: All SELECT features (JOIN, GROUP BY, etc.)"
-					},
-					"response": []
-				},
-				{
-					"name": "SQL INSERT with Metadata",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"INSERT INTO products (name, description, category, price, stock) VALUES ('Mechanical Keyboard Pro', 'Professional mechanical keyboard with Cherry MX Red switches, RGB per-key backlighting, aluminum frame, USB-C connection, N-key rollover, dedicated media controls', 'Accessories', 179.99, 50)\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"{{context}}",
-								"command"
-							]
-						},
-						"description": "**SQL INSERT with automatic metadata generation.**\n\n### Automatic Metadata Process:\n1. **SQL INSERT** executed in local SQLite\n2. **System metadata** generated:\n   - Unique ID (hash-based)\n   - Timestamps (created_at, updated_at)\n   - Source information (node, IP)\n   - Author/creator tracking\n3. **Contextual metadata** attempted:\n   - TinyLlama generates description summary\n   - Keywords extracted from content\n   - Tags auto-generated\n   - Name/title inference\n4. **Metadata storage**:\n   - **OrbitDB KBMetadata**: Distributed catalog\n   - **SQLite metadata_catalog**: Local index\n5. **Replication**: Metadata synced to cluster\n\n### Generated Metadata Example:\n```json\n{\n  \"id\": \"meta_a1b2c3d4\",\n  \"metadata_type\": \"dataset\",\n  \"component\": \"products\",\n  \"behaviour\": \"transactional\",\n  \"description\": \"Professional mechanical keyboard for gaming and productivity\",\n  \"name\": \"Mechanical Keyboard Pro\",\n  \"tags\": [\"keyboard\", \"mechanical\", \"gaming\", \"rgb\"],\n  \"created_by\": \"optimusdb-node1\",\n  \"created_at\": \"2025-01-15T10:30:00Z\",\n  \"updated_at\": \"2025-01-15T10:30:00Z\"\n}\n```\n\n### Fallback Behavior:\n- If TinyLlama unavailable, basic metadata still generated\n- Description set to fallback message\n- System metadata always created\n\n### Response:\n```json\n{\n  \"status\": 200,\n  \"data\": {\n    \"status\": \"success\",\n    \"message\": \"SQL statement executed successfully\"\n  }\n}\n```"
 					},
 					"response": []
 				},
@@ -2940,14 +3184,15 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"UPDATE products SET price = 159.99, stock = 45 WHERE name = 'Mechanical Keyboard Pro'\"\n}"
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"UPDATE products SET price = 159.99, stock = 45 WHERE name = 'Mechanical Keyboard Pro';\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -2968,14 +3213,15 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"DELETE FROM products WHERE stock = 0 AND status = 'discontinued'\"\n}"
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"DELETE FROM products WHERE stock = 0;\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -2996,14 +3242,15 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"SELECT category, COUNT(*) as count, AVG(price) as avg_price, MIN(price) as min_price, MAX(price) as max_price FROM products WHERE stock > 0 GROUP BY category HAVING COUNT(*) > 5 ORDER BY avg_price DESC\"\n}"
+							"raw": "{\n  \"method\": {\n    \"cmd\": \"sqldml\",\n    \"argcnt\": 1\n  },\n  \"sqldml\": \"SELECT category, COUNT(*) as count, AVG(price) as avg_price, MIN(price) as min_price, MAX(price) as max_price FROM products WHERE stock > 0 GROUP BY category HAVING COUNT(*) > 5 ORDER BY avg_price DESC;\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/{{context}}/command",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
+								"optimusdb1",
 								"{{context}}",
 								"command"
 							]
@@ -3033,14 +3280,13 @@
 							}
 						},
 						"url": {
-							"raw": "http://localhost:18001/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18001",
 							"path": [
-								"swarmkb",
+								"optimusdb1",
+								"{{context}}",
 								"command"
 							]
 						}
@@ -3068,14 +3314,13 @@
 							}
 						},
 						"url": {
-							"raw": "http://localhost:18001/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18001",
 							"path": [
-								"swarmkb",
+								"optimusdb1",
+								"{{context}}",
 								"command"
 							]
 						}
@@ -3103,14 +3348,47 @@
 							}
 						},
 						"url": {
-							"raw": "http://localhost:18001/swarmkb/command",
-							"protocol": "http",
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
 							"host": [
-								"localhost"
+								"{{base_url}}"
 							],
-							"port": "18001",
 							"path": [
-								"swarmkb",
+								"optimusdb1",
+								"{{context}}",
+								"command"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List All uploaded FIles from Metadata Store",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "default"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"method\": {\r\n    \"cmd\": \"sqldml\",\r\n    \"argcnt\": 1\r\n  },\r\n  \"sqldml\": \"SELECT id, template_id, filename, filesize_bytes, content_sha256, uploader, source_pod, created_at FROM toscametadata ORDER BY created_at DESC;\"\r\n}\r\n//### **2. Count Total Files**\r\n\r\n//**Request:**\r\n//Method: POST\r\n//URL: http://localhost:18001/swarmkb/command\r\n//Headers:\r\n // Content-Type: application/json",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/optimusdb1/{{context}}/command",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"optimusdb1",
+								"{{context}}",
 								"command"
 							]
 						}
@@ -3174,6 +3452,18 @@
 		},
 		{
 			"key": "dataStore",
+			"value": ""
+		},
+		{
+			"key": "timestamp",
+			"value": ""
+		},
+		{
+			"key": "isoTimestamp",
+			"value": ""
+		},
+		{
+			"key": "uuid",
 			"value": ""
 		}
 	]
