@@ -562,6 +562,262 @@ func sendSuccessResponse(w http.ResponseWriter, data interface{}) {
 	})
 }
 
+// orbitDBMeshHandler returns comprehensive OrbitDB mesh connectivity status
+func optimusdbMeshHandler(kb *app.KnowledgeBaseDB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			sendErrorResponse(w, http.StatusMethodNotAllowed, "Only GET is allowed")
+			return
+		}
+
+		status := make(map[string]interface{})
+
+		// ═══════════════════════════════════════════════════════════════
+		// 1. SELF IDENTITY
+		// ═══════════════════════════════════════════════════════════════
+		selfID := kb.Node.Identity
+		status["self_id"] = selfID.String()
+		status["self_id_short"] = selfID.String()[:12]
+		status["agent_name"] = app.GetAgentName()
+		status["timestamp"] = time.Now().UTC().Format(time.RFC3339)
+
+		// ═══════════════════════════════════════════════════════════════
+		// 2. LIBP2P TRANSPORT LAYER
+		// ═══════════════════════════════════════════════════════════════
+		libp2pPeers := kb.Node.PeerHost.Network().Peers()
+		libp2pInfo := make([]map[string]interface{}, 0)
+
+		for _, peerID := range libp2pPeers {
+			connectedness := kb.Node.PeerHost.Network().Connectedness(peerID)
+			conns := kb.Node.PeerHost.Network().ConnsToPeer(peerID)
+
+			peerInfo := map[string]interface{}{
+				"peer_id":       peerID.String(),
+				"peer_id_short": peerID.String()[:12],
+				"connectedness": connectedness.String(),
+				"connections":   len(conns),
+				"addresses":     []string{},
+			}
+
+			// Get peer addresses
+			addrs := kb.Node.PeerHost.Peerstore().Addrs(peerID)
+			addrStrs := make([]string, len(addrs))
+			for i, addr := range addrs {
+				addrStrs[i] = addr.String()
+			}
+			peerInfo["addresses"] = addrStrs
+
+			libp2pInfo = append(libp2pInfo, peerInfo)
+		}
+
+		status["libp2p"] = map[string]interface{}{
+			"connected_peers": len(libp2pPeers),
+			"peers":           libp2pInfo,
+		}
+
+		// ═══════════════════════════════════════════════════════════════
+		// 3. GOSSIPSUB MESH (ELECTION LAYER)
+		// ═══════════════════════════════════════════════════════════════
+		gossipsubInfo := map[string]interface{}{}
+
+		if kb.PubSub != nil && kb.ElectionTopic != nil {
+			topicPeers := kb.ElectionTopic.ListPeers()
+			meshPeers := kb.PubSub.ListPeers("optimusdb")
+
+			topicPeerStrs := make([]string, len(topicPeers))
+			for i, p := range topicPeers {
+				topicPeerStrs[i] = p.String()[:12]
+			}
+
+			meshPeerStrs := make([]string, len(meshPeers))
+			for i, p := range meshPeers {
+				meshPeerStrs[i] = p.String()[:12]
+			}
+
+			gossipsubInfo["topic_subscribers"] = len(topicPeers)
+			gossipsubInfo["mesh_peers"] = len(meshPeers)
+			gossipsubInfo["topic_peer_ids"] = topicPeerStrs
+			gossipsubInfo["mesh_peer_ids"] = meshPeerStrs
+		} else {
+			gossipsubInfo["error"] = "GossipSub not initialized"
+		}
+
+		status["gossipsub"] = gossipsubInfo
+
+		// ═══════════════════════════════════════════════════════════════
+		// 4. DISCOVERY LAYER
+		// ═══════════════════════════════════════════════════════════════
+		discoveredPeers := kb.GetDiscoveredPeers()
+		discoveredShort := make([]string, len(discoveredPeers))
+		for i, p := range discoveredPeers {
+			if len(p) >= 12 {
+				discoveredShort[i] = p[:12]
+			} else {
+				discoveredShort[i] = p
+			}
+		}
+
+		status["discovery"] = map[string]interface{}{
+			"discovered_count": len(discoveredPeers),
+			"discovered_peers": discoveredShort,
+		}
+
+		// ═══════════════════════════════════════════════════════════════
+		// 5. ORBITDB STORES STATUS
+		// ═══════════════════════════════════════════════════════════════
+		stores := make(map[string]interface{})
+
+		// Helper to safely get store address
+		getStoreAddress := func(storeName string, storePtr interface{}) string {
+			if storePtr == nil {
+				return ""
+			}
+
+			// Use type assertion to get Address() method
+			type addressable interface {
+				Address() interface{ String() string }
+			}
+
+			if addr, ok := storePtr.(addressable); ok {
+				return addr.Address().String()
+			}
+			return "unknown"
+		}
+
+		// Check Contributions (EventLogStore)
+		if kb.Contributions != nil {
+			stores["contributions"] = map[string]interface{}{
+				"initialized": true,
+				"address":     getStoreAddress("contributions", *kb.Contributions),
+				"type":        "EventLogStore",
+			}
+		} else {
+			stores["contributions"] = map[string]interface{}{"initialized": false}
+		}
+
+		// Check DsSWres (DocumentStore)
+		if kb.DsSWres != nil {
+			stores["dsswres"] = map[string]interface{}{
+				"initialized": true,
+				"address":     getStoreAddress("dsswres", *kb.DsSWres),
+				"type":        "DocumentStore",
+			}
+		} else {
+			stores["dsswres"] = map[string]interface{}{"initialized": false}
+		}
+
+		// Check DsSWresaloc (DocumentStore)
+		if kb.DsSWresaloc != nil {
+			stores["dsswresaloc"] = map[string]interface{}{
+				"initialized": true,
+				"address":     getStoreAddress("dsswresaloc", *kb.DsSWresaloc),
+				"type":        "DocumentStore",
+			}
+		} else {
+			stores["dsswresaloc"] = map[string]interface{}{"initialized": false}
+		}
+
+		// Check KBMetadata (DocumentStore)
+		if kb.KBMetadata != nil {
+			stores["kbmetadata"] = map[string]interface{}{
+				"initialized": true,
+				"address":     getStoreAddress("kbmetadata", *kb.KBMetadata),
+				"type":        "DocumentStore",
+			}
+		} else {
+			stores["kbmetadata"] = map[string]interface{}{"initialized": false}
+		}
+
+		// Check KBdata (DocumentStore)
+		if kb.KBdata != nil {
+			stores["kbdata"] = map[string]interface{}{
+				"initialized": true,
+				"address":     getStoreAddress("kbdata", *kb.KBdata),
+				"type":        "DocumentStore",
+			}
+		} else {
+			stores["kbdata"] = map[string]interface{}{"initialized": false}
+		}
+
+		// Check Validations (DocumentStore)
+		if kb.Validations != nil {
+			stores["validations"] = map[string]interface{}{
+				"initialized": true,
+				"address":     getStoreAddress("validations", *kb.Validations),
+				"type":        "DocumentStore",
+			}
+		} else {
+			stores["validations"] = map[string]interface{}{"initialized": false}
+		}
+
+		status["orbitdb_stores"] = stores
+
+		// ═══════════════════════════════════════════════════════════════
+		// 6. MESH HEALTH SUMMARY
+		// ═══════════════════════════════════════════════════════════════
+		discoveredCount := len(discoveredPeers)
+		libp2pCount := len(libp2pPeers)
+
+		meshHealth := "UNKNOWN"
+		meshCoverage := 0.0
+
+		if discoveredCount > 0 {
+			meshCoverage = float64(libp2pCount) / float64(discoveredCount) * 100
+
+			if meshCoverage >= 90 {
+				meshHealth = "EXCELLENT"
+			} else if meshCoverage >= 70 {
+				meshHealth = "GOOD"
+			} else if meshCoverage >= 50 {
+				meshHealth = "FAIR"
+			} else {
+				meshHealth = "POOR"
+			}
+		} else if libp2pCount > 0 {
+			meshHealth = "GOOD"
+			meshCoverage = 100.0
+		}
+
+		status["mesh_health"] = map[string]interface{}{
+			"status":                meshHealth,
+			"coverage_percent":      fmt.Sprintf("%.1f", meshCoverage),
+			"discovered_peers":      discoveredCount,
+			"connected_peers":       libp2pCount,
+			"missing_connections":   discoveredCount - libp2pCount,
+			"can_replicate_orbitdb": libp2pCount > 0,
+		}
+
+		// ═══════════════════════════════════════════════════════════════
+		// 7. REPLICATION DIAGNOSTICS
+		// ═══════════════════════════════════════════════════════════════
+		diagnostics := []string{}
+
+		if libp2pCount == 0 {
+			diagnostics = append(diagnostics, "❌ No LibP2P connections - OrbitDB cannot replicate")
+		} else if discoveredCount > libp2pCount {
+			diagnostics = append(diagnostics, fmt.Sprintf("⚠️  Missing %d connections out of %d discovered peers", discoveredCount-libp2pCount, discoveredCount))
+		}
+
+		if kb.PubSub == nil {
+			diagnostics = append(diagnostics, "❌ GossipSub not initialized - election system unavailable")
+		} else if kb.ElectionTopic == nil {
+			diagnostics = append(diagnostics, "❌ Election topic not initialized")
+		}
+
+		if kb.DsSWres == nil {
+			diagnostics = append(diagnostics, "⚠️  Primary data store (dsswres) not initialized")
+		}
+
+		if len(diagnostics) == 0 {
+			diagnostics = append(diagnostics, "✅ All systems operational")
+		}
+
+		status["diagnostics"] = diagnostics
+
+		sendJSONResponse(w, status)
+	}
+}
+
 // agentStatusHandler returns comprehensive agent status including role and peer health
 func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -851,6 +1107,10 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 
 	// Logging endpoint
 	server.Handle("/"+*config.FlagContext+"/log", mw(LogsHandler(theLog)))
+
+	// ✅ NEW: OrbitDB mesh status endpoint
+	server.Handle("/"+*config.FlagContext+"/debug/optimusdb/mesh", mw(optimusdbMeshHandler(optimusdb)))
+	logger.Info("Registered optimusdb mesh debug endpoint: /%s/debug/optimusdb/mesh", *config.FlagContext)
 
 	// EMS logs endpoint with filters
 	server.Handle("/"+*config.FlagContext+"/ems/logs",
