@@ -363,12 +363,15 @@ func main() {
 		logger.DISc("[DISCOVERY] %v", prMsg)
 
 		// Start discovery (discovery service no longer creates GossipSub)
+		// Start discovery
 		discoveryService = api.StartDiscovery(hostMain, &knowledgeBaseDB)
 		if discoveryService == nil {
 			logger.Error("[ERROR] Discovery service failed to start")
 		} else {
 			logger.DISc("[DISCOVERY] Discovery service started, waiting for peers...")
-			time.Sleep(5 * time.Second) // Initial discovery wait
+			time.Sleep(5 * time.Second)
+			// ✅ Connection healing already started inside StartDiscovery()
+			// No need to call it here
 			go api.PrintDiscoveredPeers(&knowledgeBaseDB)
 		}
 	}
