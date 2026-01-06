@@ -1201,39 +1201,40 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 	// =========================================================================
 	// ✅ FIX #2: REPLICATION WITH TIMEOUT (Prevents Bad Gateway)
 	// =========================================================================
-	logger.Info("[INFO] CRUDPUT: Triggering replication sync (10s timeout)...")
+	/*
+		logger.Info("[INFO] CRUDPUT: Triggering replication sync (10s timeout)...")
 
-	// ✅ Create context with 10-second timeout
-	loadCtx, loadCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer loadCancel()
+		// ✅ Create context with 10-second timeout
+		loadCtx, loadCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer loadCancel()
 
-	// ✅ Attempt Load() with timeout
-	loadErr := dbDocStore.Load(loadCtx, 100000)
+		// ✅ Attempt Load() with timeout
+		loadErr := dbDocStore.Load(loadCtx, 100000)
 
-	if loadErr != nil {
-		// Check if it was a timeout
-		if loadCtx.Err() == context.DeadlineExceeded {
-			logger.Warn("[WARN] CRUDPUT: Replication sync timed out after 10s")
-			logger.Warn("[WARN] CRUDPUT: Data inserted successfully, sync will complete in background")
-			// ✅ NON-FATAL: Data is inserted, replication happens eventually
-			// Continue to return success
-		} else {
-			// Other errors (connection failed, peer unavailable, etc.)
-			logger.Error("[ERROR] CRUDPUT: Replication sync failed: %v", loadErr)
-
-			// ✅ Return error to HTTP handler (allows client to decide)
-			if errorCount == 0 {
-				// All inserts succeeded but replication failed
-				return dataRecords, fmt.Errorf("documents inserted but replication failed: %w", loadErr)
+		if loadErr != nil {
+			// Check if it was a timeout
+			if loadCtx.Err() == context.DeadlineExceeded {
+				logger.Warn("[WARN] CRUDPUT: Replication sync timed out after 10s")
+				logger.Warn("[WARN] CRUDPUT: Data inserted successfully, sync will complete in background")
+				// ✅ NON-FATAL: Data is inserted, replication happens eventually
+				// Continue to return success
 			} else {
-				// Some inserts failed AND replication failed
-				return dataRecords, fmt.Errorf("%d documents failed to insert, and replication failed: %w", errorCount, loadErr)
-			}
-		}
-	} else {
-		logger.Info("[INFO] CRUDPUT: Replication sync completed successfully")
-	}
+				// Other errors (connection failed, peer unavailable, etc.)
+				logger.Error("[ERROR] CRUDPUT: Replication sync failed: %v", loadErr)
 
+				// ✅ Return error to HTTP handler (allows client to decide)
+				if errorCount == 0 {
+					// All inserts succeeded but replication failed
+					return dataRecords, fmt.Errorf("documents inserted but replication failed: %w", loadErr)
+				} else {
+					// Some inserts failed AND replication failed
+					return dataRecords, fmt.Errorf("%d documents failed to insert, and replication failed: %w", errorCount, loadErr)
+				}
+			}
+		} else {
+			logger.Info("[INFO] CRUDPUT: Replication sync completed successfully")
+		}
+	*/
 	// =========================================================================
 	// ✅ RETURN FINAL STATUS
 	// =========================================================================
