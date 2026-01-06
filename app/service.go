@@ -1060,21 +1060,24 @@ func ConvertMetadataToMap(entry datamodel.MetadataEntry) map[string]interface{} 
 // =============================================================================
 // 2. CRUDPUT - Insert Documents (REFINED - Supports All Datastores)
 // =============================================================================
+// =============================================================================
+// 2. CRUDPUT - Insert Documents (FIXED - Bad Gateway Issue Resolved)
+// =============================================================================
 func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 	dbtype string, criteria []map[string]interface{}) ([]map[string]interface{}, error) {
 
-	// ALWAYS use a fresh background context
+	// ✅ FIX #1: Use background context (not HTTP request context)
 	ctx := context.Background()
 
 	// Parse criteria
 	dataRecords, err := ConvertCriteriaForCRUDPUT_rev(criteria)
 	if err != nil {
-		logger.Error("[ERROR] Failed to parse criteria: %v", err)
+		logger.Error("[ERROR] CRUDPUT: Failed to parse criteria: %v", err)
 		return nil, fmt.Errorf("failed to parse criteria: %w", err)
 	}
 
 	if len(dataRecords) == 0 {
-		logger.Error("[ERROR] No valid records to insert")
+		logger.Error("[ERROR] CRUDPUT: No valid records to insert")
 		return nil, fmt.Errorf("no valid records to insert")
 	}
 
@@ -1121,43 +1124,48 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 
 	logger.Info("[INFO] CRUDPUT: Inserting %d documents into %s", len(dataRecords), storeName)
 
-	// Prepare documents
+	// Prepare documents with auto-generated fields
 	docsToInsert := make([]interface{}, 0, len(dataRecords))
 
 	for i, record := range dataRecords {
+		// Auto-generate _id if not provided
 		if _, hasID := record["_id"]; !hasID {
 			record["_id"] = fmt.Sprintf("%s_%d_%d", storeName, time.Now().UnixNano(), i)
 		}
+
+		// Add creation timestamp
 		record["_created_at"] = time.Now().UTC().Format(time.RFC3339)
 		docsToInsert = append(docsToInsert, record)
 	}
 
 	// =========================================================================
-	// SYNCHRONOUS INSERT (STABLE - Works without crashes)
+	// SYNCHRONOUS INSERT LOOP (Proven Stable)
 	// =========================================================================
 	successCount := 0
 	errorCount := 0
 	var lastError error
 
+	logger.Info("[INFO] CRUDPUT: Starting document insertion...")
+
 	for i, doc := range docsToInsert {
 		docMap, ok := doc.(map[string]interface{})
 		if !ok {
-			logger.Error("[ERROR] Document %d is not a map", i)
+			logger.Error("[ERROR] CRUDPUT: Document %d is not a map", i)
 			errorCount++
 			continue
 		}
 
 		docID := fmt.Sprintf("%v", docMap["_id"])
 
-		// Wrap insert in panic recovery
+		// ✅ Per-document panic recovery (prevents crashes)
 		insertSuccess := false
 		insertErr := error(nil)
 
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("[PANIC RECOVERED] Insert panic for %s: %v", docID, r)
-					insertErr = fmt.Errorf("panic: %v", r)
+					logger.Error("[PANIC RECOVERED] CRUDPUT: Insert panic for %s: %v", docID, r)
+					insertErr = fmt.Errorf("panic during insert: %v", r)
 				}
 			}()
 
@@ -1170,51 +1178,73 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 			insertSuccess = true
 		}()
 
+		// Track success/failure
 		if insertSuccess {
 			successCount++
-			if (successCount)%10 == 0 {
-				logger.Proc("[INFO] CRUDPUT: Progress %d/%d documents", successCount, len(docsToInsert))
+			if (successCount)%10 == 0 || successCount == len(docsToInsert) {
+				logger.Info("[INFO] CRUDPUT: Progress %d/%d documents inserted", successCount, len(docsToInsert))
 			}
 		} else {
 			errorCount++
 			lastError = insertErr
-			logger.Error("[ERROR] Failed to insert document %s: %v", docID, insertErr)
+			logger.Error("[ERROR] CRUDPUT: Failed to insert document %s: %v", docID, insertErr)
 		}
 	}
 
-	logger.Proc(" CRUDPUT: Insert complete - Success: %d, Failed: %d",
-		successCount, errorCount)
+	logger.Info("[INFO] CRUDPUT: Insert phase complete - Success: %d, Failed: %d", successCount, errorCount)
 
+	// If ALL documents failed, return error immediately
 	if errorCount > 0 && successCount == 0 {
 		return dataRecords, fmt.Errorf("all %d documents failed to insert (last error: %v)", errorCount, lastError)
 	}
 
 	// =========================================================================
-	// 🔄 CRITICAL: TRIGGER REPLICATION TO OTHER NODES
-	// This is what makes your records visible on Agent2!
+	// ✅ FIX #2: REPLICATION WITH TIMEOUT (Prevents Bad Gateway)
 	// =========================================================================
+	logger.Info("[INFO] CRUDPUT: Triggering replication sync (10s timeout)...")
 
-	// Small delay to let local index update
-	//time.Sleep(100 * time.Millisecond)
+	// ✅ Create context with 10-second timeout
+	loadCtx, loadCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer loadCancel()
 
-	// SYNCHRONOUS Load() - triggers OrbitDB to sync with peers
-	// This is ESSENTIAL for cross-node replication
-	logger.Proc("[INFO] CRUDPUT: Triggering replication sync...")
-	err = dbDocStore.Load(ctx, 100000)
-	if err != nil {
-		logger.Warn("[WARN] CRUDPUT: Replication sync warning (non-fatal): %v", err)
-		// Don't fail the request - data is inserted, sync will happen eventually
+	// ✅ Attempt Load() with timeout
+	loadErr := dbDocStore.Load(loadCtx, 100000)
+
+	if loadErr != nil {
+		// Check if it was a timeout
+		if loadCtx.Err() == context.DeadlineExceeded {
+			logger.Warn("[WARN] CRUDPUT: Replication sync timed out after 10s")
+			logger.Warn("[WARN] CRUDPUT: Data inserted successfully, sync will complete in background")
+			// ✅ NON-FATAL: Data is inserted, replication happens eventually
+			// Continue to return success
+		} else {
+			// Other errors (connection failed, peer unavailable, etc.)
+			logger.Error("[ERROR] CRUDPUT: Replication sync failed: %v", loadErr)
+
+			// ✅ Return error to HTTP handler (allows client to decide)
+			if errorCount == 0 {
+				// All inserts succeeded but replication failed
+				return dataRecords, fmt.Errorf("documents inserted but replication failed: %w", loadErr)
+			} else {
+				// Some inserts failed AND replication failed
+				return dataRecords, fmt.Errorf("%d documents failed to insert, and replication failed: %w", errorCount, loadErr)
+			}
+		}
 	} else {
-		logger.Proc("[INFO] CRUDPUT: Replication sync triggered successfully")
+		logger.Info("[INFO] CRUDPUT: Replication sync completed successfully")
 	}
 
 	// =========================================================================
-	// ✅ RETURN SUCCESS - HTTP 200 sent to user
+	// ✅ RETURN FINAL STATUS
 	// =========================================================================
 	if errorCount > 0 {
+		// Some documents failed, but replication worked (or timed out non-fatally)
+		logger.Warn("[WARN] CRUDPUT: Completed with %d failures", errorCount)
 		return dataRecords, fmt.Errorf("%d documents failed to insert", errorCount)
 	}
 
+	// ✅ SUCCESS: All documents inserted, replication triggered
+	logger.Info("[INFO] CRUDPUT: Operation completed successfully - %d documents inserted", successCount)
 	return dataRecords, nil
 }
 
@@ -3596,3 +3626,46 @@ func forceIndexRebuild(ctx context.Context, dbDocStore iface.DocumentStore, logC
 }
 
 // =============================================================================
+// =============================================================================
+// HELPER: Validate Peer IDs from Discovery System
+// =============================================================================
+func validateDiscoveredPeers(discoveredPeers []string, selfID peer.ID) []string {
+	validPeers := []string{}
+
+	for i, peerIDStr := range discoveredPeers {
+		// Skip empty/invalid IDs
+		if peerIDStr == "" || len(peerIDStr) < 10 {
+			logger.Warn("[DISCOVERY] Skipping invalid peer ID [%d]: too short or empty", i)
+			continue
+		}
+
+		// Try to decode - this validates the format
+		peerID, err := peer.Decode(peerIDStr)
+		if err != nil {
+			logger.Error("[DISCOVERY] Skipping corrupt peer ID [%d] '%s': %v",
+				i, peerIDStr[:min(len(peerIDStr), 20)], err)
+			continue
+		}
+
+		// Skip self
+		if peerID == selfID {
+			continue
+		}
+
+		validPeers = append(validPeers, peerIDStr)
+		logger.Election("[DISCOVERY] Valid peer [%d]: %s", i, peerID.String()[:12])
+	}
+
+	logger.Election("[DISCOVERY] Validation complete: %d/%d peers valid",
+		len(validPeers), len(discoveredPeers))
+
+	return validPeers
+}
+
+// Helper function for min (if not already defined)
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

@@ -1513,7 +1513,6 @@ func (n *Node) emergencyMeshHealing() {
 	// Step 6: Check results
 	newMeshPeers := n.electionTopic.ListPeers()
 
-	logger.Election("[MESH-HEAL] ═══════════════════════════════════════════")
 	logger.Election("[MESH-HEAL] HEALING COMPLETE")
 	logger.Election("[MESH-HEAL]   Before: %d mesh peers", len(meshPeers))
 	logger.Election("[MESH-HEAL]   After:  %d mesh peers", len(newMeshPeers))
