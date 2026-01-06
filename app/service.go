@@ -295,26 +295,32 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 
 		////////////////////////////////
 		case strings.ToLower("CACHESTATS"):
+
 			if knowledgeBaseDB.QueryEngine != nil {
 				stats := knowledgeBaseDB.QueryEngine.CacheStats()
 				res = stats
+				logger.Warn("CACHESTATS received: %v", res)
 			} else {
 				res = map[string]interface{}{
 					"error": "Query engine not initialized",
 				}
+				logger.Warn("CACHESTATS received: Query engine not initialized")
 			}
 		case strings.ToLower("CLEARCACHE"):
+
 			if knowledgeBaseDB.QueryEngine != nil {
 				knowledgeBaseDB.QueryEngine.ClearCache()
 				res = "Cache cleared successfully"
+				logger.Proc("CLEARCACHE received: %v ", res)
 			} else {
 				res = "Query engine not initialized"
+				logger.Warn("CLEARCACHE received: %v ", res)
 			}
 		////////////////////////////////
 		case strings.ToLower(SQLDML.Cmd):
 			//logChan <- Log{Type: Info, Data: "Received service request: SQL.Cmd"}
 			//fmt.Printf("\n[INFO] SQL DML received: %v : %v\n", SQLDML.Cmd, req.SQLDML)
-			logger.Info("[INFO] SQL DML received: %v : %v", SQLDML.Cmd, req.SQLDML)
+			logger.Proc("SQL DML received: %v : %v", SQLDML.Cmd, req.SQLDML)
 
 			// Execute SQL DML command
 			rspResults, err := SQLDMLWithPeerFallback(req, logChan, knowledgeBaseDB)
@@ -334,7 +340,7 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 		*/
 		case strings.ToLower(CONTRI.Cmd):
 			//logChan <- Log{Type: Info, Data: "Received service request: CONTRI.Cmd"}
-			logger.Info("[INFO] Received service request: %v", CONTRI.Cmd)
+			logger.Proc("Received Contribution service request: %v", CONTRI.Cmd)
 			var test2 error
 			//rspResults, test2 := crudGetDocStoreRev(knowledgeBaseDB, logChan, req.DSType, hostCID, req.Criteria)
 			rspResults, test2 := getContri(knowledgeBaseDB, logChan, req.DSType, req.Criteria)
@@ -352,39 +358,48 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 		Use for Get method
 		*/
 		case strings.ToLower(CRUDGET.Cmd):
-			logChan <- Log{Info, "Received service request: CRUDGET"}
-			fmt.Printf("\nReceived service request: %s : \n", CRUDGET.Cmd)
-			var test2 error
-			rspResults, test2 := crudGetDocStoreRev(knowledgeBaseDB, logChan, req.DSType, hostCID, req.Criteria)
-			if test2 != nil {
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: ERROR! %v", test2)}
+			//logChan <- Log{Info, "Received service request: CRUDGET"}
+			//fmt.Printf("\nReceived service request: %s : \n", CRUDGET.Cmd)
+			logger.Proc("Received CRUDGET service request: %v", CRUDGET.Cmd)
+			var errorCase error
+			rspResults, errorCase := crudGetDocStoreRev(knowledgeBaseDB, logChan, req.DSType, hostCID, req.Criteria)
+			if errorCase != nil {
+				//logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: ERROR! %v", test2)}
+				logger.Error("Processing Error in CRUDGET: %v , error:%v", CRUDGET.Cmd, errorCase)
 				res = "ERROR! #114 Failed to get records"
 			} else {
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Successfully finished %d ", len(rspResults))}
+				//logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Successfully finished %d ", len(rspResults))}
+				logger.Proc("CRUDGET: Successfully finished Records:%d with results: ", len(rspResults), rspResults)
 				res = rspResults //"OK: Successfully got records"
 			}
 
 		case strings.ToLower(CRUDPUT.Cmd):
-			logChan <- Log{Info, "Received service request: CRUDPUT"}
+			//logChan <- Log{Info, "Received service request: CRUDPUT"}
+			logger.Proc("Received CRUDPUT service request: %v", CRUDPUT.Cmd)
 			//res, _ = crudPutDocStore(knowledgeBaseDB, logChan, req.DSType, req.Criteria)
 			var errorCase error
 			resultPut, errorCase := crudPutDocStoreRev(knowledgeBaseDB, logChan, req.DSType, req.Criteria)
 			if errorCase != nil {
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: ERROR! %v", errorCase)}
+				//logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: ERROR! %v", errorCase)}
+				logger.Error("Processing Error in CRUDPUT: %v , error:%v", CRUDPUT.Cmd, errorCase)
 				res = "ERROR! #112 Failed to insert records"
 			} else {
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully finished %d ", len(resultPut))}
+				//logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Successfully finished %d ", len(resultPut))}
+				logger.Proc("CRUDPUT: Successfully finished inserting Records:%d  ", len(resultPut))
 				res = "OK: Successfully inserted records"
 			}
 
 		case strings.ToLower(CRUDUPDATE.Cmd):
-			logChan <- Log{Info, "Received service request: CRUDUPDATE"}
+			//logChan <- Log{Info, "Received service request: CRUDUPDATE"}
+			logger.Proc("Received service request: CRUDUPDATE")
 			updatedCount, err := crudUpdateDocStoreRev(knowledgeBaseDB, req.Criteria, req.UpdateData)
 			if err != nil {
-				logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("UPDATE: Error updating document: %v", err)}
+				//logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("UPDATE: Error updating document: %v", err)}
+				logger.Error("Processing Error in CRUDUPDATE error:%v", err)
 				res = fmt.Sprintf("ERROR! Update failed: %v", err)
 			} else {
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("UPDATE: %d document(s) updated", updatedCount)}
+				//logChan <- Log{Type: Info, Data: fmt.Sprintf("UPDATE: %d document(s) updated", updatedCount)}
+				logger.Proc("CRUDUPDATE: Successfully finished updating Records:%d  ", updatedCount)
 				res = fmt.Sprintf("SUCCESS! %d document(s) updated", updatedCount)
 			}
 
@@ -393,10 +408,10 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 			// Perform delete operation in OrbitDB
 			deletedCount, err := crudDeleteDocStoreRev(knowledgeBaseDB, req.Criteria)
 			if err != nil {
-				logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("DELETE: Error deleting document: %v", err)}
+				logger.Error("CRUDDELETE: Error deleting document: %v", err)
 				res = fmt.Sprintf("ERROR! Delete failed: %v", err)
 			} else {
-				logChan <- Log{Type: Info, Data: fmt.Sprintf("DELETE: %d document(s) deleted", deletedCount)}
+				logger.Proc("CRUDDELETE: %d document(s) deleted", deletedCount)
 				res = fmt.Sprintf("SUCCESS! %d document(s) deleted", deletedCount)
 			}
 
@@ -1168,7 +1183,7 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 	logger.Info("[INFO] CRUDPUT: Inserting %d data records into %s", len(docsToInsert), storeName)
 
 	// Use custom PutAll implementation with verification and retry logic
-	err = CustomPutAllWithVerification(ctx, dbDocStore, docsToInsert, logChan, storeName)
+	_, err = dbDocStore.PutAll(ctx, docsToInsert)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert data records into %s: %w", storeName, err)
 	}
@@ -1200,7 +1215,7 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 	// Insert metadata records into KBMetadata (only for data stores, not metadata store itself)
 	if optimusdb.KBMetadata != nil && len(metadataRecords) > 0 {
 		metadataStore := *optimusdb.KBMetadata
-		err = CustomPutAllDocuments(ctx, metadataStore, metadataRecords, logChan, "kbmetadata")
+		_, err = metadataStore.PutAll(ctx, metadataRecords)
 		if err != nil {
 			logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("CRUDPUT: Warning - metadata insert failed: %v", err)}
 			// Don't fail the whole operation if metadata fails
