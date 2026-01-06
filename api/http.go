@@ -436,6 +436,8 @@ func getBenchmark(client *http.Client, peerIP string) (app.Benchmark, error) {
 	cmdPath := "http://" + peerIP + ":" + *config.FlagHTTPPort + "/" + *config.FlagContext + "/command"
 	req, err := http.NewRequest("POST", cmdPath, bytes.NewBuffer(jsonData))
 	if err != nil {
+		fmt.Printf("There is an error in the request: %v\n", err)
+		logger.Error("There is an error in the request: %v with error: %v", req, err)
 		return bm, err
 	}
 
@@ -448,12 +450,16 @@ func getBenchmark(client *http.Client, peerIP string) (app.Benchmark, error) {
 	// read response body
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		fmt.Printf("There is an error in the read response body: %v\n", err)
+		logger.Error("There is an error in the read response body: %v with error: %v", body, err)
 		return bm, err
 	}
 
 	// unmarshal response
 	err = json.Unmarshal(body, &bm)
 	if err != nil {
+		fmt.Printf("There is an error in the unmarshal response response body: %v\n", err)
+		logger.Error("There is an error in the unmarshal response response body: %v with error: %v", body, err)
 		return bm, err
 	}
 

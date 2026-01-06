@@ -1060,35 +1060,25 @@ func ConvertMetadataToMap(entry datamodel.MetadataEntry) map[string]interface{} 
 // =============================================================================
 // 2. CRUDPUT - Insert Documents (REFINED - Supports All Datastores)
 // =============================================================================
-
-// =============================================================================
-// COMPLETE FIXED crudPutDocStoreRev FUNCTION
-// Replace your existing function (around line 1080-1240) with this version
-// This includes FIX #2 (forceIndexRebuild call) which is currently MISSING
-// =============================================================================
-// =============================================================================
-// 2. CRUDPUT - Insert Documents (ASYNC VERSION - NO 502 ERRORS)
-// =============================================================================
-// This version returns HTTP response in <200ms while expensive operations
-// (index rebuild, lineage extraction, metadata) happen in background goroutines
-// =============================================================================
-
 func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 	dbtype string, criteria []map[string]interface{}) ([]map[string]interface{}, error) {
 
+	// ALWAYS use a fresh background context
 	ctx := context.Background()
 
-	// Parse criteria as documents to insert
+	// Parse criteria
 	dataRecords, err := ConvertCriteriaForCRUDPUT_rev(criteria)
 	if err != nil {
+		logger.Error("[ERROR] Failed to parse criteria: %v", err)
 		return nil, fmt.Errorf("failed to parse criteria: %w", err)
 	}
 
 	if len(dataRecords) == 0 {
+		logger.Error("[ERROR] No valid records to insert")
 		return nil, fmt.Errorf("no valid records to insert")
 	}
 
-	// Select DocumentStore based on dbtype (matches crudGetDocStoreRev logic)
+	// Select DocumentStore
 	var dbDocStore iface.DocumentStore
 	var storeName string
 
@@ -1121,240 +1111,95 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 		dbDocStore = *optimusdb.KBdata
 		storeName = "kbdata"
 
-	case "validations":
-		if optimusdb.Validations == nil {
-			return nil, fmt.Errorf("Validations store not initialized")
-		}
-		dbDocStore = *optimusdb.Validations
-		storeName = "validations"
-
 	default:
-		// Default to DsSWres
 		if optimusdb.DsSWres == nil {
 			return nil, fmt.Errorf("default DsSWres store not initialized")
 		}
 		dbDocStore = *optimusdb.DsSWres
 		storeName = "dsswres"
-		logChan <- Log{Type: Info, Data: "CRUDPUT: No dstype specified, defaulting to DsSWres"}
 	}
 
-	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Using %s store for insertion", storeName)}
+	logger.Info("[INFO] CRUDPUT MINIMAL: Inserting %d documents into %s", len(dataRecords), storeName)
 
-	// Prepare documents for insertion with auto-generated _id if missing
+	// Prepare documents
 	docsToInsert := make([]interface{}, 0, len(dataRecords))
-	metadataRecords := make([]interface{}, 0, len(dataRecords))
 
 	for i, record := range dataRecords {
-		// Ensure _id exists - auto-generate if missing
 		if _, hasID := record["_id"]; !hasID {
 			record["_id"] = fmt.Sprintf("%s_%d_%d", storeName, time.Now().UnixNano(), i)
-			logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDPUT: Auto-generated _id: %s", record["_id"])}
 		}
-
-		// Add timestamp
 		record["_created_at"] = time.Now().UTC().Format(time.RFC3339)
-
 		docsToInsert = append(docsToInsert, record)
-
-		// Generate linked metadata record (skip if inserting into metadata store itself)
-		if storeName != "kbmetadata" && storeName != "validations" {
-			metadataRecord := map[string]interface{}{
-				"_id":               fmt.Sprintf("meta_%s", record["_id"]),
-				"data_record_id":    record["_id"],
-				"record_type":       fmt.Sprintf("%s_metadata", storeName),
-				"source_store":      storeName,
-				"created_at":        record["_created_at"],
-				"enrichment_status": "pending",
-			}
-
-			// Copy searchable fields for metadata
-			if name, ok := record["name"].(string); ok {
-				metadataRecord["name"] = name
-			}
-			if recordType, ok := record["type"].(string); ok {
-				metadataRecord["resource_type"] = recordType
-			}
-			if templateName, ok := record["template_name"].(string); ok {
-				metadataRecord["template_name"] = templateName
-			}
-			if docType, ok := record["document_type"].(string); ok {
-				metadataRecord["document_type"] = docType
-			}
-
-			metadataRecords = append(metadataRecords, metadataRecord)
-		}
 	}
 
 	// =========================================================================
-	// 🚀 FAST SYNCHRONOUS INSERT - Returns in <200ms
+	// COMPLETELY REWRITTEN INSERT LOGIC WITH PROPER ERROR HANDLING
 	// =========================================================================
-	logger.Info("[INFO] CRUDPUT: ASYNC MODE - Inserting %d documents into %s", len(docsToInsert), storeName)
-
 	successCount := 0
-	failedDocs := []string{}
+	errorCount := 0
+	var lastError error
 
-	// Insert documents individually (direct, no blocking verification)
 	for i, doc := range docsToInsert {
 		docMap, ok := doc.(map[string]interface{})
 		if !ok {
-			logger.Error("[ERROR] Document %d is not a map[string]interface{}", i)
-			failedDocs = append(failedDocs, fmt.Sprintf("doc_%d", i))
+			logger.Error("[ERROR] Document %d is not a map", i)
+			errorCount++
 			continue
 		}
 
-		docID := "unknown"
-		if id, hasID := docMap["_id"]; hasID {
-			docID = fmt.Sprintf("%v", id)
-		}
+		docID := fmt.Sprintf("%v", docMap["_id"])
 
-		// Wrap in anonymous function for panic recovery
+		// CRITICAL: Wrap ENTIRE operation in defer/recover
+		insertSuccess := false
+		insertErr := error(nil)
+
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("[PANIC RECOVERED] Insert failed for %s: %v", docID, r)
-					failedDocs = append(failedDocs, docID)
+					logger.Error("[PANIC RECOVERED] Insert panic for %s: %v", docID, r)
+					insertErr = fmt.Errorf("panic: %v", r)
 				}
 			}()
 
+			// Attempt insert
 			_, err := dbDocStore.Put(ctx, doc)
 			if err != nil {
-				logger.Error("[ERROR] Failed to insert document %s: %v", docID, err)
-				failedDocs = append(failedDocs, docID)
+				insertErr = err
 				return
 			}
 
+			// If we get here, insert succeeded
+			insertSuccess = true
+		}()
+
+		// Check results OUTSIDE the anonymous function
+		if insertSuccess {
 			successCount++
 			if (successCount)%10 == 0 {
 				logger.Info("[INFO] CRUDPUT: Progress %d/%d documents", successCount, len(docsToInsert))
 			}
-		}()
-	}
-
-	if len(failedDocs) > 0 {
-		logger.Warn("[WARN] CRUDPUT: %d/%d documents failed: %v", len(failedDocs), len(docsToInsert), failedDocs)
-	} else {
-		logger.Info("[INFO] CRUDPUT: Successfully inserted all %d documents into %s", successCount, storeName)
-	}
-
-	// Small delay for local OrbitDB index update (non-blocking)
-	time.Sleep(100 * time.Millisecond)
-
-	// =========================================================================
-	// 🔄 BACKGROUND VERIFICATION & INDEX REBUILD (happens AFTER HTTP response)
-	// =========================================================================
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error("[PANIC RECOVERED] Background verification: %v", r)
-			}
-		}()
-
-		// Wait for OrbitDB cluster replication
-		time.Sleep(2 * time.Second)
-
-		// Force reload from 8-node cluster
-		bgCtx := context.Background()
-		err := dbDocStore.Load(bgCtx, 100000)
-		if err != nil {
-			logger.Warn("[WARN] Background Load failed: %v", err)
-		}
-
-		// Verify all documents were replicated
-		verifiedCount := 0
-		for _, doc := range docsToInsert {
-			if docMap, ok := doc.(map[string]interface{}); ok {
-				docID := fmt.Sprintf("%v", docMap["_id"])
-
-				results, _ := dbDocStore.Query(bgCtx, func(d interface{}) (bool, error) {
-					if dm, ok := d.(map[string]interface{}); ok {
-						if id, hasID := dm["_id"]; hasID {
-							return fmt.Sprintf("%v", id) == docID, nil
-						}
-					}
-					return false, nil
-				})
-
-				if len(results) > 0 {
-					verifiedCount++
-				} else {
-					logger.Warn("[WARN] Background verification: Document %s not found in cluster", docID)
-				}
-			}
-		}
-
-		logger.Info("[INFO] CRUDPUT: Background verification complete: %d/%d documents confirmed in cluster",
-			verifiedCount, len(docsToInsert))
-
-		// Force index rebuild after verification
-		if err := forceIndexRebuild(bgCtx, dbDocStore, logChan); err != nil {
-			logger.Warn("[WARN] Background index rebuild failed: %v", err)
 		} else {
-			logger.Info("[INFO] CRUDPUT: Background index rebuild complete for %s", storeName)
+			errorCount++
+			lastError = insertErr
+			logger.Error("[ERROR] Failed to insert document %s: %v", docID, insertErr)
 		}
-	}()
-
-	// =========================================================================
-	// 🔄 BACKGROUND LINEAGE EXTRACTION (happens AFTER HTTP response)
-	// =========================================================================
-	if optimusdb.Interceptor != nil {
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					logger.Error("[PANIC RECOVERED] Lineage extraction: %v", r)
-				}
-			}()
-
-			extractedCount := 0
-			for _, doc := range docsToInsert {
-				if docMap, ok := doc.(map[string]interface{}); ok {
-					if err := optimusdb.Interceptor.OnDocumentPut(docMap, storeName); err != nil {
-						logger.Warn("[WARN] Lineage extraction failed for doc %v: %v", docMap["_id"], err)
-					} else {
-						extractedCount++
-					}
-				}
-			}
-			logger.Info("[INFO] CRUDPUT: Lineage extraction completed for %d/%d documents", extractedCount, len(docsToInsert))
-		}()
 	}
 
-	// =========================================================================
-	// 🔄 BACKGROUND METADATA INSERTION (happens AFTER HTTP response)
-	// =========================================================================
-	if optimusdb.KBMetadata != nil && len(metadataRecords) > 0 {
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					logger.Error("[PANIC RECOVERED] Metadata insertion: %v", r)
-				}
-			}()
+	// Final status
+	logger.Info("[INFO] CRUDPUT MINIMAL: Complete - Success: %d, Failed: %d, Total: %d",
+		successCount, errorCount, len(docsToInsert))
 
-			metadataStore := *optimusdb.KBMetadata
-			bgCtx := context.Background()
-
-			// Insert each metadata record individually with error handling
-			successMeta := 0
-			for _, metaRecord := range metadataRecords {
-				_, err := metadataStore.Put(bgCtx, metaRecord)
-				if err != nil {
-					if metaMap, ok := metaRecord.(map[string]interface{}); ok {
-						logger.Warn("[WARN] Metadata insert failed for %v: %v", metaMap["_id"], err)
-					}
-				} else {
-					successMeta++
-				}
-			}
-
-			if successMeta > 0 {
-				logger.Info("[INFO] CRUDPUT: Successfully inserted %d/%d metadata records into KBMetadata",
-					successMeta, len(metadataRecords))
-			}
-		}()
+	if errorCount > 0 {
+		logger.Warn("[WARN] CRUDPUT: %d/%d documents failed", errorCount, len(docsToInsert))
+		if errorCount == len(docsToInsert) {
+			// Complete failure
+			return dataRecords, fmt.Errorf("all %d documents failed to insert (last error: %v)", errorCount, lastError)
+		}
+		// Partial success
+		return dataRecords, fmt.Errorf("%d documents failed to insert", errorCount)
 	}
 
-	// =========================================================================
-	// ✅ RETURN IMMEDIATELY - HTTP 200 OK sent to user (< 200ms total)
-	// =========================================================================
+	// Complete success
 	return dataRecords, nil
 }
 
