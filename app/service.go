@@ -1119,7 +1119,7 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 		storeName = "dsswres"
 	}
 
-	logger.Info("[INFO] CRUDPUT MINIMAL: Inserting %d documents into %s", len(dataRecords), storeName)
+	logger.Info("[INFO] CRUDPUT: Inserting %d documents into %s", len(dataRecords), storeName)
 
 	// Prepare documents
 	docsToInsert := make([]interface{}, 0, len(dataRecords))
@@ -1133,7 +1133,7 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 	}
 
 	// =========================================================================
-	// COMPLETELY REWRITTEN INSERT LOGIC WITH PROPER ERROR HANDLING
+	// SYNCHRONOUS INSERT (STABLE - Works without crashes)
 	// =========================================================================
 	successCount := 0
 	errorCount := 0
@@ -1149,7 +1149,7 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 
 		docID := fmt.Sprintf("%v", docMap["_id"])
 
-		// CRITICAL: Wrap ENTIRE operation in defer/recover
+		// Wrap insert in panic recovery
 		insertSuccess := false
 		insertErr := error(nil)
 
@@ -1161,22 +1161,19 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 				}
 			}()
 
-			// Attempt insert
 			_, err := dbDocStore.Put(ctx, doc)
 			if err != nil {
 				insertErr = err
 				return
 			}
 
-			// If we get here, insert succeeded
 			insertSuccess = true
 		}()
 
-		// Check results OUTSIDE the anonymous function
 		if insertSuccess {
 			successCount++
 			if (successCount)%10 == 0 {
-				logger.Info("[INFO] CRUDPUT: Progress %d/%d documents", successCount, len(docsToInsert))
+				logger.Proc("[INFO] CRUDPUT: Progress %d/%d documents", successCount, len(docsToInsert))
 			}
 		} else {
 			errorCount++
@@ -1185,21 +1182,39 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 		}
 	}
 
-	// Final status
-	logger.Info("[INFO] CRUDPUT MINIMAL: Complete - Success: %d, Failed: %d, Total: %d",
-		successCount, errorCount, len(docsToInsert))
+	logger.Proc(" CRUDPUT: Insert complete - Success: %d, Failed: %d",
+		successCount, errorCount)
 
+	if errorCount > 0 && successCount == 0 {
+		return dataRecords, fmt.Errorf("all %d documents failed to insert (last error: %v)", errorCount, lastError)
+	}
+
+	// =========================================================================
+	// 🔄 CRITICAL: TRIGGER REPLICATION TO OTHER NODES
+	// This is what makes your records visible on Agent2!
+	// =========================================================================
+
+	// Small delay to let local index update
+	//time.Sleep(100 * time.Millisecond)
+
+	// SYNCHRONOUS Load() - triggers OrbitDB to sync with peers
+	// This is ESSENTIAL for cross-node replication
+	logger.Proc("[INFO] CRUDPUT: Triggering replication sync...")
+	err = dbDocStore.Load(ctx, 100000)
+	if err != nil {
+		logger.Warn("[WARN] CRUDPUT: Replication sync warning (non-fatal): %v", err)
+		// Don't fail the request - data is inserted, sync will happen eventually
+	} else {
+		logger.Proc("[INFO] CRUDPUT: Replication sync triggered successfully")
+	}
+
+	// =========================================================================
+	// ✅ RETURN SUCCESS - HTTP 200 sent to user
+	// =========================================================================
 	if errorCount > 0 {
-		logger.Warn("[WARN] CRUDPUT: %d/%d documents failed", errorCount, len(docsToInsert))
-		if errorCount == len(docsToInsert) {
-			// Complete failure
-			return dataRecords, fmt.Errorf("all %d documents failed to insert (last error: %v)", errorCount, lastError)
-		}
-		// Partial success
 		return dataRecords, fmt.Errorf("%d documents failed to insert", errorCount)
 	}
 
-	// Complete success
 	return dataRecords, nil
 }
 
