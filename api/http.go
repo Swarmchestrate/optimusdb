@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"optimusdb/app"
+	"optimusdb/chat"
 	"optimusdb/config"
 	"optimusdb/contextualmetadata"
 	"optimusdb/credentials"
@@ -1253,7 +1254,7 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 	// DID Endpoints
 	credentials.SetupCredentialsEndpoints(server, mw, *config.FlagContext, optimusdb, theLog)
 
-	// Add metadata routes
+	// Add metadata routes (includes new chat handler)
 	metadataRouter := mux.NewRouter()
 	RegisterMetadataRoutes(metadataRouter, optimusdb)
 	server.Handle("/api/", mw(metadataRouter))
@@ -1338,36 +1339,392 @@ func EnrichHandler(kb *app.KnowledgeBaseDB) http.HandlerFunc {
 	}
 }
 
-// RegisterMetadataRoutes registers metadata enrichment endpoints
+// RegisterMetadataRoutes registers metadata enrichment endpoints including the chat handler
 func RegisterMetadataRoutes(router *mux.Router, kb *app.KnowledgeBaseDB) {
-	if kb.MetadataService == nil || kb.MetadataCache == nil {
-		logger.Info("Metadata service not initialized, skipping metadata routes")
-		return
-	}
-
-	metadataHandler := &contextualmetadata.MetadataHandler{
-		Service: kb.MetadataService.(*contextualmetadata.Service),
-		KB:      kb,
-		Cache:   kb.MetadataCache.(*contextualmetadata.MetadataCache),
-	}
-
-	chatHandler := &contextualmetadata.ChatHandler{
-		KB:      kb,
-		Service: kb.MetadataService.(*contextualmetadata.Service),
-	}
-
 	// Create API v1 subrouter
 	apiV1 := router.PathPrefix("/api/v1").Subrouter()
 
-	// Register metadata endpoints
-	apiV1.HandleFunc("/metadata/enrich", metadataHandler.EnrichDataset).Methods("POST")
-	apiV1.HandleFunc("/metadata/enrich-batch", metadataHandler.EnrichBatch).Methods("POST")
-	apiV1.HandleFunc("/metadata/profile", metadataHandler.ProfileDataset).Methods("GET")
-	apiV1.HandleFunc("/metadata/metrics", metadataHandler.GetMetrics).Methods("GET")
-	apiV1.HandleFunc("/metadata/health", metadataHandler.HealthCheck).Methods("GET")
-	apiV1.HandleFunc("/metadata/cache", metadataHandler.ClearCache).Methods("DELETE")
-	apiV1.HandleFunc("/chat", chatHandler.HandleChat).Methods("POST")
+	// ═══════════════════════════════════════════════════════════════
+	// METADATA ENRICHMENT ENDPOINTS (existing)
+	// ═══════════════════════════════════════════════════════════════
+	if kb.MetadataService != nil && kb.MetadataCache != nil {
+		metadataHandler := &contextualmetadata.MetadataHandler{
+			Service: kb.MetadataService.(*contextualmetadata.Service),
+			KB:      kb,
+			Cache:   kb.MetadataCache.(*contextualmetadata.MetadataCache),
+		}
 
-	logger.Info("Metadata enrichment endpoints registered at /api/v1/metadata")
-	logger.Info("Chat endpoint registered at /api/v1/chat")
+		apiV1.HandleFunc("/metadata/enrich", metadataHandler.EnrichDataset).Methods("POST")
+		apiV1.HandleFunc("/metadata/enrich-batch", metadataHandler.EnrichBatch).Methods("POST")
+		apiV1.HandleFunc("/metadata/profile", metadataHandler.ProfileDataset).Methods("GET")
+		apiV1.HandleFunc("/metadata/metrics", metadataHandler.GetMetrics).Methods("GET")
+		apiV1.HandleFunc("/metadata/health", metadataHandler.HealthCheck).Methods("GET")
+		apiV1.HandleFunc("/metadata/cache", metadataHandler.ClearCache).Methods("DELETE")
+
+		logger.Info("Metadata enrichment endpoints registered at /api/v1/metadata")
+	} else {
+		logger.Info("Metadata service not initialized, skipping metadata routes")
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// CHAT HANDLER (NEW - DataCatalogAssistant integration)
+	// ═══════════════════════════════════════════════════════════════
+	logger.Info("[CHAT] Initializing chat handler for DataCatalogAssistant...")
+
+	// Create query function that connects to existing KB query system
+	queryFunc := createKBQueryFunc(kb)
+
+	// Create schema function
+	schemaFunc := createSchemaFunc(kb)
+
+	// Get TinyLlama URL from environment or use default
+	tinyllamaURL := os.Getenv("TINYLLAMA_URL")
+	if tinyllamaURL == "" {
+		tinyllamaURL = "http://localhost:11434/api/chat"
+	}
+
+	// Create the KB adapter
+	adapterConfig := chat.AdapterConfig{
+		TinyllamaURL: tinyllamaURL,
+		QueryFunc:    queryFunc,
+		SchemaFunc:   schemaFunc,
+		Datasets: []chat.DatasetInfo{
+			{Type: "dsswres", Name: "Solar & Wind Resources", Description: "Renewable energy asset metadata including solar panels and wind turbines"},
+			{Type: "dsswresaloc", Name: "Resource Allocations", Description: "Resource allocation and scheduling data"},
+			{Type: "kbmetadata", Name: "Knowledge Base Metadata", Description: "Catalog metadata including tables and columns"},
+			{Type: "kbdata", Name: "Knowledge Base Data", Description: "General knowledge base documents"},
+		},
+		Timeout:   30 * time.Second,
+		SchemaTTL: 5 * time.Minute,
+	}
+	chatAdapter := chat.NewKnowledgeBaseAdapter(adapterConfig)
+
+	// Create the chat handler
+	chatConfig := chat.HandlerConfig{
+		DefaultDataset:   "dsswres",
+		MaxHistoryLength: 10,
+		EnableExecution:  true,
+		GreetingEnabled:  true,
+		AssistantName:    "OptimusDB Assistant",
+	}
+	chatHandler := chat.NewHandler(chatAdapter, chatConfig)
+
+	// Register the chat endpoint
+	apiV1.Handle("/chat", chatHandler).Methods("POST", "OPTIONS")
+	apiV1.HandleFunc("/chat/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":    "healthy",
+			"service":   "chat",
+			"assistant": chatConfig.AssistantName,
+			"tinyllama": tinyllamaURL,
+			"timestamp": time.Now().Format(time.RFC3339),
+		})
+	}).Methods("GET")
+
+	logger.Info("[CHAT] Chat endpoint registered at /api/v1/chat")
+	logger.Info("[CHAT] Chat health endpoint registered at /api/v1/chat/health")
+	logger.Info("[CHAT] TinyLlama URL: %s", tinyllamaURL)
+}
+
+// createKBQueryFunc creates a query function that connects to OptimusDB's document stores
+func createKBQueryFunc(kb *app.KnowledgeBaseDB) chat.QueryFunc {
+	return func(ctx context.Context, dstype string, criteria []map[string]interface{}) ([]map[string]interface{}, error) {
+		logger.Debug("[CHAT-QUERY] Executing query on dstype=%s with %d criteria", dstype, len(criteria))
+
+		// Get the appropriate store
+		var store interface{}
+		switch dstype {
+		case "dsswres":
+			if kb.DsSWres != nil {
+				store = *kb.DsSWres
+			}
+		case "dsswresaloc":
+			if kb.DsSWresaloc != nil {
+				store = *kb.DsSWresaloc
+			}
+		case "kbmetadata":
+			if kb.KBMetadata != nil {
+				store = *kb.KBMetadata
+			}
+		case "kbdata":
+			if kb.KBdata != nil {
+				store = *kb.KBdata
+			}
+		default:
+			// Default to dsswres
+			if kb.DsSWres != nil {
+				store = *kb.DsSWres
+			}
+		}
+
+		if store == nil {
+			return nil, fmt.Errorf("store %s not initialized", dstype)
+		}
+
+		// Type assert to get Query method
+		type queryable interface {
+			Query(ctx context.Context, filter func(doc interface{}) (bool, error)) ([]interface{}, error)
+		}
+
+		type allGettable interface {
+			All(ctx context.Context) ([]interface{}, error)
+		}
+
+		// Try to get all documents if no criteria
+		if len(criteria) == 0 {
+			if getter, ok := store.(allGettable); ok {
+				docs, err := getter.All(ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				results := make([]map[string]interface{}, 0, len(docs))
+				for _, doc := range docs {
+					if m, ok := doc.(map[string]interface{}); ok {
+						results = append(results, m)
+					}
+				}
+
+				// Limit to 100 results
+				if len(results) > 100 {
+					results = results[:100]
+				}
+
+				logger.Debug("[CHAT-QUERY] Retrieved %d documents from %s", len(results), dstype)
+				return results, nil
+			}
+		}
+
+		// Build filter function from criteria
+		filterFunc := func(doc interface{}) (bool, error) {
+			docMap, ok := doc.(map[string]interface{})
+			if !ok {
+				return false, nil
+			}
+
+			for _, crit := range criteria {
+				field, _ := crit["field"].(string)
+				operator, _ := crit["operator"].(string)
+				value := crit["value"]
+
+				if field == "" {
+					continue
+				}
+
+				docValue, exists := docMap[field]
+				if !exists {
+					return false, nil
+				}
+
+				match := false
+				switch operator {
+				case "==", "=":
+					match = fmt.Sprintf("%v", docValue) == fmt.Sprintf("%v", value)
+				case "!=":
+					match = fmt.Sprintf("%v", docValue) != fmt.Sprintf("%v", value)
+				case "contains":
+					match = strings.Contains(
+						strings.ToLower(fmt.Sprintf("%v", docValue)),
+						strings.ToLower(fmt.Sprintf("%v", value)),
+					)
+				case ">":
+					if dv, ok := toFloat(docValue); ok {
+						if vv, ok := toFloat(value); ok {
+							match = dv > vv
+						}
+					}
+				case "<":
+					if dv, ok := toFloat(docValue); ok {
+						if vv, ok := toFloat(value); ok {
+							match = dv < vv
+						}
+					}
+				case ">=":
+					if dv, ok := toFloat(docValue); ok {
+						if vv, ok := toFloat(value); ok {
+							match = dv >= vv
+						}
+					}
+				case "<=":
+					if dv, ok := toFloat(docValue); ok {
+						if vv, ok := toFloat(value); ok {
+							match = dv <= vv
+						}
+					}
+				default:
+					// Default to equality
+					match = fmt.Sprintf("%v", docValue) == fmt.Sprintf("%v", value)
+				}
+
+				if !match {
+					return false, nil
+				}
+			}
+
+			return true, nil
+		}
+
+		// Execute query with filter
+		if querier, ok := store.(queryable); ok {
+			docs, err := querier.Query(ctx, filterFunc)
+			if err != nil {
+				return nil, err
+			}
+
+			results := make([]map[string]interface{}, 0, len(docs))
+			for _, doc := range docs {
+				if m, ok := doc.(map[string]interface{}); ok {
+					results = append(results, m)
+				}
+			}
+
+			// Limit to 100 results
+			if len(results) > 100 {
+				results = results[:100]
+			}
+
+			logger.Debug("[CHAT-QUERY] Query returned %d results from %s", len(results), dstype)
+			return results, nil
+		}
+
+		// Fallback: try to get all and filter manually
+		if getter, ok := store.(allGettable); ok {
+			docs, err := getter.All(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			results := make([]map[string]interface{}, 0)
+			for _, doc := range docs {
+				match, _ := filterFunc(doc)
+				if match {
+					if m, ok := doc.(map[string]interface{}); ok {
+						results = append(results, m)
+					}
+				}
+			}
+
+			// Limit to 100 results
+			if len(results) > 100 {
+				results = results[:100]
+			}
+
+			logger.Debug("[CHAT-QUERY] Filtered query returned %d results from %s", len(results), dstype)
+			return results, nil
+		}
+
+		return nil, fmt.Errorf("store %s does not support querying", dstype)
+	}
+}
+
+// createSchemaFunc creates a schema function for the chat adapter
+func createSchemaFunc(kb *app.KnowledgeBaseDB) chat.SchemaFunc {
+	return func(dstype string) (*chat.SchemaInfo, error) {
+		// Return predefined schemas based on dataset type
+		// In a real implementation, this could introspect the actual data
+		schemas := map[string]*chat.SchemaInfo{
+			"dsswres": {
+				DatasetType: "dsswres",
+				Tables: []chat.TableInfo{
+					{
+						Name:        "assets",
+						Description: "Renewable energy assets",
+						Fields: []chat.FieldInfo{
+							{Name: "_id", Type: "string", Required: true},
+							{Name: "name", Type: "string", Required: true},
+							{Name: "type", Type: "string", Required: true},
+							{Name: "location", Type: "string"},
+							{Name: "capacity", Type: "number"},
+							{Name: "status", Type: "string"},
+							{Name: "owner", Type: "string"},
+							{Name: "installed_date", Type: "date"},
+							{Name: "latitude", Type: "number"},
+							{Name: "longitude", Type: "number"},
+						},
+					},
+				},
+				LastUpdated: time.Now(),
+			},
+			"dsswresaloc": {
+				DatasetType: "dsswresaloc",
+				Tables: []chat.TableInfo{
+					{
+						Name:        "allocations",
+						Description: "Resource allocations",
+						Fields: []chat.FieldInfo{
+							{Name: "_id", Type: "string", Required: true},
+							{Name: "resource_id", Type: "string", Required: true},
+							{Name: "allocated_to", Type: "string"},
+							{Name: "start_time", Type: "datetime"},
+							{Name: "end_time", Type: "datetime"},
+							{Name: "priority", Type: "number"},
+						},
+					},
+				},
+				LastUpdated: time.Now(),
+			},
+			"kbmetadata": {
+				DatasetType: "kbmetadata",
+				Tables: []chat.TableInfo{
+					{
+						Name:        "metadata",
+						Description: "Catalog metadata entries",
+						Fields: []chat.FieldInfo{
+							{Name: "_id", Type: "string", Required: true},
+							{Name: "table_name", Type: "string"},
+							{Name: "column_name", Type: "string"},
+							{Name: "data_type", Type: "string"},
+							{Name: "description", Type: "string"},
+							{Name: "owner", Type: "string"},
+							{Name: "tags", Type: "array"},
+						},
+					},
+				},
+				LastUpdated: time.Now(),
+			},
+		}
+
+		if schema, ok := schemas[dstype]; ok {
+			return schema, nil
+		}
+
+		// Generic fallback schema
+		return &chat.SchemaInfo{
+			DatasetType: dstype,
+			Tables: []chat.TableInfo{
+				{
+					Name:        "documents",
+					Description: "Document store",
+					Fields: []chat.FieldInfo{
+						{Name: "_id", Type: "string", Required: true},
+						{Name: "data", Type: "object"},
+					},
+				},
+			},
+			LastUpdated: time.Now(),
+		}, nil
+	}
+}
+
+// toFloat converts a value to float64 for comparison
+func toFloat(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case float32:
+		return float64(val), true
+	case int:
+		return float64(val), true
+	case int64:
+		return float64(val), true
+	case int32:
+		return float64(val), true
+	case string:
+		var f float64
+		_, err := fmt.Sscanf(val, "%f", &f)
+		return f, err == nil
+	default:
+		return 0, false
+	}
 }
