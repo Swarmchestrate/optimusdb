@@ -1027,6 +1027,29 @@ spec:
         - name: catalogsearch
           port: 5013
 ---
+# ------------------------------------------------------------------------------
+# NEW: CHAT API ROUTE → Load-balanced to OptimusDB nodes
+# ------------------------------------------------------------------------------
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: optimusdb-chat-api
+  namespace: optimusddc
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/api/v1/chat`)
+      kind: Rule
+      priority: 60
+      services:
+        - name: optimusdb1
+          port: 8089
+        - name: optimusdb2
+          port: 8089
+        - name: optimusdb3
+          port: 8089
+---
 # Route: / → CatalogFrontend (Amundsen UI - default/root)
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute

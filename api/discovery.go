@@ -347,7 +347,8 @@ func (n *DiscoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 	n.service.TrackPeer(pi)
 
 	// Add to knowledgeBaseDB
-	n.service.db.AddDiscoveredPeer(string(pi.ID))
+	//n.service.db.AddDiscoveredPeer(string(pi.ID))
+	n.service.db.AddDiscoveredPeer(pi.ID.String())
 
 	// Add to peerstore
 	n.service.host.Peerstore().AddAddrs(pi.ID, pi.Addrs, peerstore.PermanentAddrTTL)
