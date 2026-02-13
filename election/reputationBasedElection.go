@@ -33,10 +33,18 @@ import (
 
 /*
 ===================================================================================
-OPTIMUSDB LEADER ELECTION - PRODUCTION VERSION v2.3.1 (COMPLETE REWRITE)
+OPTIMUSDB LEADER ELECTION - PRODUCTION VERSION v2.4.0 (ELECTION FIX)
 ===================================================================================
 
-CHANGELOG v2.3.1 (2025-01-05):
+CHANGELOG v2.4.0 (2026-02-13):
+✅ FIX #18: Default coordinator from container name (optimusdb1 auto-promotes)
+✅ FIX #19: Election retry loop (replaces broken recursive call that was
+           blocked by isElecting atomic flag - 0 retries ever succeeded)
+✅ FIX #20: Fallback election now reachable after 3 failed attempts
+✅ FIX #21: consecutiveElectionFailures counter triggers self-promotion
+✅ FIX #22: finalizeElectionInline returns winner to retry loop
+
+PREVIOUS CHANGELOG v2.3.1 (2025-01-05):
 ✅ FIX #12: Complete topic recreation (not just subscription cancel)
 ✅ FIX #13: Faster healing trigger (2 checks = 20s instead of 30s)
 ✅ FIX #14: Lower term threshold (>15 instead of >20)
@@ -305,6 +313,9 @@ type Node struct {
 	meshHealthy                bool
 	lastMeshHealingAttempt     time.Time
 	consecutiveEmptyMeshChecks int
+
+	containerName               string
+	consecutiveElectionFailures int
 }
 
 // Utility functions
@@ -318,6 +329,33 @@ func hashPeerList(peerIDs []string) string {
 		h.Write([]byte(id))
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// getContainerName returns the Docker container name (hostname).
+// In Docker, HOSTNAME is set to the container name by default.
+func getContainerName() string {
+	// First check explicit AGENT_NAME env var
+	if name := os.Getenv("AGENT_NAME"); name != "" {
+		return name
+	}
+	// Then check HOSTNAME (Docker sets this to container_name)
+	if name := os.Getenv("HOSTNAME"); name != "" {
+		return name
+	}
+	// Fallback to os.Hostname()
+	if name, err := os.Hostname(); err == nil {
+		return name
+	}
+	return ""
+}
+
+// isDefaultCoordinatorNode returns true if this container should be the
+// startup coordinator (container name ends with "1", e.g. "optimusdb1").
+func isDefaultCoordinatorNode(containerName string) bool {
+	if containerName == "" {
+		return false
+	}
+	return strings.HasSuffix(containerName, "1")
 }
 
 func selectInitiatorDeterministic(peerIDs []string) string {
@@ -570,8 +608,9 @@ func (n *Node) StartElection(peers []NodeReputation, attempt int) {
 	meshPeers := n.electionTopic.ListPeers()
 	discoveredPeers := n.discovery.GetDiscoveredPeers()
 
-	if len(discoveredPeers) > 0 && len(meshPeers) == 0 {
-		logger.Error("🚫 ELECTION BLOCKED: Mesh empty with %d discovered peers", len(discoveredPeers))
+	if len(meshPeers) == 0 && len(discoveredPeers) > 0 {
+		logger.Error("══════════════════════════════════════════")
+		logger.Error("ELECTION BLOCKED: MESH IS EMPTY!")
 		logger.Error("   LibP2P: ✅ Connected")
 		logger.Error("   Discovery: ✅ Working")
 		logger.Error("   GossipSub Mesh: ❌ BROKEN")
@@ -603,69 +642,110 @@ func (n *Node) StartElection(peers []NodeReputation, attempt int) {
 	}
 	defer atomic.StoreInt32(&n.isElecting, 0)
 
-	discoveredPeers = n.discovery.GetDiscoveredPeers()
-	totalPeers := len(discoveredPeers) + 1
+	// ═══════════════════════════════════════════════════════════════
+	// FIX: Internal retry loop (replaces broken recursive call)
+	// Previously, finalizeElection called StartElection recursively,
+	// but the isElecting atomic flag was still held, so retries ALWAYS
+	// failed with "Election already in progress". Now retries happen
+	// inside this same goroutine with the flag held once.
+	// ═══════════════════════════════════════════════════════════════
+	maxAttempts := 3
+	for currentAttempt := attempt; currentAttempt < maxAttempts; currentAttempt++ {
+		discoveredPeers = n.discovery.GetDiscoveredPeers()
+		totalPeers := len(discoveredPeers) + 1
 
-	n.electionMutex.Lock()
-	n.currentTerm++
-	term := n.currentTerm
-	n.peerCount = totalPeers
-	n.electionMutex.Unlock()
+		n.electionMutex.Lock()
+		n.currentTerm++
+		term := n.currentTerm
+		n.peerCount = totalPeers
+		n.electionMutex.Unlock()
 
-	logger.Election("════════════════════════════════════════")
-	logger.Election("Starting Election - Term %d, Attempt %d", term, attempt+1)
-	logger.Election("Cluster size: %d peers", totalPeers)
-	logger.Election("Mesh peers: %d", len(meshPeers))
-	logger.Election("════════════════════════════════════════")
+		logger.Election("════════════════════════════════════════")
+		logger.Election("Starting Election - Term %d, Attempt %d/%d", term, currentAttempt+1, maxAttempts)
+		logger.Election("Cluster size: %d peers", totalPeers)
+		logger.Election("Mesh peers: %d", len(n.electionTopic.ListPeers()))
+		logger.Election("════════════════════════════════════════")
 
-	allPeerIDs := append([]string{n.host.ID().String()}, discoveredPeers...)
-	sort.Strings(allPeerIDs)
-	peerListHash := hashPeerList(allPeerIDs)
+		allPeerIDs := append([]string{n.host.ID().String()}, discoveredPeers...)
+		sort.Strings(allPeerIDs)
+		peerListHash := hashPeerList(allPeerIDs)
 
-	electionID := fmt.Sprintf("cluster-term%d-attempt%d-peers%s",
-		term, attempt, peerListHash[:8])
-	logger.Election("Election ID: %s (clock-independent)", electionID)
+		electionID := fmt.Sprintf("cluster-term%d-attempt%d-peers%s",
+			term, currentAttempt, peerListHash[:8])
+		logger.Election("Election ID: %s (clock-independent)", electionID)
 
-	n.electionMutex.Lock()
-	n.currentElectionID = electionID
-	n.electionPhase = PhaseVoting
-	n.electionDeadline = time.Now().Add(electionTimeout)
-	n.votes = make(map[string]int)
-	n.votedNodes = make(map[string]string)
-	n.electionMutex.Unlock()
+		n.electionMutex.Lock()
+		n.currentElectionID = electionID
+		n.electionPhase = PhaseVoting
+		n.electionDeadline = time.Now().Add(electionTimeout)
+		n.votes = make(map[string]int)
+		n.votedNodes = make(map[string]string)
+		n.electionMutex.Unlock()
 
-	if len(peers) == 0 {
-		peers = []NodeReputation{{NodeID: n.host.ID().String()}}
+		if len(peers) == 0 {
+			peers = []NodeReputation{{NodeID: n.host.ID().String()}}
+		}
+
+		selected := n.selectCandidate(peers)
+		vote := VoteMessage{
+			NodeID:     n.host.ID().String(),
+			Vote:       selected,
+			ElectionID: electionID,
+			Term:       term,
+		}
+
+		n.electionMutex.Lock()
+		n.votedNodes[vote.NodeID] = vote.Vote
+		n.votes[vote.Vote]++
+		logger.Election("🗳️  I vote for: %s", vote.Vote)
+		n.electionMutex.Unlock()
+
+		if err := n.publishMessage(TypeVote, vote); err != nil {
+			logger.Error("Failed to publish vote: %v", err)
+		}
+
+		electionCtx, cancel := context.WithTimeout(n.ctx, electionTimeout)
+
+		n.electionMutex.Lock()
+		n.electionCancel = cancel
+		n.electionMutex.Unlock()
+
+		<-electionCtx.Done()
+		cancel()
+
+		// ── Finalize this attempt inline ──
+		winner := n.finalizeElectionInline(term, electionID)
+
+		if winner != "" {
+			// Election succeeded - reset failure counter
+			n.consecutiveElectionFailures = 0
+			return
+		}
+
+		// No winner - log and continue retry loop
+		logger.Warn("No winner in term %d (attempt %d/%d)", term, currentAttempt+1, maxAttempts)
+
+		if currentAttempt < maxAttempts-1 {
+			backoff := time.Duration(math.Pow(2, float64(currentAttempt))) * time.Second
+			logger.Election("Retrying in %v...", backoff)
+			time.Sleep(backoff)
+		}
 	}
 
-	selected := n.selectCandidate(peers)
-	vote := VoteMessage{
-		NodeID:     n.host.ID().String(),
-		Vote:       selected,
-		ElectionID: electionID,
-		Term:       term,
+	// All attempts exhausted - use fallback
+	n.consecutiveElectionFailures++
+	logger.Error("Election failed after %d attempts (consecutive failures: %d)", maxAttempts, n.consecutiveElectionFailures)
+
+	// If this is the default coordinator node and elections keep failing,
+	// self-promote to break the deadlock
+	if isDefaultCoordinatorNode(n.containerName) && n.consecutiveElectionFailures >= 2 {
+		logger.Election("🏗️  DEFAULT COORDINATOR FALLBACK: %s self-promoting after %d consecutive failures",
+			n.containerName, n.consecutiveElectionFailures)
+		n.promoteAsDefaultCoordinator()
+		return
 	}
 
-	n.electionMutex.Lock()
-	n.votedNodes[vote.NodeID] = vote.Vote
-	n.votes[vote.Vote]++
-	logger.Election("🗳️  I vote for: %s", vote.Vote)
-	n.electionMutex.Unlock()
-
-	if err := n.publishMessage(TypeVote, vote); err != nil {
-		logger.Error("Failed to publish vote: %v", err)
-	}
-
-	electionCtx, cancel := context.WithTimeout(n.ctx, electionTimeout)
-	defer cancel()
-
-	n.electionMutex.Lock()
-	n.electionCancel = cancel
-	n.electionMutex.Unlock()
-
-	<-electionCtx.Done()
-
-	n.finalizeElection(term, electionID, attempt, peers)
+	n.fallbackElection()
 }
 
 func (n *Node) selectCandidate(peers []NodeReputation) string {
@@ -692,6 +772,58 @@ func (n *Node) selectCandidate(peers []NodeReputation) string {
 	}
 
 	return peers[len(peers)-1].NodeID
+}
+
+// finalizeElectionInline evaluates the election result and returns the winner
+// (empty string if no winner). Called from the retry loop in StartElection.
+func (n *Node) finalizeElectionInline(term int, electionID string) string {
+	n.electionMutex.Lock()
+
+	if n.currentElectionID != electionID || n.currentTerm != term {
+		n.electionMutex.Unlock()
+		logger.Warn("Election state changed, aborting finalization")
+		return ""
+	}
+
+	n.electionPhase = PhaseCompleted
+
+	logger.Election("Final Results - Term %d:", term)
+	for candidate, count := range n.votes {
+		logger.Election("  %s: %d votes", candidate, count)
+	}
+	logger.Election("Participation: %d/%d nodes voted", len(n.votedNodes), n.peerCount)
+
+	winner := n.determineWinner()
+
+	votesCopy := make(map[string]int)
+	for k, v := range n.votes {
+		votesCopy[k] = v
+	}
+
+	n.electionMutex.Unlock()
+
+	if winner == "" {
+		return ""
+	}
+
+	logger.Election("🎉 WINNER: %s with %d votes", winner, votesCopy[winner])
+	n.announceLeader(winner, term)
+
+	if GlobalReputationDB != nil && GlobalReputationDB.ReputationDB != nil {
+		err := InsertElectionLog(
+			GlobalReputationDB.ReputationDB,
+			electionID,
+			time.Now(),
+			winner,
+			term,
+			votesCopy,
+		)
+		if err != nil {
+			logger.Error("Failed to log election: %v", err)
+		}
+	}
+
+	return winner
 }
 
 func (n *Node) finalizeElection(term int, electionID string, attempt int, peers []NodeReputation) {
@@ -1215,6 +1347,41 @@ func (n *Node) sendHeartbeats(term int) {
 			return
 		}
 	}
+}
+
+// promoteAsDefaultCoordinator forces this node to become coordinator.
+// Used when this node is the designated default (container name ends with "1")
+// and GossipSub elections consistently fail due to mesh issues.
+func (n *Node) promoteAsDefaultCoordinator() {
+	logger.Election("═══════════════════════════════════════")
+	logger.Election("🏗️  DEFAULT COORDINATOR SELF-PROMOTION")
+	logger.Election("   Container: %s", n.containerName)
+	logger.Election("   Reason: GossipSub elections failing")
+	logger.Election("═══════════════════════════════════════")
+
+	n.electionMutex.Lock()
+	n.currentTerm++
+	term := n.currentTerm
+	n.electionPhase = PhaseCompleted
+	n.electionMutex.Unlock()
+
+	// Announce ourselves as leader
+	n.announceLeader(n.host.ID().String(), term)
+
+	// Log the promotion
+	if GlobalReputationDB != nil && GlobalReputationDB.ReputationDB != nil {
+		votes := map[string]int{n.host.ID().String(): 1}
+		InsertElectionLog(
+			GlobalReputationDB.ReputationDB,
+			fmt.Sprintf("default-coordinator-%s-term%d", n.containerName, term),
+			time.Now(),
+			n.host.ID().String(),
+			term,
+			votes,
+		)
+	}
+
+	logger.Election("✅ Default coordinator promotion complete")
 }
 
 func (n *Node) fallbackElection() {
@@ -1745,8 +1912,8 @@ func (n *Node) validateStartupTerm() {
 // ═══════════════════════════════════════════════════════════════════════════
 func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, discovery *app.KnowledgeBaseDB) *Node {
 	logger.Election("════════════════════════════════════════")
-	logger.Election("OptimusDB Election v2.3.1 - COMPLETE FIX")
-	logger.Election("Mesh healing enforced + Startup validation")
+	logger.Election("OptimusDB Election v2.4.0 - DEFAULT COORDINATOR FIX")
+	logger.Election("Default coordinator + Fixed election retries")
 	logger.Election("════════════════════════════════════════")
 
 	var electionTopic *pubsub.Topic
@@ -1968,33 +2135,63 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 		peers = []NodeReputation{selfRep}
 	}
 
-	initiatorID := selectInitiatorDeterministic(allPeerIDs)
-
+	containerName := node.containerName
 	logger.Election("════════════════════════════════════════")
-	logger.Election("Consensus Initiator Selection")
-	logger.Election("   Algorithm: Deterministic consistent hashing")
-	logger.Election("   Input: %d peer IDs (sorted)", len(allPeerIDs))
-	logger.Election("   Selected: %s", initiatorID)
+	logger.Election("Container Name: %s", containerName)
 	logger.Election("════════════════════════════════════════")
 
-	if node.host.ID().String() == initiatorID {
-		logger.Election("👑 I AM THE CONSENSUS INITIATOR")
+	// ═══════════════════════════════════════════════════════════════
+	// FIX: DEFAULT COORDINATOR FROM CONTAINER NAME
+	// If this is optimusdb1 (container name ends with "1"), immediately
+	// self-promote as coordinator. This breaks the chicken-and-egg problem
+	// where GossipSub mesh issues prevent vote propagation, which prevents
+	// any coordinator from being elected, which prevents heartbeats.
+	// Other nodes will accept this via the announcement mechanism.
+	// If a node with higher reputation later wins a proper election,
+	// it will take over via the normal term-based precedence.
+	// ═══════════════════════════════════════════════════════════════
+	if isDefaultCoordinatorNode(containerName) {
+		logger.Election("👑 DEFAULT COORDINATOR: %s", containerName)
+		logger.Election("   Self-promoting as startup coordinator...")
 
-		// Final mesh check
-		finalCheck := electionTopic.ListPeers()
-		if len(finalCheck) == 0 && len(discoveredPeers) > 0 {
-			logger.Error("🚫 ELECTION BLOCKED: Mesh empty just before initiation")
-			logger.Error("   Triggering emergency healing...")
-			go node.emergencyMeshHealing()
-		} else {
-			logger.Election("   Starting election in 2s...")
-			jitter := time.Duration(rand.Intn(500)) * time.Millisecond
-			time.Sleep(2*time.Second + jitter)
-			go node.StartElection(peers, 0)
-		}
+		// Brief delay to let other nodes finish their own stabilization
+		time.Sleep(3 * time.Second)
+
+		node.promoteAsDefaultCoordinator()
+
+		logger.Election("✅ Default coordinator active, heartbeats will start")
+		logger.Election("   Other nodes can trigger re-election if they have")
+		logger.Election("   a candidate with higher reputation")
 	} else {
-		logger.Election("📋 FOLLOWER: Initiator is %s", initiatorID)
-		logger.Election("   Waiting for election votes...")
+		// Non-default nodes: try normal election, but with working retries
+		initiatorID := selectInitiatorDeterministic(allPeerIDs)
+
+		logger.Election("════════════════════════════════════════")
+		logger.Election("Consensus Initiator Selection")
+		logger.Election("   Algorithm: Deterministic consistent hashing")
+		logger.Election("   Input: %d peer IDs (sorted)", len(allPeerIDs))
+		logger.Election("   Selected: %s", initiatorID)
+		logger.Election("════════════════════════════════════════")
+
+		if node.host.ID().String() == initiatorID {
+			logger.Election("👑 I AM THE CONSENSUS INITIATOR")
+
+			// Final mesh check
+			finalCheck := electionTopic.ListPeers()
+			if len(finalCheck) == 0 && len(discoveredPeers) > 0 {
+				logger.Error("🚫 ELECTION BLOCKED: Mesh empty just before initiation")
+				logger.Error("   Triggering emergency healing...")
+				go node.emergencyMeshHealing()
+			} else {
+				logger.Election("   Starting election in 2s...")
+				jitter := time.Duration(rand.Intn(500)) * time.Millisecond
+				time.Sleep(2*time.Second + jitter)
+				go node.StartElection(peers, 0)
+			}
+		} else {
+			logger.Election("📋 FOLLOWER: Initiator is %s", initiatorID)
+			logger.Election("   Waiting for election votes...")
+		}
 	}
 
 	sigChan := make(chan os.Signal, 1)
@@ -2024,6 +2221,8 @@ func NewNode(ctx context.Context, host host.Host, pubsub *pubsub.PubSub, discove
 		requiredConsecutiveFailures:  3,
 		meshHealthy:                  false,
 		consecutiveEmptyMeshChecks:   0,
+		containerName:                getContainerName(),
+		consecutiveElectionFailures:  0,
 	}
 }
 

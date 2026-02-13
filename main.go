@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -13,7 +11,6 @@ import (
 	"github.com/lukesampson/figlet/figletlib"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
-	"math"
 	"optimusdb/api"
 	"optimusdb/app"
 	"optimusdb/config"
@@ -24,7 +21,6 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"strconv"
 	"syscall"
 	"time"
 )
@@ -377,140 +373,48 @@ func main() {
 	}
 
 	// ═══════════════════════════════════════════════════════════════════════════
-	// DYNAMIC GOSSIPSUB CONFIGURATION (SCALES 3-100+ NODES)
+	// GOSSIPSUB INITIALIZATION - REUSE IPFS NODE'S PUBSUB
+	// ═══════════════════════════════════════════════════════════════════════════
+	//
+	// CRITICAL FIX (v2.4.0): The IPFS/Kubo node already creates a GossipSub
+	// instance on this host (configured via ipfsNode.go with pubsub:true,
+	// Router:"gossipsub"). Creating a SECOND GossipSub instance on the same
+	// host causes a protocol handler conflict on /meshsub/1.1.0:
+	//
+	//   - The second instance OVERWRITES the first's stream handler
+	//   - Self-messages still work (delivered in-memory, bypass network)
+	//   - Cross-node messages SILENTLY FAIL (handler conflict drops them)
+	//   - ListPeers() reports peers from shared protocol state (MISLEADING)
+	//   - Zero GRAFT events because the second instance never forms a real mesh
+	//
+	// The fix: reuse the IPFS node's existing, working GossipSub instance.
 	// ═══════════════════════════════════════════════════════════════════════════
 	var ps *pubsub.PubSub
 	var electionTopic *pubsub.Topic
 	var electionSub *pubsub.Subscription
 
 	logger.Election("════════════════════════════════════════════════════════════")
-	logger.Election("INITIALIZING GOSSIPSUB WITH DYNAMIC PARAMETERS")
+	logger.Election("INITIALIZING GOSSIPSUB - REUSING IPFS NODE'S PUBSUB")
 	logger.Election("════════════════════════════════════════════════════════════")
 
-	// ✅ STEP 1: Determine cluster size (from env or auto-detect)
-	expectedClusterSize := 8 // Safe default for small clusters
-
-	if envSize := os.Getenv("CLUSTER_SIZE"); envSize != "" {
-		if size, err := strconv.Atoi(envSize); err == nil && size > 0 {
-			expectedClusterSize = size
-			logger.Election("[CONFIG] Using CLUSTER_SIZE from environment: %d nodes", expectedClusterSize)
-		}
-	} else {
-		// Auto-detect cluster size from discovery
-		logger.Election("[CONFIG] CLUSTER_SIZE not set, auto-detecting from discovery...")
-		time.Sleep(10 * time.Second) // Wait for discovery to stabilize
-
-		discoveredPeers := knowledgeBaseDB.GetDiscoveredPeers()
-		if len(discoveredPeers) > 0 {
-			expectedClusterSize = len(discoveredPeers) + 1 // +1 for self
-			logger.Election("[CONFIG] Auto-detected cluster size: %d nodes (discovered: %d + self: 1)",
-				expectedClusterSize, len(discoveredPeers))
-		} else {
-			logger.Election("[CONFIG] No peers discovered yet, using default: %d nodes", expectedClusterSize)
-		}
-	}
-
-	// ✅ STEP 2: Calculate optimal GossipSub parameters based on cluster size
-	var D, Dlo, Dhi int
-	var meshType string
-
-	if expectedClusterSize <= 10 {
-		// FULL MESH for small clusters (3-10 nodes)
-		// Every node connects to every other node for maximum reliability
-		D = expectedClusterSize - 1
-		Dlo = max(2, D-1)
-		Dhi = expectedClusterSize + 2
-		meshType = "FULL MESH"
-		logger.Election("[CONFIG] Small cluster detected: configuring for FULL MESH")
-	} else if expectedClusterSize <= 50 {
-		// PARTIAL MESH for medium clusters (11-50 nodes)
-		// Each node connects to sqrt(N) + 5 peers for good coverage
-		D = int(math.Sqrt(float64(expectedClusterSize))) + 5
-		Dlo = D - 2
-		Dhi = D + 5
-		meshType = "PARTIAL MESH"
-		logger.Election("[CONFIG] Medium cluster detected: configuring for PARTIAL MESH")
-	} else {
-		// SPARSE MESH for large clusters (51+ nodes)
-		// Each node connects to log10(N) * 10 peers for efficiency
-		D = int(math.Log10(float64(expectedClusterSize))) * 10
-		Dlo = D - 3
-		Dhi = D + 10
-		meshType = "SPARSE MESH"
-		logger.Election("[CONFIG] Large cluster detected: configuring for SPARSE MESH")
-	}
-
-	// Apply safety bounds
-	D = max(3, D)
-	Dlo = max(2, Dlo)
-	Dhi = max(D+2, Dhi)
-
-	logger.Election("[CONFIG] ════════════════════════════════════════════════════════════")
-	logger.Election("[CONFIG] Mesh Configuration:")
-	logger.Election("[CONFIG]   Type: %s", meshType)
-	logger.Election("[CONFIG]   Cluster size: %d nodes", expectedClusterSize)
-	logger.Election("[CONFIG]   D (target peers): %d", D)
-	logger.Election("[CONFIG]   Dlo (minimum): %d", Dlo)
-	logger.Election("[CONFIG]   Dhi (maximum): %d", Dhi)
-	logger.Election("[CONFIG]   Expected coverage: %.1f%%", (float64(D)/float64(expectedClusterSize-1))*100)
-	logger.Election("[CONFIG] ════════════════════════════════════════════════════════════")
-
-	// ✅ STEP 3: Create message ID function for deduplication
-	messageIDFunc := func(pmsg *pubsub_pb.Message) string {
-		h := sha256.New()
-		h.Write(pmsg.Data)
-		h.Write(pmsg.From)
-		return hex.EncodeToString(h.Sum(nil))[:20]
-	}
-
-	// ✅ STEP 4: Configure GossipSub parameters
-	gparams := pubsub.DefaultGossipSubParams()
-	gparams.D = D                                 // ✅ DYNAMIC - scales with cluster
-	gparams.Dlo = Dlo                             // ✅ DYNAMIC - scales with cluster
-	gparams.Dhi = Dhi                             // ✅ DYNAMIC - scales with cluster
-	gparams.Dscore = max(2, D/2)                  // Peer score threshold
-	gparams.Dout = max(2, D/3)                    // Outbound connections
-	gparams.Dlazy = max(3, D/2)                   // Gossip peers
-	gparams.HeartbeatInterval = 1 * time.Second   // Heartbeat frequency
-	gparams.HistoryLength = 12                    // Message history
-	gparams.HistoryGossip = 6                     // Gossip history
-	gparams.GossipFactor = 0.3                    // Gossip probability
-	gparams.OpportunisticGraftTicks = 40          // Opportunistic grafting
-	gparams.OpportunisticGraftPeers = 3           // Opportunistic peers
-	gparams.PruneBackoff = 15 * time.Second       // Prune backoff
-	gparams.GraftFloodThreshold = 3 * time.Second // Graft flood threshold
-	gparams.FanoutTTL = 45 * time.Second          // Fanout TTL
-
-	// ✅ STEP 5: Build GossipSub options
-	psOpts := []pubsub.Option{
-		pubsub.WithMessageIdFn(messageIDFunc),
-		pubsub.WithSeenMessagesTTL(3 * time.Minute),
-		pubsub.WithFloodPublish(expectedClusterSize <= 10), // ✅ DYNAMIC - only for small clusters
-		pubsub.WithPeerExchange(true),
-		pubsub.WithDirectPeers([]peer.AddrInfo{}),
-		pubsub.WithGossipSubParams(gparams),
-		pubsub.WithDirectConnectTicks(5),
-		pubsub.WithEventTracer(&MeshTracer{}),
-	}
-
-	// Optional: Enable JSON trace logging
-	if trace := os.Getenv("GOSSIPSUB_TRACE"); trace != "" {
-		if tr, err := pubsub.NewJSONTracer(trace); err == nil {
-			psOpts = append(psOpts, pubsub.WithEventTracer(tr))
-			logger.Debug("[GOSSIPSUB] Trace logging enabled: %s", trace)
-		}
-	}
-
-	// ✅ STEP 6: Create GossipSub instance with better peer scoring
-	psOpts = append(psOpts, election.CreateBetterGossipSubParams())
-	ps, err = pubsub.NewGossipSub(termCtx, hostMain, psOpts...)
-	if err != nil {
-		logger.Error("[FATAL] Failed to initialize GossipSub: %v", err)
+	// ✅ Use the IPFS node's built-in GossipSub (already connected and meshed)
+	ps = knowledgeBaseDB.Node.PubSub
+	if ps == nil {
+		logger.Error("[FATAL] IPFS node's PubSub is nil!")
+		logger.Error("  Ensure pubsub is enabled in IPFS config (ipfsNode.go)")
+		logger.Error("  Config should have: Pubsub.Enabled = true, Pubsub.Router = gossipsub")
 		os.Exit(1)
 	}
-	logger.Election("[GOSSIPSUB] Successfully created with D=%d, Dlo=%d, Dhi=%d", D, Dlo, Dhi)
 
-	// ✅ STEP 7: Join election topic
+	logger.Election("[GOSSIPSUB] ✅ Using IPFS node's built-in GossipSub")
+	logger.Election("[GOSSIPSUB]    No duplicate instance (fixes cross-node message delivery)")
+	logger.Election("[GOSSIPSUB]    Connected peers: %d", len(hostMain.Network().Peers()))
+
+	// Wait for IPFS pubsub mesh to stabilize before joining election topic
+	logger.Election("[GOSSIPSUB] Waiting 10s for IPFS PubSub mesh stabilization...")
+	time.Sleep(10 * time.Second)
+
+	// ✅ Join election topic on the IPFS node's PubSub
 	electionTopic, err = ps.Join("optimusdb")
 	if err != nil {
 		logger.Error("[FATAL] Failed to join election topic: %v", err)
@@ -518,7 +422,7 @@ func main() {
 	}
 	logger.Election("[GOSSIPSUB] Joined topic 'optimusdb'")
 
-	// ✅ STEP 8: Subscribe to election topic
+	// ✅ Subscribe to election topic
 	electionSub, err = electionTopic.Subscribe()
 	if err != nil {
 		logger.Error("[FATAL] Failed to subscribe to election topic: %v", err)
@@ -526,14 +430,14 @@ func main() {
 	}
 	logger.Election("[GOSSIPSUB] Subscribed to topic 'optimusdb'")
 
-	// ✅ STEP 9: Store in knowledgeBaseDB for election to use
+	// ✅ Store in knowledgeBaseDB for election to use
 	knowledgeBaseDB.ElectionTopic = electionTopic
 	knowledgeBaseDB.ElectionSub = electionSub
 	knowledgeBaseDB.PubSub = ps
 
-	logger.Election("GOSSIPSUB INITIALIZATION COMPLETE")
-	logger.Election("  Scales from 3 to 100+ nodes automatically")
-	logger.Election("  Current configuration: %s for %d nodes", meshType, expectedClusterSize)
+	logger.Election("[GOSSIPSUB] INITIALIZATION COMPLETE")
+	logger.Election("[GOSSIPSUB]   Using IPFS node's GossipSub (single instance)")
+	logger.Election("[GOSSIPSUB]   Mesh peers: %d", len(ps.ListPeers("optimusdb")))
 
 	// ===============================
 	// START MESH MONITORING
