@@ -316,6 +316,11 @@ type Node struct {
 
 	containerName               string
 	consecutiveElectionFailures int
+
+	// FIX: Track actual message reception instead of trusting ListPeers()
+	// ListPeers() returns 0 with Kubo's internal PubSub even when messages flow
+	lastMessageFromPeer map[string]time.Time
+	messagePeerMu       sync.RWMutex
 }
 
 // Utility functions
@@ -604,36 +609,40 @@ func (n *Node) publishMessage(msgType string, payload interface{}) error {
 // START ELECTION (WITH MESH BLOCKING)
 // ═══════════════════════════════════════════════════════════════════════════
 func (n *Node) StartElection(peers []NodeReputation, attempt int) {
-	// CRITICAL: Check mesh health BEFORE starting election
+	// Check mesh health — but use ACTUAL message reception, not just ListPeers()
 	meshPeers := n.electionTopic.ListPeers()
 	discoveredPeers := n.discovery.GetDiscoveredPeers()
+	recentMsgPeers := n.hasRecentMessagePeers(60 * time.Second)
 
-	if len(meshPeers) == 0 && len(discoveredPeers) > 0 {
+	// FIX: Only block if BOTH ListPeers AND actual message reception confirm isolation
+	// ListPeers() returns 0 with Kubo's internal PubSub even when messages flow
+	trulyIsolated := len(meshPeers) == 0 && recentMsgPeers == 0
+
+	if trulyIsolated && len(discoveredPeers) > 0 {
 		logger.Error("══════════════════════════════════════════")
-		logger.Error("ELECTION BLOCKED: MESH IS EMPTY!")
-		logger.Error("   LibP2P: ✅ Connected")
-		logger.Error("   Discovery: ✅ Working")
-		logger.Error("   GossipSub Mesh: ❌ BROKEN")
-		logger.Error("   Node is ISOLATED")
+		logger.Error("ELECTION BLOCKED: NODE IS TRULY ISOLATED!")
+		logger.Error("   ListPeers: %d, Recent msg peers: %d", len(meshPeers), recentMsgPeers)
 		logger.Error("   Triggering emergency mesh healing...")
 
 		go n.emergencyMeshHealing()
 
-		// Also check for high term
-		n.electionMutex.Lock()
-		highTerm := n.currentTerm > 15
-		term := n.currentTerm
-		n.electionMutex.Unlock()
+		// FIX: Still increment failure counter so default coordinator fallback works
+		n.consecutiveElectionFailures++
+		logger.Error("   Consecutive election failures: %d", n.consecutiveElectionFailures)
 
-		if highTerm {
-			logger.Error("🚫 High term (%d) detected, forcing reconciliation", term)
-			go func() {
-				time.Sleep(5 * time.Second)
-				n.checkTermDivergence()
-			}()
+		// Default coordinator fallback even when mesh-blocked
+		if isDefaultCoordinatorNode(n.containerName) && n.consecutiveElectionFailures >= 2 {
+			logger.Election("🏗️  DEFAULT COORDINATOR FALLBACK (mesh-blocked): self-promoting after %d failures",
+				n.consecutiveElectionFailures)
+			n.promoteAsDefaultCoordinator()
+			return
 		}
 
 		return
+	}
+
+	if len(meshPeers) == 0 && recentMsgPeers > 0 {
+		logger.Election("⚠️  ListPeers()=0 but %d peers seen via messages — proceeding with election", recentMsgPeers)
 	}
 
 	if !atomic.CompareAndSwapInt32(&n.isElecting, 0, 1) {
@@ -966,6 +975,15 @@ func (n *Node) ListenForElectionEvents() {
 			}
 
 			msgCount++
+
+			// FIX: Track actual message reception from each peer
+			// This is the TRUE mesh health signal — ListPeers() lies with Kubo PubSub
+			if msg.ReceivedFrom != n.host.ID() {
+				n.messagePeerMu.Lock()
+				n.lastMessageFromPeer[msg.ReceivedFrom.String()] = time.Now()
+				n.messagePeerMu.Unlock()
+			}
+
 			sender := msg.ReceivedFrom.String()
 			if len(sender) > 12 {
 				sender = sender[:12] + "..."
@@ -985,6 +1003,23 @@ func (n *Node) ListenForElectionEvents() {
 			n.handleMessage(core, msg.ReceivedFrom)
 		}
 	}()
+}
+
+// hasRecentMessagePeers returns the count of peers from whom we received
+// a message within the given duration. This is the REAL mesh health indicator
+// because ListPeers() returns 0 with Kubo's internal PubSub even when
+// messages are actually flowing between nodes.
+func (n *Node) hasRecentMessagePeers(within time.Duration) int {
+	n.messagePeerMu.RLock()
+	defer n.messagePeerMu.RUnlock()
+	count := 0
+	cutoff := time.Now().Add(-within)
+	for _, lastSeen := range n.lastMessageFromPeer {
+		if lastSeen.After(cutoff) {
+			count++
+		}
+	}
+	return count
 }
 
 func validateReputationData(rep NodeReputation) error {
@@ -1283,9 +1318,6 @@ func (n *Node) sendHeartbeats(term int) {
 
 	logger.Election("Starting heartbeat broadcast (every %v)", heartbeatInterval)
 
-	failureCount := 0
-	maxFailures := 3
-
 	for {
 		select {
 		case <-ticker.C:
@@ -1297,24 +1329,12 @@ func (n *Node) sendHeartbeats(term int) {
 			}
 			n.mutex.Unlock()
 
-			// Check mesh before sending
+			// FIX: ALWAYS send heartbeats — never gate on ListPeers()
+			// ListPeers() returns 0 with Kubo's internal PubSub, but messages
+			// DO flow (proven by reception logs). Blocking heartbeats here was
+			// the #1 cause of the election deadlock.
 			meshPeers := n.electionTopic.ListPeers()
-			if len(meshPeers) == 0 {
-				failureCount++
-				logger.Warn("💔 No mesh peers, heartbeat not sent (failure #%d/%d)",
-					failureCount, maxFailures)
-
-				if failureCount >= maxFailures {
-					logger.Error("💔 Mesh empty for %d consecutive heartbeats, triggering healing",
-						maxFailures)
-					go n.emergencyMeshHealing()
-					failureCount = 0 // Reset after triggering healing
-				}
-				continue
-			}
-
-			// Reset failure count on successful mesh check
-			failureCount = 0
+			recentMsgPeers := n.hasRecentMessagePeers(60 * time.Second)
 
 			hb := HeartbeatMessage{
 				LeaderID: n.host.ID().String(),
@@ -1327,8 +1347,8 @@ func (n *Node) sendHeartbeats(term int) {
 			for attempt := 0; attempt < 3; attempt++ {
 				publishErr = n.publishMessage(TypeHeartbeat, hb)
 				if publishErr == nil {
-					logger.Election("💓 Heartbeat sent (term %d, %d mesh peers)",
-						term, len(meshPeers))
+					logger.Election("💓 Heartbeat sent (term %d, mesh=%d, msgPeers=%d)",
+						term, len(meshPeers), recentMsgPeers)
 					break
 				}
 
@@ -1340,6 +1360,7 @@ func (n *Node) sendHeartbeats(term int) {
 
 			if publishErr != nil {
 				logger.Error("💔 Heartbeat failed after 3 attempts: %v", publishErr)
+				go n.emergencyMeshHealing()
 			}
 
 		case <-n.ctx.Done():
@@ -1442,29 +1463,46 @@ func (n *Node) CheckLeaderFailure() {
 
 				logger.Error("LEADER FAILURE CONFIRMED: %d consecutive timeouts", n.consecutiveHeartbeatFailures)
 
-				// ✅ CRITICAL: Check if this is mesh failure vs actual leader failure
+				// Check mesh health using BOTH ListPeers AND actual message reception
 				meshPeers := n.electionTopic.ListPeers()
 				discoveredPeers := n.discovery.GetDiscoveredPeers()
+				recentMsgPeers := n.hasRecentMessagePeers(60 * time.Second)
 
-				if len(meshPeers) == 0 && len(discoveredPeers) > 0 {
-					logger.Error("ROOT CAUSE: MESH FAILURE (not leader failure)")
+				// FIX: Only treat as mesh failure if BOTH indicators confirm isolation
+				trulyIsolated := len(meshPeers) == 0 && recentMsgPeers == 0
+
+				if trulyIsolated && len(discoveredPeers) > 0 {
+					logger.Error("ROOT CAUSE: TRUE MESH ISOLATION")
 					logger.Error("  Discovered peers: %d ✅", len(discoveredPeers))
-					logger.Error("  Mesh peers: %d ❌", len(meshPeers))
-					logger.Error("  Unable to receive heartbeats due to broken mesh")
+					logger.Error("  Mesh peers: %d ❌, Recent msg peers: %d ❌", len(meshPeers), recentMsgPeers)
 					logger.Error("  Triggering emergency mesh healing...")
 
-					// Reset counters (we're fixing mesh, not the leader)
+					// FIX: Increment election failure counter even when mesh-blocked
+					n.consecutiveElectionFailures++
+
+					// FIX: Default coordinator fallback when truly isolated
+					if isDefaultCoordinatorNode(n.containerName) && n.consecutiveElectionFailures >= 2 {
+						n.heartbeatMissed = 0
+						n.consecutiveHeartbeatFailures = 0
+						n.mutex.Unlock()
+						logger.Election("🏗️  DEFAULT COORDINATOR FALLBACK from CheckLeaderFailure")
+						n.promoteAsDefaultCoordinator()
+						continue
+					}
+
 					n.heartbeatMissed = 0
 					n.consecutiveHeartbeatFailures = 0
 					n.mutex.Unlock()
 
-					// Trigger mesh healing instead of election
 					go n.emergencyMeshHealing()
 					continue
 				}
 
-				// Normal leader failure (mesh is fine, leader actually died)
-				logger.Election("Mesh is healthy (%d peers), leader actually failed", len(meshPeers))
+				if len(meshPeers) == 0 && recentMsgPeers > 0 {
+					logger.Election("ListPeers()=0 but %d peers via messages — treating as leader failure, not mesh failure", recentMsgPeers)
+				} else {
+					logger.Election("Mesh healthy (mesh=%d, msgPeers=%d), leader actually failed", len(meshPeers), recentMsgPeers)
+				}
 				logger.Election("Starting re-election...")
 
 				n.heartbeatMissed = 0
@@ -1751,19 +1789,25 @@ func (n *Node) checkMeshHealth() {
 	meshPeers := n.electionTopic.ListPeers()
 	discoveredPeers := n.discovery.GetDiscoveredPeers()
 	connectedPeers := n.host.Network().Peers()
+	recentMsgPeers := n.hasRecentMessagePeers(60 * time.Second)
 
 	meshSize := len(meshPeers)
 	discoveredSize := len(discoveredPeers)
 	connectedSize := len(connectedPeers)
 
-	logger.Election("[MESH-MONITOR] Mesh size: mesh=%d, discovered=%d, connected=%d",
-		meshSize, discoveredSize, connectedSize)
+	logger.Election("[MESH-MONITOR] mesh=%d, discovered=%d, connected=%d, msgPeers(60s)=%d",
+		meshSize, discoveredSize, connectedSize, recentMsgPeers)
 
-	// Calculate mesh health
-	if meshSize == 0 && discoveredSize > 0 {
+	// FIX: Use actual message reception as the real health indicator
+	// ListPeers() returns 0 with Kubo PubSub even when messages flow
+	if recentMsgPeers > 0 {
+		// Messages flowing — mesh is actually working regardless of ListPeers()
+		n.consecutiveEmptyMeshChecks = 0
+		n.meshHealthy = true
+	} else if meshSize == 0 && discoveredSize > 0 {
 		n.consecutiveEmptyMeshChecks++
-		logger.Warn("[MESH-MONITOR] ⚠️  UNHEALTHY: Empty mesh with %d discovered peers (check #%d)",
-			discoveredSize, n.consecutiveEmptyMeshChecks)
+		logger.Warn("[MESH-MONITOR] ⚠️  UNHEALTHY: No messages received, no mesh peers (check #%d)",
+			n.consecutiveEmptyMeshChecks)
 
 		// FIX #13: Trigger after 2 checks (20s instead of 30s)
 		if n.consecutiveEmptyMeshChecks >= 2 {
@@ -2176,18 +2220,23 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 		if node.host.ID().String() == initiatorID {
 			logger.Election("👑 I AM THE CONSENSUS INITIATOR")
 
-			// Final mesh check
+			// FIX: Don't block on ListPeers() — it lies with Kubo PubSub
+			// Always attempt election; StartElection has its own checks
 			finalCheck := electionTopic.ListPeers()
-			if len(finalCheck) == 0 && len(discoveredPeers) > 0 {
-				logger.Error("🚫 ELECTION BLOCKED: Mesh empty just before initiation")
-				logger.Error("   Triggering emergency healing...")
+			recentMsgPeers := node.hasRecentMessagePeers(60 * time.Second)
+			logger.Election("   Pre-election check: ListPeers=%d, recentMsgPeers=%d",
+				len(finalCheck), recentMsgPeers)
+
+			if len(finalCheck) == 0 && recentMsgPeers == 0 && len(discoveredPeers) > 0 {
+				logger.Warn("🚫 Node appears truly isolated — healing + proceeding anyway")
 				go node.emergencyMeshHealing()
-			} else {
-				logger.Election("   Starting election in 2s...")
-				jitter := time.Duration(rand.Intn(500)) * time.Millisecond
-				time.Sleep(2*time.Second + jitter)
-				go node.StartElection(peers, 0)
 			}
+
+			// Always attempt election regardless of ListPeers()
+			logger.Election("   Starting election in 2s...")
+			jitter := time.Duration(rand.Intn(500)) * time.Millisecond
+			time.Sleep(2*time.Second + jitter)
+			go node.StartElection(peers, 0)
 		} else {
 			logger.Election("📋 FOLLOWER: Initiator is %s", initiatorID)
 			logger.Election("   Waiting for election votes...")
@@ -2223,6 +2272,7 @@ func NewNode(ctx context.Context, host host.Host, pubsub *pubsub.PubSub, discove
 		consecutiveEmptyMeshChecks:   0,
 		containerName:                getContainerName(),
 		consecutiveElectionFailures:  0,
+		lastMessageFromPeer:          make(map[string]time.Time),
 	}
 }
 
