@@ -174,6 +174,9 @@ type NodeReputation struct {
 	AvgReadMBs            float64 `json:"avg_read_mbs"`
 	AvgWriteMBs           float64 `json:"avg_write_mbs"`
 	GeographyScore        float64 `json:"geography_score"`
+	// ContainerName is broadcast via JSON but NOT stored in the DB.
+	// Used to identify which peer is the preferred coordinator.
+	ContainerName string `json:"container_name,omitempty"`
 }
 
 type VoteMessage struct {
@@ -321,6 +324,11 @@ type Node struct {
 	// ListPeers() returns 0 with Kubo's internal PubSub even when messages flow
 	lastMessageFromPeer map[string]time.Time
 	messagePeerMu       sync.RWMutex
+
+	// Maps peer ID → container base name (e.g. "optimusdb1")
+	// Populated from incoming reputation broadcasts that include ContainerName
+	peerContainerNames   map[string]string
+	peerContainerNamesMu sync.RWMutex
 }
 
 // Utility functions
@@ -337,29 +345,88 @@ func hashPeerList(peerIDs []string) string {
 }
 
 // getContainerName returns the Docker container name (hostname).
-// In Docker, HOSTNAME is set to the container name by default.
+// getContainerName returns the logical container/service name.
+// Priority: AGENT_NAME → POD_NAME → HOSTNAME → os.Hostname()
+// In K8s, pod names like "optimusdb1-54c9f77c9f-c9c94" are parsed
+// to extract the base name "optimusdb1".
 func getContainerName() string {
-	// First check explicit AGENT_NAME env var
+	// First check explicit AGENT_NAME env var (highest priority)
 	if name := os.Getenv("AGENT_NAME"); name != "" {
-		return name
+		return extractBaseName(name)
 	}
-	// Then check HOSTNAME (Docker sets this to container_name)
+	// K8s: POD_NAME is set via fieldRef in the manifest
+	if name := os.Getenv("POD_NAME"); name != "" {
+		return extractBaseName(name)
+	}
+	// Docker: HOSTNAME is set to the container name
 	if name := os.Getenv("HOSTNAME"); name != "" {
-		return name
+		return extractBaseName(name)
 	}
 	// Fallback to os.Hostname()
 	if name, err := os.Hostname(); err == nil {
-		return name
+		return extractBaseName(name)
 	}
 	return ""
 }
 
+// extractBaseName extracts the logical service name from various naming formats:
+//
+//	Docker Compose:  "optimusdb1"                   → "optimusdb1"
+//	K8s Deployment:  "optimusdb1-54c9f77c9f-c9c94"  → "optimusdb1"
+//	K8s StatefulSet: "optimusdb-0"                   → "optimusdb-0"
+//	Plain hostname:  "epm-server"                    → "epm-server"
+func extractBaseName(name string) string {
+	// K8s Deployment pattern: {name}-{replicaset-hash}-{pod-hash}
+	parts := strings.Split(name, "-")
+	if len(parts) >= 3 {
+		last := parts[len(parts)-1]
+		secondLast := parts[len(parts)-2]
+		if len(last) >= 5 && len(secondLast) >= 5 && looksLikeHash(last) && looksLikeHash(secondLast) {
+			return strings.Join(parts[:len(parts)-2], "-")
+		}
+	}
+	return name
+}
+
+// looksLikeHash returns true if s looks like a K8s-generated hash segment
+// (alphanumeric, 5-10 chars, mix of letters and digits)
+func looksLikeHash(s string) bool {
+	if len(s) < 5 || len(s) > 10 {
+		return false
+	}
+	hasLetter := false
+	hasDigit := false
+	for _, c := range s {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
+			hasLetter = true
+		} else if c >= '0' && c <= '9' {
+			hasDigit = true
+		} else {
+			return false
+		}
+	}
+	return hasLetter && hasDigit
+}
+
 // isDefaultCoordinatorNode returns true if this container should be the
-// startup coordinator (container name ends with "1", e.g. "optimusdb1").
+// preferred coordinator. Handles all naming formats:
+//
+//	Docker:          "optimusdb1"       → true
+//	K8s Deployment:  "optimusdb1"       → true  (after extractBaseName)
+//	K8s StatefulSet: "optimusdb-0"      → true  (index 0 = first pod)
 func isDefaultCoordinatorNode(containerName string) bool {
 	if containerName == "" {
 		return false
 	}
+	// Docker / K8s Deployment (after extractBaseName): "optimusdb1"
+	if strings.Contains(containerName, "optimusdb1") {
+		return true
+	}
+	// K8s StatefulSet: "optimusdb-0" (first pod)
+	if strings.HasSuffix(containerName, "-0") && strings.Contains(containerName, "optimusdb") {
+		return true
+	}
+	// Generic fallback: name ends with "1"
 	return strings.HasSuffix(containerName, "1")
 }
 
@@ -762,6 +829,31 @@ func (n *Node) selectCandidate(peers []NodeReputation) string {
 		return n.host.ID().String()
 	}
 
+	// ═══════════════════════════════════════════════════════════
+	// COORDINATOR PREFERENCE: Always vote for the preferred
+	// coordinator (optimusdb1) if it is alive and healthy.
+	// This guarantees deterministic leadership unless node1 fails.
+	// ═══════════════════════════════════════════════════════════
+	preferredPeerID := n.getPreferredCoordinatorPeerID(peers)
+	if preferredPeerID != "" {
+		for _, p := range peers {
+			if p.NodeID == preferredPeerID {
+				score := calculateReputation(p)
+				if score > 10 { // Minimum health threshold (out of 100)
+					logger.Election("👑 Voting for preferred coordinator %s [%s] (score: %.2f)",
+						preferredPeerID, p.ContainerName, score)
+					return preferredPeerID
+				}
+				logger.Warn("⚠️  Preferred coordinator %s has low score (%.2f), falling back to election",
+					preferredPeerID, score)
+				break
+			}
+		}
+	}
+
+	// Fallback: weighted random selection (original logic)
+	// Only used when preferred coordinator is down or unhealthy
+	logger.Election("📊 No preferred coordinator available, using reputation-weighted selection")
 	total := 0.0
 	for _, p := range peers {
 		total += calculateReputation(p)
@@ -781,6 +873,40 @@ func (n *Node) selectCandidate(peers []NodeReputation) string {
 	}
 
 	return peers[len(peers)-1].NodeID
+}
+
+// getPreferredCoordinatorPeerID returns the peer ID of the preferred
+// coordinator if it is present in the candidate list.
+func (n *Node) getPreferredCoordinatorPeerID(peers []NodeReputation) string {
+	// Check if WE are the preferred coordinator
+	if isDefaultCoordinatorNode(n.containerName) {
+		myID := n.host.ID().String()
+		for _, p := range peers {
+			if p.NodeID == myID {
+				return myID
+			}
+		}
+	}
+
+	// Check ContainerName in reputation data (direct from broadcast)
+	for _, p := range peers {
+		if p.ContainerName != "" && isDefaultCoordinatorNode(p.ContainerName) {
+			return p.NodeID
+		}
+	}
+
+	// Check accumulated peer container name mapping
+	n.peerContainerNamesMu.RLock()
+	defer n.peerContainerNamesMu.RUnlock()
+	for _, p := range peers {
+		if cname, ok := n.peerContainerNames[p.NodeID]; ok {
+			if isDefaultCoordinatorNode(cname) {
+				return p.NodeID
+			}
+		}
+	}
+
+	return ""
 }
 
 // finalizeElectionInline evaluates the election result and returns the winner
@@ -1092,6 +1218,13 @@ func (n *Node) handleMessage(core CoreMessage, from peer.ID) {
 			return
 		}
 
+		// Track peer ID → container name mapping for coordinator preference
+		if rep.ContainerName != "" && rep.NodeID != "" {
+			n.peerContainerNamesMu.Lock()
+			n.peerContainerNames[rep.NodeID] = rep.ContainerName
+			n.peerContainerNamesMu.Unlock()
+		}
+
 		if rep.NodeID != n.host.ID().String() {
 			if err := validateReputationData(rep); err != nil {
 				logger.Warn("Invalid reputation from %s: %v (IGNORING)",
@@ -1100,7 +1233,7 @@ func (n *Node) handleMessage(core CoreMessage, from peer.ID) {
 			}
 
 			score := calculateReputation(rep)
-			logger.Election("📊 Reputation from %s: %.2f", rep.NodeID, score)
+			logger.Election("📊 Reputation from %s [%s]: %.2f", rep.NodeID, rep.ContainerName, score)
 
 			if GlobalReputationDB != nil && GlobalReputationDB.ReputationDB != nil {
 				UpsertReputation(GlobalReputationDB.ReputationDB, rep)
@@ -1565,6 +1698,7 @@ func (n *Node) PeriodicReputationPublisher() {
 				AvgReadMBs:            avgReadMBs,
 				AvgWriteMBs:           avgWriteMBs,
 				GeographyScore:        actualGeoScore,
+				ContainerName:         n.containerName,
 			}
 
 			if GlobalReputationDB != nil && GlobalReputationDB.ReputationDB != nil {
@@ -2180,6 +2314,11 @@ func RunFullNode(ctx context.Context, host host.Host, pubsubObj *pubsub.PubSub, 
 	}
 
 	containerName := node.containerName
+
+	// Register our own peer ID → container name mapping
+	node.peerContainerNamesMu.Lock()
+	node.peerContainerNames[node.host.ID().String()] = containerName
+	node.peerContainerNamesMu.Unlock()
 	logger.Election("════════════════════════════════════════")
 	logger.Election("Container Name: %s", containerName)
 	logger.Election("════════════════════════════════════════")
@@ -2273,6 +2412,7 @@ func NewNode(ctx context.Context, host host.Host, pubsub *pubsub.PubSub, discove
 		containerName:                getContainerName(),
 		consecutiveElectionFailures:  0,
 		lastMessageFromPeer:          make(map[string]time.Time),
+		peerContainerNames:           make(map[string]string),
 	}
 }
 
