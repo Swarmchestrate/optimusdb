@@ -540,9 +540,9 @@ func (s *Service) reportStatus() {
 
 // StartDiscovery initializes and starts all discovery mechanisms
 func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service {
-	logger.DISc("═══════════════════════════════════════════════════════════")
-	logger.DISc("STARTING ENHANCED DISCOVERY SERVICE")
-	logger.DISc("═══════════════════════════════════════════════════════════")
+	//logger.DISc("═══════════════════════════════════════════════════════════")
+	//logger.DISc("STARTING ENHANCED DISCOVERY SERVICE")
+	//logger.DISc("═══════════════════════════════════════════════════════════")
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -572,22 +572,25 @@ func StartDiscovery(h host.Host, knowledgeBaseDB *app.KnowledgeBaseDB) *Service 
 
 	// Note: PubSub/GossipSub is created in main.go for unified parameters
 	if *config.FlagAutodiscoveryipfsPubSub {
-		logger.DISc("[PUBSUB] PubSub discovery enabled")
-		logger.DISc("[PUBSUB] GossipSub will be created by main.go with unified parameters")
+		logger.DISc("PubSub discovery enabled, GossipSub will be created by main.go with unified parameters")
 	}
 
 	// Start background services
 	go service.StartConnectionHealing()
 	go service.StartStatusReporter()
 
-	logger.DISc("═══════════════════════════════════════════════════════════")
-	logger.DISc("DISCOVERY SERVICE STARTED SUCCESSFULLY")
-	logger.DISc("  ✅ mDNS: %v", *config.FlagAutodiscoveryMDNS)
-	logger.DISc("  ✅ DHT: %v", *config.FlagAutodiscoveryDHT)
-	logger.DISc("  ✅ PubSub: %v", *config.FlagAutodiscoveryipfsPubSub)
-	logger.DISc("  ✅ Connection Healing: Enabled (30s)")
-	logger.DISc("  ✅ Status Reporter: Enabled (60s)")
-	logger.DISc("═══════════════════════════════════════════════════════════")
+	//logger.DISc("═══════════════════════════════════════════════════════════")
+	//logger.DISc("DISCOVERY SERVICE STARTED SUCCESSFULLY")
+	//logger.DISc("  ✅ mDNS: %v", *config.FlagAutodiscoveryMDNS)
+	//logger.DISc("  ✅ DHT: %v", *config.FlagAutodiscoveryDHT)
+	//logger.DISc("  ✅ PubSub: %v", *config.FlagAutodiscoveryipfsPubSub)
+	//logger.DISc("  ✅ Connection Healing: Enabled (30s)")
+	//logger.DISc("  ✅ Status Reporter: Enabled (60s)")
+	//logger.DISc("═══════════════════════════════════════════════════════════")
+	logger.DISc("DISCOVERY SERVICE STARTED SUCCESSFULLY ✅ mDNS: %v  ✅ DHT: %v  ✅ PubSub: %v  ✅ Connection Healing: Enabled (30s)  ✅ Status Reporter: Enabled (60s)",
+		*config.FlagAutodiscoveryMDNS,
+		*config.FlagAutodiscoveryDHT,
+		*config.FlagAutodiscoveryipfsPubSub)
 
 	return service
 }
@@ -785,6 +788,6 @@ func CreateGossipSubWithDynamicParams(ctx context.Context, h host.Host) (*pubsub
 		return nil, fmt.Errorf("failed to create GossipSub: %w", err)
 	}
 
-	logger.DISc("✅ GossipSub created: D=%d, Dlo=%d, Dhi=%d (cluster: %d)", D, Dlo, Dhi, expectedClusterSize)
+	logger.DISc("GossipSub created: D=%d, Dlo=%d, Dhi=%d (cluster: %d)", D, Dlo, Dhi, expectedClusterSize)
 	return ps, nil
 }
