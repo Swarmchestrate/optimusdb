@@ -866,29 +866,12 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 			reputationMap[allReputations[i].NodeID] = &allReputations[i]
 		}
 
-		// Get connected peers from IPFS swarm
+		// Get connected peers from IPFS
 		coreAPI := (*optimusdb.Orbit).IPFS()
 		connInfo, _ := coreAPI.Swarm().Peers(ctx)
-		swarmPeerIDs := make(map[string]bool)
-		for _, ci := range connInfo {
-			swarmPeerIDs[ci.ID().String()] = true
-		}
-
-		// Filter to only OptimusDB peers (subscribed to GossipSub "optimusdb" topic)
-		// This excludes random IPFS/DHT peers discovered via swarm that aren't part of our cluster
 		connectedPeerIDs := make(map[string]bool)
-		if optimusdb.PubSub != nil {
-			meshPeers := optimusdb.PubSub.ListPeers("optimusdb")
-			for _, mp := range meshPeers {
-				pid := mp.String()
-				connectedPeerIDs[pid] = true
-			}
-		}
-		// Also include any peer that has reputation data (known OptimusDB node even if temporarily off-mesh)
-		for nodeID := range reputationMap {
-			if swarmPeerIDs[nodeID] {
-				connectedPeerIDs[nodeID] = true
-			}
+		for _, ci := range connInfo {
+			connectedPeerIDs[ci.ID().String()] = true
 		}
 
 		// Get discovered peers
@@ -1063,9 +1046,8 @@ func agentStatusHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 			},
 			"cluster": map[string]interface{}{
 				"total_peers":      len(peersList) + 1,
-				"connected_peers":  len(connectedPeerIDs),
+				"connected_peers":  len(connectedPeerIDs) - 1,
 				"discovered_peers": len(discoveredPeers),
-				"swarm_peers":      len(swarmPeerIDs) - 1, // all IPFS peers (for diagnostics)
 				"coordinators":     coordCount,
 				"followers":        followerCount,
 			},
