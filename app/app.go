@@ -121,6 +121,26 @@ type EMSMessage struct {
 
 type LogType uint8
 
+// EMSSensorMessage represents a header-based monitoring/telemetry message
+// from SwarmChestrate SENSOR topics. Body is empty; all data lives in STOMP headers.
+/*
+type EMSSensorMessage struct {
+	Destination    string            `json:"destination"`
+	Metric         string            `json:"metric"`          // Prometheus metric name
+	Instance       string            `json:"instance"`        // monitored target
+	ProducerHost   string            `json:"producer_host"`   // IP of producing machine
+	SourceNode     string            `json:"source_node"`     // K8s pod IP (internal)
+	SourceEndpoint string            `json:"source_endpoint"` // Prometheus scrape URL
+	NodeID         string            `json:"node_id"`         // producer UUID
+	Cloud          string            `json:"cloud"`           // cloud provider
+	Region         string            `json:"region"`          // cloud region
+	Zone           string            `json:"zone"`            // availability zone
+	TimestampMs    int64             `json:"timestamp_ms"`    // broker epoch milliseconds
+	Headers        map[string]string `json:"headers"`         // all raw STOMP headers
+}
+
+*/
+
 const (
 	RecoverableErr    LogType = 0
 	NonRecoverableErr LogType = 1
@@ -1291,8 +1311,6 @@ func (db *KnowledgeBaseDB) publishEvent(ev Event) {
 	// Use the default topic set when you created the client (cfg.Topic)
 	_ = db.MQEMS.PublishJSON("", b)
 }
-
-// createEMSEventsTable ensures the `ems_events` table exists.
 func (kb *LoggerSQLite) createEMSEventsTable() error {
 	table := `
 	CREATE TABLE IF NOT EXISTS ems_events (
@@ -1300,30 +1318,80 @@ func (kb *LoggerSQLite) createEMSEventsTable() error {
 		received_at   TEXT,          -- UTC RFC3339
 		node_id       TEXT,          -- libp2p host id
 		client_id     TEXT,          -- MQ_CLIENT_ID (or fallback)
-		topic         TEXT,          -- destination topic
-		action        TEXT,          -- parsed from payload
-		resource      TEXT,          -- parsed from payload
+		topic         TEXT,          -- destination topic (actual, not pattern)
+		action        TEXT,          -- parsed from payload OR "SENSOR"
+		resource      TEXT,          -- parsed from payload OR metric name
 		params_json   TEXT,          -- marshaled params (if parsed)
-		raw_json      TEXT           -- original message body
+		raw_json      TEXT,          -- original message body
+		headers_json  TEXT           -- NEW: all STOMP headers as JSON
 	);
-	CREATE INDEX IF NOT EXISTS idx_ems_events_time ON ems_events(received_at);
+	CREATE INDEX IF NOT EXISTS idx_ems_events_time    ON ems_events(received_at);
 	CREATE INDEX IF NOT EXISTS idx_ems_events_act_res ON ems_events(action, resource);
+	CREATE INDEX IF NOT EXISTS idx_ems_events_topic   ON ems_events(topic);
+	CREATE INDEX IF NOT EXISTS idx_ems_events_action  ON ems_events(action);
 	`
 	_, err := kb.TheLog.Exec(table)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Run migration for existing databases that don't have headers_json yet
+	return kb.migrateEMSEventsTable()
 }
 
-// Insert Helper
+// migrateEMSEventsTable adds the headers_json column if it doesn't exist.
+// Safe to call on every startup — uses PRAGMA table_info to check.
+func (kb *LoggerSQLite) migrateEMSEventsTable() error {
+	// Check if headers_json column already exists
+	rows, err := kb.TheLog.Query("PRAGMA table_info(ems_events)")
+	if err != nil {
+		return fmt.Errorf("failed to check ems_events schema: %w", err)
+	}
+	defer rows.Close()
+
+	hasHeadersJSON := false
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull int
+		var dfltValue interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			continue
+		}
+		if name == "headers_json" {
+			hasHeadersJSON = true
+			break
+		}
+	}
+
+	if !hasHeadersJSON {
+		_, err := kb.TheLog.Exec("ALTER TABLE ems_events ADD COLUMN headers_json TEXT")
+		if err != nil {
+			return fmt.Errorf("failed to add headers_json column: %w", err)
+		}
+		logger.Info("[INFO] EMS migration: added headers_json column to ems_events")
+	}
+
+	// Ensure the new indexes exist (safe to run multiple times with IF NOT EXISTS)
+	_, _ = kb.TheLog.Exec("CREATE INDEX IF NOT EXISTS idx_ems_events_topic  ON ems_events(topic)")
+	_, _ = kb.TheLog.Exec("CREATE INDEX IF NOT EXISTS idx_ems_events_action ON ems_events(action)")
+
+	return nil
+}
+
+// InsertEMSEvent persists a single EMS message to the ems_events table.
+// headersJSON contains all STOMP headers marshaled as JSON (may be empty for legacy calls).
 func (kb *LoggerSQLite) InsertEMSEvent(
 	receivedAt time.Time,
-	nodeID, clientID, topic, action, resource, paramsJSON, rawJSON string,
+	nodeID, clientID, topic, action, resource, paramsJSON, rawJSON, headersJSON string,
 ) error {
 	const q = `
-	INSERT INTO ems_events (received_at, node_id, client_id, topic, action, resource, params_json, raw_json)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?);`
+	INSERT INTO ems_events (received_at, node_id, client_id, topic, action, resource, params_json, raw_json, headers_json)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`
 	_, err := kb.TheLog.Exec(q,
 		receivedAt.UTC().Format(time.RFC3339),
-		nodeID, clientID, topic, action, resource, paramsJSON, rawJSON,
+		nodeID, clientID, topic, action, resource, paramsJSON, rawJSON, headersJSON,
 	)
 	return err
 }

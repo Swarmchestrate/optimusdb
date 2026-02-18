@@ -2785,13 +2785,281 @@ func AwaitRegisterSQLDMLStreamHandler(hostCID host.Host, logChan chan Log) {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// / EMS
+// ProcessEMS handles body-based EMS commands (action/resource/params).
+// headers contains all STOMP headers (may be nil for legacy calls).
 func (db *KnowledgeBaseDB) ProcessEMS(action, resource string, params map[string]interface{}) error {
-	// TODO: implement your actual EMS logic here
-	fmt.Sprintf("[INFO]  EMS %s on %s params=%v", action, resource, params)
-	GlobalLoggerDB.AddToOptimusLog("INFO",
-		fmt.Sprintf("EMS %s on %s params=%v", action, resource, params), "ems")
+	logger.Info("[EMS] Processing: action=%s resource=%s", action, resource)
+
+	switch strings.ToUpper(action) {
+	case "CREATE", "INSERT", "ADD", "POST":
+		return db.processEMSCreate(resource, params)
+
+	case "UPDATE", "MODIFY", "PUT", "PATCH":
+		return db.processEMSUpdate(resource, params)
+
+	case "DELETE", "REMOVE", "DROP":
+		return db.processEMSDelete(resource, params)
+
+	case "QUERY", "GET", "SELECT", "SEARCH":
+		return db.processEMSQuery(resource, params)
+
+	default:
+		// Log unknown actions but don't error — extensibility point
+		logger.Warn("[EMS] Unknown action '%s' on resource '%s' — stored but not processed", action, resource)
+		if GlobalLoggerDB != nil {
+			_ = GlobalLoggerDB.AddToOptimusLog("WARN",
+				fmt.Sprintf("EMS unknown action=%s resource=%s", action, resource), "ems")
+		}
+		return nil
+	}
+}
+
+// processEMSCreate handles CREATE/INSERT/ADD actions from EMS.
+// Inserts the params as a new document into the appropriate OrbitDB store.
+func (db *KnowledgeBaseDB) processEMSCreate(resource string, params map[string]interface{}) error {
+	if params == nil {
+		params = make(map[string]interface{})
+	}
+
+	// Auto-generate _id if not present
+	if _, hasID := params["_id"]; !hasID {
+		params["_id"] = fmt.Sprintf("ems_%s_%d", resource, time.Now().UnixNano())
+	}
+
+	// Add EMS provenance metadata
+	params["_ems_source"] = "ems"
+	params["_ems_resource"] = resource
+	params["_ems_created_at"] = time.Now().UTC().Format(time.RFC3339)
+
+	// Insert into KBMetadata (EMS events enrich the data catalog)
+	if db.KBMetadata != nil && *db.KBMetadata != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		_, err := (*db.KBMetadata).Put(ctx, params)
+		if err != nil {
+			logger.Error("[EMS] CREATE failed for resource=%s: %v", resource, err)
+			return fmt.Errorf("EMS CREATE failed: %w", err)
+		}
+		logger.Info("[EMS] CREATE: inserted document _id=%v into KBMetadata", params["_id"])
+	} else {
+		logger.Warn("[EMS] CREATE: KBMetadata store not available, event logged only")
+	}
+
 	return nil
+}
+
+// processEMSUpdate handles UPDATE/MODIFY actions from EMS.
+func (db *KnowledgeBaseDB) processEMSUpdate(resource string, params map[string]interface{}) error {
+	logger.Info("[EMS] UPDATE on resource=%s (logged, manual processing required)", resource)
+	// For now, log the update intent. Full implementation would:
+	// 1. Look up existing document by resource name or _id in params
+	// 2. Apply params as updates
+	// 3. Use crudUpdateDocStoreRev pattern
+	return nil
+}
+
+// processEMSDelete handles DELETE/REMOVE actions from EMS.
+func (db *KnowledgeBaseDB) processEMSDelete(resource string, params map[string]interface{}) error {
+	logger.Info("[EMS] DELETE on resource=%s (logged, manual processing required)", resource)
+	// For now, log the delete intent. Full implementation would:
+	// 1. Look up document by resource name or _id in params
+	// 2. Delete from OrbitDB
+	return nil
+}
+
+// processEMSQuery handles QUERY/GET actions from EMS.
+func (db *KnowledgeBaseDB) processEMSQuery(resource string, params map[string]interface{}) error {
+	logger.Info("[EMS] QUERY on resource=%s (logged, no response channel yet)", resource)
+	// Queries via EMS are fire-and-forget (no response channel).
+	// Could publish results back to a reply-to topic if one is specified.
+	return nil
+}
+
+// emsCreate handles CREATE/INSERT/ADD/POST actions from EMS messages.
+func (db *KnowledgeBaseDB) emsCreate(resource string, params map[string]interface{}, headers map[string]string) error {
+	logger.Info("[EMS:CREATE] resource=%s params=%v", resource, params)
+	// TODO: Route to appropriate handler based on resource type
+	// switch strings.ToLower(resource) {
+	// case "dataset":
+	//     ctx := context.Background()
+	//     if db.DsSWres != nil {
+	//         params["_id"] = fmt.Sprintf("ems_%s_%d", resource, time.Now().UnixNano())
+	//         params["_created_at"] = time.Now().UTC().Format(time.RFC3339)
+	//         params["_source"] = "ems"
+	//         _, err := (*db.DsSWres).Put(ctx, params)
+	//         return err
+	//     }
+	// case "metadata":
+	//     ctx := context.Background()
+	//     if db.KBMetadata != nil {
+	//         _, err := (*db.KBMetadata).Put(ctx, params)
+	//         return err
+	//     }
+	// }
+	return nil
+}
+
+// emsUpdate handles UPDATE/MODIFY/PUT/PATCH actions from EMS messages.
+func (db *KnowledgeBaseDB) emsUpdate(resource string, params map[string]interface{}, headers map[string]string) error {
+	logger.Info("[EMS:UPDATE] resource=%s", resource)
+	// TODO: implement update logic
+	return nil
+}
+
+// emsDelete handles DELETE/REMOVE/DROP actions from EMS messages.
+func (db *KnowledgeBaseDB) emsDelete(resource string, params map[string]interface{}, headers map[string]string) error {
+	logger.Info("[EMS:DELETE] resource=%s", resource)
+	// TODO: implement delete logic
+	return nil
+}
+
+// emsQuery handles QUERY/GET/SELECT/SEARCH actions from EMS messages.
+func (db *KnowledgeBaseDB) emsQuery(resource string, params map[string]interface{}, headers map[string]string) error {
+	logger.Info("[EMS:QUERY] resource=%s", resource)
+	// TODO: implement query logic — results can be published back to reply-to topic
+	// replyTo := headers["reply-to"]
+	// if replyTo != "" {
+	//     results := ... // query local stores
+	//     body, _ := json.Marshal(results)
+	//     db.EMSSend(replyTo, "application/json", body)
+	// }
+	return nil
+}
+
+// sanitizeID creates a safe identifier from arbitrary strings (for OrbitDB _id)
+func sanitizeID(s string) string {
+	if s == "" {
+		return "unknown"
+	}
+	// Replace problematic characters
+	r := strings.NewReplacer(
+		"/", "_", ".", "_", ":", "_", " ", "_",
+		"${", "", "}", "", "(", "", ")", "",
+	)
+	result := r.Replace(s)
+	// Truncate to reasonable length
+	if len(result) > 64 {
+		result = result[:64]
+	}
+	return strings.ToLower(result)
+}
+
+// extractTopicType extracts the topic type from a destination path.
+// e.g. "/topic/response_time_SENSOR" → "response_time"
+//
+//	"/topic/cpu_util_instance"    → "cpu_util"
+func extractTopicType(destination string) string {
+	topic := strings.TrimPrefix(destination, "/topic/")
+	topic = strings.TrimSuffix(topic, "_SENSOR")
+	topic = strings.TrimSuffix(topic, "_instance")
+	return topic
+}
+
+// Current: log + persist to ems_events (done by caller in handleEMSMessageFull).
+// Uncomment sections below to route sensor data into OrbitDB or datacatalog.
+func (db *KnowledgeBaseDB) ProcessEMSSensor(sensor EMSSensorMessage) error {
+	logger.Info("[EMS-SENSOR] metric=%s instance=%s producer=%s cloud=%s region=%s",
+		sensor.Metric, sensor.Instance, sensor.ProducerHost, sensor.Cloud, sensor.Region)
+
+	// =========================================================================
+	// OPTION A (enabled): Store SENSOR as discoverable catalog entry in KBMetadata
+	// =========================================================================
+	if db.KBMetadata != nil && *db.KBMetadata != nil {
+		doc := sensorToCatalogEntry(sensor)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		_, err := (*db.KBMetadata).Put(ctx, doc)
+		if err != nil {
+			logger.Warn("[EMS-SENSOR] Failed to store in KBMetadata: %v", err)
+			// Non-fatal — the event is already in ems_events via InsertEMSEvent
+		} else {
+			logger.Info("[EMS-SENSOR] Stored in KBMetadata: _id=%v", doc["_id"])
+		}
+	}
+
+	// =========================================================================
+	// OPTION D (enabled): Also store in datacatalog SQLite for Amundsen
+	// =========================================================================
+	if GlobalKBSQLite != nil && GlobalKBSQLite.DB != nil {
+		storeSensorInCatalog(sensor)
+	}
+
+	// Log to optimusLogger for quick grep/tail
+	if GlobalLoggerDB != nil {
+		_ = GlobalLoggerDB.AddToOptimusLog("INFO",
+			fmt.Sprintf("SENSOR metric=%s instance=%s from=%s",
+				sensor.Metric, sensor.Instance, sensor.ProducerHost), "ems-sensor")
+	}
+
+	return nil
+}
+
+func storeSensorInCatalog(sensor EMSSensorMessage) {
+	docID := fmt.Sprintf("sensor_%s_%s", sanitizeID(sensor.Metric), sanitizeID(sensor.Instance))
+
+	query := `
+	INSERT OR REPLACE INTO metadata_catalog (
+		id, metadata_type, component, description,
+		created_by, created_at, updated_at, name, tags, status
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	description := fmt.Sprintf("Monitoring sensor: %s from %s (%s/%s/%s)",
+		sensor.Metric, sensor.Instance, sensor.Cloud, sensor.Region, sensor.Zone)
+	tags := strings.Join([]string{"sensor", "monitoring", sensor.Metric, sensor.Cloud}, ",")
+
+	_, err := GlobalKBSQLite.DB.Exec(query,
+		docID,
+		"sensor",
+		"swarmchestrate-monitoring",
+		description,
+		sensor.ProducerHost,
+		now, now,
+		sensor.Metric,
+		tags,
+		"active",
+	)
+	if err != nil {
+		logger.Warn("[EMS-SENSOR] Failed to store in metadata_catalog: %v", err)
+	}
+}
+
+func sensorToCatalogEntry(sensor EMSSensorMessage) map[string]interface{} {
+	// Use metric+instance as stable _id (upserts on repeated sensor events)
+	docID := fmt.Sprintf("sensor_%s_%s", sanitizeID(sensor.Metric), sanitizeID(sensor.Instance))
+
+	doc := map[string]interface{}{
+		"_id":           docID,
+		"metadata_type": "sensor",
+		"name":          sensor.Metric,
+		"description":   fmt.Sprintf("Monitoring sensor: %s from instance %s", sensor.Metric, sensor.Instance),
+		"component":     "swarmchestrate-monitoring",
+		"tags":          "sensor,monitoring," + sensor.Metric,
+		"status":        "active",
+		"created_by":    sensor.ProducerHost,
+
+		// Infrastructure context
+		"cloud":           sensor.Cloud,
+		"region":          sensor.Region,
+		"zone":            sensor.Zone,
+		"instance":        sensor.Instance,
+		"source_node":     sensor.SourceNode,
+		"source_endpoint": sensor.SourceEndpoint,
+		"producer_host":   sensor.ProducerHost,
+		"public_ip":       sensor.PublicIP,
+		"private_ip":      sensor.PrivateIP,
+
+		// EMS provenance
+		"_ems_source":      "sensor",
+		"_ems_destination": sensor.Destination,
+		"_ems_message_id":  sensor.MessageID,
+		"_last_seen":       time.Now().UTC().Format(time.RFC3339),
+	}
+
+	return doc
 }
 
 // annotate source information on each item

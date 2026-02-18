@@ -1,6 +1,7 @@
 package mq
 
 //Update 22.09.2025
+// Updated 18.02.2026 — pass actual msg.Destination to callback
 import (
 	"fmt"
 	"optimusdb/logger"
@@ -174,7 +175,14 @@ func (s *EMSService) connect() error {
 		go func() {
 			for msg := range sub.C {
 				if s.onMessage != nil {
-					s.onMessage(s.cfg.Topic, msg)
+					// ── CHANGED 18.02.2026: pass actual message destination ──
+					// msg.Destination = real topic (e.g. /topic/response_time_SENSOR)
+					// s.cfg.Topic     = subscription pattern (e.g. /topic/>)
+					dest := s.cfg.Topic
+					if msg != nil && msg.Destination != "" {
+						dest = msg.Destination
+					}
+					s.onMessage(dest, msg)
 				}
 			}
 		}()
