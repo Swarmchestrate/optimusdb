@@ -1,6 +1,7 @@
 package api
 
 import (
+	orbitdb "berty.tech/go-orbit-db"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -100,12 +101,72 @@ func LogsHandler(kb *app.LoggerSQLite) http.HandlerFunc {
 	}
 }
 
+// resolveTargetStore maps a dstype string to the correct OrbitDB DocumentStore pointer.
+// Returns (store pointer, store name for logging, error if not found/initialized).
+func resolveTargetStore(optimusdb *app.KnowledgeBaseDB, dstype string) (*orbitdb.DocumentStore, string, error) {
+	switch strings.ToLower(dstype) {
+	case "dsswres", "":
+		if optimusdb.DsSWres == nil {
+			return nil, "", fmt.Errorf("DsSWres store not initialized")
+		}
+		return optimusdb.DsSWres, "dsswres", nil
+	case "dsswresaloc":
+		if optimusdb.DsSWresaloc == nil {
+			return nil, "", fmt.Errorf("DsSWresaloc store not initialized")
+		}
+		return optimusdb.DsSWresaloc, "dsswresaloc", nil
+	case "kbmetadata":
+		if optimusdb.KBMetadata == nil {
+			return nil, "", fmt.Errorf("KBMetadata store not initialized")
+		}
+		return optimusdb.KBMetadata, "kbmetadata", nil
+	case "kbdata":
+		if optimusdb.KBdata == nil {
+			return nil, "", fmt.Errorf("KBdata store not initialized")
+		}
+		return optimusdb.KBdata, "kbdata", nil
+	case "tosca_imported":
+		if optimusdb.DsTOSCA_Imported == nil {
+			return nil, "", fmt.Errorf("DsTOSCA_Imported store not initialized")
+		}
+		return optimusdb.DsTOSCA_Imported, "tosca_imported", nil
+	case "tosca_adt":
+		if optimusdb.DsTOSCA_ADT == nil {
+			return nil, "", fmt.Errorf("DsTOSCA_ADT store not initialized")
+		}
+		return optimusdb.DsTOSCA_ADT, "tosca_adt", nil
+	case "tosca_capacities":
+		if optimusdb.DsTOSCA_Capacities == nil {
+			return nil, "", fmt.Errorf("DsTOSCA_Capacities store not initialized")
+		}
+		return optimusdb.DsTOSCA_Capacities, "tosca_capacities", nil
+	case "tosca_deploymentplan":
+		if optimusdb.DsTOSCA_DeploymentPlan == nil {
+			return nil, "", fmt.Errorf("DsTOSCA_DeploymentPlan store not initialized")
+		}
+		return optimusdb.DsTOSCA_DeploymentPlan, "tosca_deploymentplan", nil
+	case "tosca_eventhistory":
+		if optimusdb.DsTOSCA_EventHistory == nil {
+			return nil, "", fmt.Errorf("DsTOSCA_EventHistory store not initialized")
+		}
+		return optimusdb.DsTOSCA_EventHistory, "tosca_eventhistory", nil
+	case "whoiswho":
+		if optimusdb.WhoiswhoStore == nil {
+			return nil, "", fmt.Errorf("WhoiswhoStore store not initialized")
+		}
+		return optimusdb.WhoiswhoStore, "whoiswho", nil
+	default:
+		return nil, "", fmt.Errorf("unknown store type: %s", dstype)
+	}
+}
+
 // uploadTOSCAHandler handles TOSCA template uploads with optional full structure storage
 func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 	type UploadRequest struct {
 		File               string `json:"file"`
 		Filename           string `json:"filename,omitempty"`
 		StoreFullStructure bool   `json:"store_full_structure,omitempty"`
+		TargetStore        string `json:"target_store,omitempty"` // NEW: dstype key
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -168,20 +229,20 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 				"source_ip":  sourceIP,
 			}
 
-			// Store in dsswres for full queryability
-			if optimusdb.DsSWres == nil {
-				sendErrorResponse(w, http.StatusInternalServerError, "Data store (dsswres) not initialized")
+			// Resolve target store (defaults to dsswres if not specified)
+			targetStore, storeName, err := resolveTargetStore(optimusdb, req.TargetStore)
+			if err != nil {
+				sendErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Target store error: %v", err))
 				return
 			}
-
-			if _, err := (*optimusdb.DsSWres).Put(ctx, toscaDoc); err != nil {
-				sendErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to persist full structure: %v", err))
+			if _, err := (*targetStore).Put(ctx, toscaDoc); err != nil {
+				sendErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to persist to %s: %v", storeName, err))
 				return
 			}
 
 			// Trigger automatic metadata extraction and lineage tracking
 			if optimusdb.Interceptor != nil {
-				if err := optimusdb.Interceptor.OnDocumentPut(toscaDoc, "dsswres"); err != nil {
+				if err := optimusdb.Interceptor.OnDocumentPut(toscaDoc, storeName); err != nil {
 					logger.Warn("Metadata extraction failed for TOSCA upload %s: %v", templateID, err)
 				} else {
 					logger.Lineage("TOSCA document %s indexed with automatic lineage tracking", templateID)
@@ -221,10 +282,11 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 				templateID, filename, len(decoded))
 
 			sendSuccessResponse(w, map[string]interface{}{
-				"message":          "TOSCA uploaded with full queryable structure",
-				"template_id":      templateID,
-				"storage_type":     "full_structure",
-				"storage_location": "dsswres",
+				"message":      "TOSCA uploaded with full queryable structure",
+				"template_id":  templateID,
+				"storage_type": "full_structure",
+				//"storage_location": "dsswres",
+				"storage_location": storeName,
 				"filename":         filename,
 				"filesize":         len(decoded),
 				"queryable":        true,

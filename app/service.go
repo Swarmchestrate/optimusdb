@@ -392,7 +392,7 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 		case strings.ToLower(CRUDUPDATE.Cmd):
 			//logChan <- Log{Info, "Received service request: CRUDUPDATE"}
 			logger.Proc("Received service request: CRUDUPDATE")
-			updatedCount, err := crudUpdateDocStoreRev(knowledgeBaseDB, req.Criteria, req.UpdateData)
+			updatedCount, err := crudUpdateDocStoreRev(knowledgeBaseDB, req.DSType, req.Criteria, req.UpdateData)
 			if err != nil {
 				//logChan <- Log{Type: RecoverableErr, Data: fmt.Sprintf("UPDATE: Error updating document: %v", err)}
 				logger.Error("Processing Error in CRUDUPDATE error:%v", err)
@@ -404,9 +404,9 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 			}
 
 		case strings.ToLower(CRUDDELETE.Cmd):
-			logChan <- Log{Info, "Received service request: CRUDDELETE"}
+			logger.Proc("Received service request: CRUDDELETE")
 			// Perform delete operation in OrbitDB
-			deletedCount, err := crudDeleteDocStoreRev(knowledgeBaseDB, req.Criteria)
+			deletedCount, err := crudDeleteDocStoreRev(knowledgeBaseDB, req.DSType, req.Criteria)
 			if err != nil {
 				logger.Error("CRUDDELETE: Error deleting document: %v", err)
 				res = fmt.Sprintf("ERROR! Delete failed: %v", err)
@@ -416,7 +416,7 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 			}
 
 		case strings.ToLower(HELP.Cmd):
-			logChan <- Log{Info, "Received service request: HELP"}
+			logger.Proc("Received service request: HELP")
 			//fmt.Printf("\nReceived service request: %s : \n", HELP.Cmd)
 			//res = query(knowledgeBaseDB, logChan)
 
@@ -849,11 +849,19 @@ func unifiedQueryDocStore(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype s
 // ENHANCED CRUDGET - Query/Retrieve Documents with Nested Path Support
 // =============================================================================
 
+// =============================================================================
+// PATCH 1: crudGetDocStoreRev — REPLACE THE ENTIRE FUNCTION
+// =============================================================================
+// FIND: func crudGetDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype string,
+// REPLACE WITH: everything below up to the closing brace
+// =============================================================================
+
 func crudGetDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype string,
 	hostCID host.Host, criteria []map[string]interface{}) ([]map[string]interface{}, error) {
 
 	ctx := context.Background()
 	var dbDocStore iface.DocumentStore
+	var storeName string
 
 	// Select DocumentStore based on dbtype
 	switch strings.ToLower(dbtype) {
@@ -862,33 +870,80 @@ func crudGetDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype str
 			return nil, fmt.Errorf("DsSWres store not initialized")
 		}
 		dbDocStore = *optimusdb.DsSWres
+		storeName = "dsswres"
 	case "dsswresaloc":
 		if optimusdb.DsSWresaloc == nil {
 			return nil, fmt.Errorf("DsSWresaloc store not initialized")
 		}
 		dbDocStore = *optimusdb.DsSWresaloc
+		storeName = "dsswresaloc"
 	case "kbmetadata":
 		if optimusdb.KBMetadata == nil {
 			return nil, fmt.Errorf("KBMetadata store not initialized")
 		}
 		dbDocStore = *optimusdb.KBMetadata
+		storeName = "kbmetadata"
 	case "kbdata":
 		if optimusdb.KBdata == nil {
 			return nil, fmt.Errorf("KBdata store not initialized")
 		}
 		dbDocStore = *optimusdb.KBdata
+		storeName = "kbdata"
+	case "tosca_imported":
+		if optimusdb.DsTOSCA_Imported == nil {
+			return nil, fmt.Errorf("DsTOSCA_Imported store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_Imported
+		storeName = "tosca_imported"
+	case "tosca_adt":
+		if optimusdb.DsTOSCA_ADT == nil {
+			return nil, fmt.Errorf("DsTOSCA_ADT store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_ADT
+		storeName = "tosca_adt"
+	case "tosca_capacities":
+		if optimusdb.DsTOSCA_Capacities == nil {
+			return nil, fmt.Errorf("DsTOSCA_Capacities store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_Capacities
+		storeName = "tosca_capacities"
+	case "tosca_deploymentplan":
+		if optimusdb.DsTOSCA_DeploymentPlan == nil {
+			return nil, fmt.Errorf("DsTOSCA_DeploymentPlan store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_DeploymentPlan
+		storeName = "tosca_deploymentplan"
+	case "tosca_eventhistory":
+		if optimusdb.DsTOSCA_EventHistory == nil {
+			return nil, fmt.Errorf("DsTOSCA_EventHistory store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_EventHistory
+		storeName = "tosca_eventhistory"
+	case "whoiswho":
+		if optimusdb.WhoiswhoStore == nil {
+			return nil, fmt.Errorf("WhoiswhoStore store not initialized")
+		}
+		dbDocStore = *optimusdb.WhoiswhoStore
+		storeName = "whoiswho"
+	case "validations":
+		if optimusdb.Validations == nil {
+			return nil, fmt.Errorf("Validations store not initialized")
+		}
+		dbDocStore = *optimusdb.Validations
+		storeName = "validations"
 	default:
 		if optimusdb.DsSWres == nil {
 			return nil, fmt.Errorf("default DsSWres store not initialized")
 		}
 		dbDocStore = *optimusdb.DsSWres
+		storeName = "dsswres"
 	}
 
 	var finalResults []map[string]interface{}
 
 	// Case 1: Empty criteria - return all documents
 	if len(criteria) == 0 || (len(criteria) == 1 && len(criteria[0]) == 0) {
-		logChan <- Log{Type: Info, Data: "CRUDGET: Empty criteria, retrieving all documents"}
+		logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Empty criteria, retrieving all documents from %s", storeName)}
 
 		allDocs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
 			return true, nil
@@ -903,13 +958,13 @@ func crudGetDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype str
 			}
 		}
 
-		logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Retrieved %d documents (all)", len(finalResults))}
+		logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Retrieved %d documents (all) from %s", len(finalResults), storeName)}
 		return finalResults, nil
 	}
 
 	// Case 2: Query with enhanced criteria (supports nested paths and operators)
 	filterCriteria := criteria[0]
-	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Querying with enhanced criteria: %+v", filterCriteria)}
+	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Querying %s with enhanced criteria: %+v", storeName, filterCriteria)}
 
 	matchedDocs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
 		record, ok := doc.(map[string]interface{})
@@ -932,7 +987,7 @@ func crudGetDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log, dbtype str
 		}
 	}
 
-	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Retrieved %d matching documents", len(finalResults))}
+	logChan <- Log{Type: Info, Data: fmt.Sprintf("CRUDGET: Retrieved %d matching documents from %s", len(finalResults), storeName)}
 	return finalResults, nil
 }
 
@@ -1111,7 +1166,54 @@ func crudPutDocStoreRev(optimusdb *KnowledgeBaseDB, logChan chan Log,
 		}
 		dbDocStore = *optimusdb.KBdata
 		storeName = "kbdata"
+	case "tosca_imported":
+		if optimusdb.DsTOSCA_Imported == nil {
+			return nil, fmt.Errorf("DsTOSCA_Imported store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_Imported
+		storeName = "tosca_imported"
 
+	case "tosca_adt":
+		if optimusdb.DsTOSCA_ADT == nil {
+			return nil, fmt.Errorf("DsTOSCA_ADT store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_ADT
+		storeName = "tosca_adt"
+
+	case "tosca_capacities":
+		if optimusdb.DsTOSCA_Capacities == nil {
+			return nil, fmt.Errorf("DsTOSCA_Capacities store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_Capacities
+		storeName = "tosca_capacities"
+
+	case "tosca_deploymentplan":
+		if optimusdb.DsTOSCA_DeploymentPlan == nil {
+			return nil, fmt.Errorf("DsTOSCA_DeploymentPlan store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_DeploymentPlan
+		storeName = "tosca_deploymentplan"
+
+	case "tosca_eventhistory":
+		if optimusdb.DsTOSCA_EventHistory == nil {
+			return nil, fmt.Errorf("DsTOSCA_EventHistory store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_EventHistory
+		storeName = "tosca_eventhistory"
+
+	case "whoiswho":
+		if optimusdb.WhoiswhoStore == nil {
+			return nil, fmt.Errorf("WhoiswhoStore store not initialized")
+		}
+		dbDocStore = *optimusdb.WhoiswhoStore
+		storeName = "whoiswho"
+
+	case "validations":
+		if optimusdb.Validations == nil {
+			return nil, fmt.Errorf("Validations store not initialized")
+		}
+		dbDocStore = *optimusdb.Validations
+		storeName = "validations"
 	default:
 		if optimusdb.DsSWres == nil {
 			return nil, fmt.Errorf("default DsSWres store not initialized")
@@ -3241,19 +3343,110 @@ func queryOnePeer(ctx context.Context, hostNode host.Host, peerID peer.ID, crite
 // 3. CRUDDELETE - Delete Documents (FIXED - Line ~2331)
 // =============================================================================
 
-func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]interface{}) (int, error) {
+// =============================================================================
+// PATCH 2: crudDeleteDocStoreRev — REPLACE THE ENTIRE FUNCTION
+// =============================================================================
+// FIND: func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]interface{}) (int, error) {
+// REPLACE WITH: everything below up to the closing brace
+// =============================================================================
+// CHANGES:
+//   - Added dstype parameter to function signature
+//   - Added full store routing switch (all 11 stores)
+//   - Added storeName tracking for logging
+//   - Lineage cleanup now uses storeName instead of hardcoded "dsswres"
+// =============================================================================
+// NOTE: You also need to update the CALLER in Service() switch case:
+//   OLD: deletedCount, err := crudDeleteDocStoreRev(knowledgeBaseDB, req.Criteria)
+//   NEW: deletedCount, err := crudDeleteDocStoreRev(knowledgeBaseDB, req.DSType, req.Criteria)
+// =============================================================================
+
+func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, dstype string, criteria []map[string]interface{}) (int, error) {
 	ctx := context.Background()
 
-	if optimusdb.DsSWres == nil {
-		return 0, fmt.Errorf("DsSWres store not initialized")
+	var dbDocStore iface.DocumentStore
+	var storeName string
+
+	switch strings.ToLower(dstype) {
+	case "dsswres":
+		if optimusdb.DsSWres == nil {
+			return 0, fmt.Errorf("DsSWres store not initialized")
+		}
+		dbDocStore = *optimusdb.DsSWres
+		storeName = "dsswres"
+	case "dsswresaloc":
+		if optimusdb.DsSWresaloc == nil {
+			return 0, fmt.Errorf("DsSWresaloc store not initialized")
+		}
+		dbDocStore = *optimusdb.DsSWresaloc
+		storeName = "dsswresaloc"
+	case "kbmetadata":
+		if optimusdb.KBMetadata == nil {
+			return 0, fmt.Errorf("KBMetadata store not initialized")
+		}
+		dbDocStore = *optimusdb.KBMetadata
+		storeName = "kbmetadata"
+	case "kbdata":
+		if optimusdb.KBdata == nil {
+			return 0, fmt.Errorf("KBdata store not initialized")
+		}
+		dbDocStore = *optimusdb.KBdata
+		storeName = "kbdata"
+	case "tosca_imported":
+		if optimusdb.DsTOSCA_Imported == nil {
+			return 0, fmt.Errorf("DsTOSCA_Imported store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_Imported
+		storeName = "tosca_imported"
+	case "tosca_adt":
+		if optimusdb.DsTOSCA_ADT == nil {
+			return 0, fmt.Errorf("DsTOSCA_ADT store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_ADT
+		storeName = "tosca_adt"
+	case "tosca_capacities":
+		if optimusdb.DsTOSCA_Capacities == nil {
+			return 0, fmt.Errorf("DsTOSCA_Capacities store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_Capacities
+		storeName = "tosca_capacities"
+	case "tosca_deploymentplan":
+		if optimusdb.DsTOSCA_DeploymentPlan == nil {
+			return 0, fmt.Errorf("DsTOSCA_DeploymentPlan store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_DeploymentPlan
+		storeName = "tosca_deploymentplan"
+	case "tosca_eventhistory":
+		if optimusdb.DsTOSCA_EventHistory == nil {
+			return 0, fmt.Errorf("DsTOSCA_EventHistory store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_EventHistory
+		storeName = "tosca_eventhistory"
+	case "whoiswho":
+		if optimusdb.WhoiswhoStore == nil {
+			return 0, fmt.Errorf("WhoiswhoStore store not initialized")
+		}
+		dbDocStore = *optimusdb.WhoiswhoStore
+		storeName = "whoiswho"
+	case "validations":
+		if optimusdb.Validations == nil {
+			return 0, fmt.Errorf("Validations store not initialized")
+		}
+		dbDocStore = *optimusdb.Validations
+		storeName = "validations"
+	default:
+		if optimusdb.DsSWres == nil {
+			return 0, fmt.Errorf("default DsSWres store not initialized")
+		}
+		dbDocStore = *optimusdb.DsSWres
+		storeName = "dsswres"
 	}
-	dbDocStore := *optimusdb.DsSWres
 
 	if len(criteria) == 0 {
 		return 0, fmt.Errorf("delete requires criteria")
 	}
 
 	filterCriteria := criteria[0]
+	logger.Info("[INFO] CRUDDELETE: Deleting from %s with criteria: %+v", storeName, filterCriteria)
 
 	// Query for documents matching criteria
 	matchedDocs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
@@ -3261,21 +3454,7 @@ func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 		if !ok {
 			return false, nil
 		}
-		// Use enhanced matching with nested path support and operators ($regex, $gt, $lt, $in, etc.)
 		return matchesCriteriaEnhanced(record, filterCriteria), nil
-		// Check if all criteria match
-		//for key, value := range filterCriteria {
-		//	recordValue, exists := record[key]
-		//	if !exists {
-		//		return false, nil
-		//	}
-		//
-		//	if fmt.Sprintf("%v", recordValue) != fmt.Sprintf("%v", value) {
-		//		return false, nil
-		//	}
-		//}
-		//
-		//return true, nil
 	})
 
 	if err != nil {
@@ -3283,17 +3462,15 @@ func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 	}
 
 	if len(matchedDocs) == 0 {
-		return 0, nil // No documents to delete
+		return 0, nil
 	}
 
-	// NEW: Clean up lineage for all documents being deleted
+	// Clean up lineage for all documents being deleted
 	if optimusdb.Interceptor != nil {
 		for _, doc := range matchedDocs {
 			if docMap, ok := doc.(map[string]interface{}); ok {
-				if err := optimusdb.Interceptor.OnDocumentDelete(docMap, "dsswres"); err != nil {
-					// Log but don't fail the deletion
-					logger.Error("[ERROR] Warning: lineage cleanup failed for doc %v: %v\n", docMap["_id"], err)
-					//fmt.Printf("Warning: lineage cleanup failed for doc %v: %v\n", docMap["_id"], err)
+				if err := optimusdb.Interceptor.OnDocumentDelete(docMap, storeName); err != nil {
+					logger.Error("[ERROR] Warning: lineage cleanup failed for doc %v: %v", docMap["_id"], err)
 				}
 			}
 		}
@@ -3307,13 +3484,11 @@ func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 			continue
 		}
 
-		// Extract _id field
 		docID, ok := record["_id"]
 		if !ok {
 			continue
 		}
 
-		// Convert _id to string
 		var docIDStr string
 		switch v := docID.(type) {
 		case string:
@@ -3326,13 +3501,12 @@ func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 			docIDStr = fmt.Sprintf("%v", v)
 		}
 
-		// Delete the document by _id
 		_, err := dbDocStore.Delete(ctx, docIDStr)
 		if err != nil {
 			return deletedCount, fmt.Errorf("failed to delete document %s: %w", docIDStr, err)
 		}
 
-		// FIX ISSUE 5: Verify deletion worked
+		// Verify deletion
 		time.Sleep(100 * time.Millisecond)
 
 		verifyDocs, _ := dbDocStore.Query(ctx, func(d interface{}) (bool, error) {
@@ -3345,7 +3519,7 @@ func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 		})
 
 		if len(verifyDocs) > 0 {
-			logger.Warn("[WARN] Document %s still exists after delete!", docIDStr)
+			logger.Warn("[WARN] Document %s still exists in %s after delete!", docIDStr, storeName)
 		}
 
 		deletedCount++
@@ -3354,26 +3528,116 @@ func crudDeleteDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 		if optimusdb.KBMetadata != nil {
 			metadataStore := *optimusdb.KBMetadata
 			metadataID := fmt.Sprintf("meta_%s", docIDStr)
-			_, _ = metadataStore.Delete(ctx, metadataID) // Ignore errors for metadata deletion
+			_, _ = metadataStore.Delete(ctx, metadataID)
 		}
 	}
 
+	logger.Info("[INFO] CRUDDELETE: Deleted %d documents from %s", deletedCount, storeName)
 	return deletedCount, nil
 }
 
 // =============================================================================
 // 4. CRUDUPDATE - Update Documents (FIXED - Line ~2378)
 // =============================================================================
+// =============================================================================
+// PATCH 3: crudUpdateDocStoreRev — REPLACE THE ENTIRE FUNCTION
+// =============================================================================
+// FIND: func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]interface{},
+// REPLACE WITH: everything below up to the closing brace
+// =============================================================================
+// CHANGES:
+//   - Added dstype parameter to function signature
+//   - Added full store routing switch (all 11 stores)
+//   - Added storeName tracking for logging
+//   - Lineage/metadata updates now use storeName instead of hardcoded "dsswres"
+// =============================================================================
+// NOTE: You also need to update the CALLER in Service() switch case:
+//   OLD: updatedCount, err := crudUpdateDocStoreRev(knowledgeBaseDB, req.Criteria, req.UpdateData)
+//   NEW: updatedCount, err := crudUpdateDocStoreRev(knowledgeBaseDB, req.DSType, req.Criteria, req.UpdateData)
+// =============================================================================
 
-func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]interface{},
+func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, dstype string, criteria []map[string]interface{},
 	updateData []map[string]interface{}) (int, error) {
 
 	ctx := context.Background()
 
-	if optimusdb.DsSWres == nil {
-		return 0, fmt.Errorf("DsSWres store not initialized")
+	var dbDocStore iface.DocumentStore
+	var storeName string
+
+	switch strings.ToLower(dstype) {
+	case "dsswres":
+		if optimusdb.DsSWres == nil {
+			return 0, fmt.Errorf("DsSWres store not initialized")
+		}
+		dbDocStore = *optimusdb.DsSWres
+		storeName = "dsswres"
+	case "dsswresaloc":
+		if optimusdb.DsSWresaloc == nil {
+			return 0, fmt.Errorf("DsSWresaloc store not initialized")
+		}
+		dbDocStore = *optimusdb.DsSWresaloc
+		storeName = "dsswresaloc"
+	case "kbmetadata":
+		if optimusdb.KBMetadata == nil {
+			return 0, fmt.Errorf("KBMetadata store not initialized")
+		}
+		dbDocStore = *optimusdb.KBMetadata
+		storeName = "kbmetadata"
+	case "kbdata":
+		if optimusdb.KBdata == nil {
+			return 0, fmt.Errorf("KBdata store not initialized")
+		}
+		dbDocStore = *optimusdb.KBdata
+		storeName = "kbdata"
+	case "tosca_imported":
+		if optimusdb.DsTOSCA_Imported == nil {
+			return 0, fmt.Errorf("DsTOSCA_Imported store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_Imported
+		storeName = "tosca_imported"
+	case "tosca_adt":
+		if optimusdb.DsTOSCA_ADT == nil {
+			return 0, fmt.Errorf("DsTOSCA_ADT store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_ADT
+		storeName = "tosca_adt"
+	case "tosca_capacities":
+		if optimusdb.DsTOSCA_Capacities == nil {
+			return 0, fmt.Errorf("DsTOSCA_Capacities store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_Capacities
+		storeName = "tosca_capacities"
+	case "tosca_deploymentplan":
+		if optimusdb.DsTOSCA_DeploymentPlan == nil {
+			return 0, fmt.Errorf("DsTOSCA_DeploymentPlan store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_DeploymentPlan
+		storeName = "tosca_deploymentplan"
+	case "tosca_eventhistory":
+		if optimusdb.DsTOSCA_EventHistory == nil {
+			return 0, fmt.Errorf("DsTOSCA_EventHistory store not initialized")
+		}
+		dbDocStore = *optimusdb.DsTOSCA_EventHistory
+		storeName = "tosca_eventhistory"
+	case "whoiswho":
+		if optimusdb.WhoiswhoStore == nil {
+			return 0, fmt.Errorf("WhoiswhoStore store not initialized")
+		}
+		dbDocStore = *optimusdb.WhoiswhoStore
+		storeName = "whoiswho"
+	case "validations":
+		if optimusdb.Validations == nil {
+			return 0, fmt.Errorf("Validations store not initialized")
+		}
+		dbDocStore = *optimusdb.Validations
+		storeName = "validations"
+	default:
+		if optimusdb.DsSWres == nil {
+			return 0, fmt.Errorf("default DsSWres store not initialized")
+		}
+		dbDocStore = *optimusdb.DsSWres
+		storeName = "dsswres"
 	}
-	dbDocStore := *optimusdb.DsSWres
 
 	if len(criteria) == 0 {
 		return 0, fmt.Errorf("update requires criteria")
@@ -3386,6 +3650,8 @@ func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 	filterCriteria := criteria[0]
 	updates := updateData[0]
 
+	logger.Info("[INFO] CRUDUPDATE: Updating in %s with criteria: %+v", storeName, filterCriteria)
+
 	// Query for documents matching criteria
 	matchedDocs, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
 		record, ok := doc.(map[string]interface{})
@@ -3393,19 +3659,8 @@ func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 			return false, nil
 		}
 
-		// Check if all criteria match
-		for key, value := range filterCriteria {
-			recordValue, exists := record[key]
-			if !exists {
-				return false, nil
-			}
-
-			if fmt.Sprintf("%v", recordValue) != fmt.Sprintf("%v", value) {
-				return false, nil
-			}
-		}
-
-		return true, nil
+		// Use enhanced matching with nested path support and operators
+		return matchesCriteriaEnhanced(record, filterCriteria), nil
 	})
 
 	if err != nil {
@@ -3413,7 +3668,7 @@ func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 	}
 
 	if len(matchedDocs) == 0 {
-		return 0, nil // No documents to update
+		return 0, nil
 	}
 
 	// Update each matched document using delete-then-insert pattern
@@ -3424,7 +3679,6 @@ func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 			continue
 		}
 
-		// Extract and preserve original _id
 		originalID, ok := record["_id"]
 		if !ok {
 			continue
@@ -3475,10 +3729,9 @@ func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 
 		updatedCount++
 
-		// NEW: Add lineage update for modified document
+		// Lineage update for modified document
 		if optimusdb.Interceptor != nil {
-			if err := optimusdb.Interceptor.OnDocumentUpdate(updatedDoc, "dsswres"); err != nil {
-				//logChan <- Log{Type: Warning, Data: fmt.Sprintf("Metadata update failed for doc %s: %v", docIDStr, err)}
+			if err := optimusdb.Interceptor.OnDocumentUpdate(updatedDoc, storeName); err != nil {
 				logger.Error("[ERROR] Metadata update failed for doc %s: %v", docIDStr, err)
 			}
 		}
@@ -3488,7 +3741,6 @@ func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 			metadataStore := *optimusdb.KBMetadata
 			metadataID := fmt.Sprintf("meta_%s", docIDStr)
 
-			// Query for existing metadata
 			metadataDocs, _ := metadataStore.Query(ctx, func(doc interface{}) (bool, error) {
 				metaRecord, ok := doc.(map[string]interface{})
 				if !ok {
@@ -3502,21 +3754,19 @@ func crudUpdateDocStoreRev(optimusdb *KnowledgeBaseDB, criteria []map[string]int
 
 			if len(metadataDocs) > 0 {
 				if metaDoc, ok := metadataDocs[0].(map[string]interface{}); ok {
-					// Update metadata fields
 					metaDoc["last_updated"] = time.Now().UTC().Format(time.RFC3339)
 					if name, ok := updatedDoc["name"].(string); ok {
 						metaDoc["name"] = name
 					}
 
-					// Delete old metadata
 					metadataStore.Delete(ctx, metadataID)
-					// Insert updated metadata
 					metadataStore.Put(ctx, metaDoc)
 				}
 			}
 		}
 	}
 
+	logger.Info("[INFO] CRUDUPDATE: Updated %d documents in %s", updatedCount, storeName)
 	return updatedCount, nil
 }
 
