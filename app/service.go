@@ -1080,9 +1080,13 @@ func intPtr(i int) *int {
 	return &i
 }
 
+func ConvertMetadataToMap(entry datamodel.MetadataEntry) map[string]interface{} {
+	return datamodel.ConvertMetadataToMap(entry)
+}
+
 /*
 *
- */
+
 func ConvertMetadataToMap(entry datamodel.MetadataEntry) map[string]interface{} {
 	metadataMap := make(map[string]interface{})
 
@@ -1109,6 +1113,7 @@ func ConvertMetadataToMap(entry datamodel.MetadataEntry) map[string]interface{} 
 
 	return metadataMap
 }
+*/
 
 // =============================================================================
 // 2. CRUDPUT - Insert Documents (REFINED - Supports All Datastores)

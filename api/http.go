@@ -20,6 +20,7 @@ import (
 	"optimusdb/config"
 	"optimusdb/contextualmetadata"
 	"optimusdb/credentials"
+	"optimusdb/datamodel"
 	"optimusdb/election"
 	"optimusdb/logger"
 	"optimusdb/tosca"
@@ -249,21 +250,21 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 				}
 			}
 
+			// ── Add to IPFS (hoisted out — needed by both SQLite index AND metadata goroutine) ──
+			var ipfsPath string
+			if optimusdb.Orbit != nil {
+				coreAPI := (*optimusdb.Orbit).IPFS()
+				nd := files.NewBytesFile(decoded)
+				p, err := coreAPI.Unixfs().Add(ctx, nd)
+				if err == nil {
+					ipfsPath = p.String()
+				}
+			}
+
 			// Also index in SQLite for fast lookups
 			if app.GlobalKBSQLite != nil {
 				nodeCount := tosca.CountNodeTemplatesFromJSON(toscaDoc)
 				description := extractDescription(toscaDoc)
-
-				// Add to IPFS
-				var ipfsPath string
-				if optimusdb.Orbit != nil {
-					coreAPI := (*optimusdb.Orbit).IPFS()
-					nd := files.NewBytesFile(decoded)
-					p, err := coreAPI.Unixfs().Add(ctx, nd)
-					if err == nil {
-						ipfsPath = p.String()
-					}
-				}
 
 				filesize := int64(len(decoded))
 				sum := sha256.Sum256(decoded)
@@ -274,6 +275,104 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 					filesize, sha, ipfsPath, uploader, sourcePod, sourceIP,
 				)
 			}
+
+			// ── AUTO-GENERATE EXTENDED METADATA → KBMetadata + SQLite ────
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.Warn("Panic in TOSCA metadata auto-generation: %v", r)
+					}
+				}()
+
+				metaEntry := datamodel.GenerateMetadataFromTOSCA(
+					templateID,
+					filename,
+					decoded,
+					toscaDoc,
+					ipfsPath,
+					uploader,
+					sourcePod,
+					sourceIP,
+					storeName,
+					app.GetAgentName(),
+				)
+
+				// 1) OrbitDB KBMetadata → CRDT-replicates to all peers
+				if optimusdb.KBMetadata != nil && *optimusdb.KBMetadata != nil {
+					metadataMap := datamodel.ConvertMetadataToMap(metaEntry)
+					metaCtx, metaCancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer metaCancel()
+
+					_, metaErr := (*optimusdb.KBMetadata).Put(metaCtx, metadataMap)
+					if metaErr != nil {
+						logger.Warn("Failed to store TOSCA metadata in KBMetadata: %v", metaErr)
+					} else {
+						logger.Info("TOSCA metadata auto-generated in KBMetadata: %s → associated_id=%s",
+							metaEntry.ID, templateID)
+					}
+				}
+
+				// 2) SQLite metadata_catalog → fast local SQL queries (all 48 columns)
+				if app.GlobalKBSQLite != nil && app.GlobalKBSQLite.DB != nil {
+					insertSQL := `
+					INSERT OR REPLACE INTO metadata_catalog (
+						id, author, metadata_type, component, behaviour,
+						relationships, associated_id, name, description, tags,
+						status, created_by, created_at, updated_at, related_ids,
+						priority, scheduling_info, sla_constraints, ownership_details, audit_trail,
+						data_domain, data_classification, geo_location, temporal_coverage, data_quality_score,
+						schema_version, content_hash, file_format, file_size_bytes, record_count,
+						update_frequency, retention_policy, access_control, compliance_tags, provenance_chain,
+						processing_status, api_endpoint, version, parent_id, expiry_date,
+						language, license_type, contact_info, node_count, ipfs_cid,
+						source_agent, source_pod, source_ip
+					) VALUES (
+						?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,
+						?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,
+						?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,
+						?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,
+						?, ?, ?, ?, ?,  ?, ?, ?
+					)`
+
+					metaMap := datamodel.ConvertMetadataToMap(metaEntry)
+					_, sqlErr := app.GlobalKBSQLite.DB.Exec(insertSQL,
+						metaMap["_id"], metaMap["author"], metaMap["metadata_type"],
+						metaMap["component"], metaMap["behaviour"],
+						metaMap["relationships"], metaMap["associated_id"],
+						metaMap["name"], metaMap["description"],
+						strings.Join(metaEntry.Tags, ","),
+						metaMap["status"], metaMap["created_by"],
+						metaMap["created_at"], metaMap["updated_at"],
+						strings.Join(metaEntry.RelatedIDs, ","),
+						metaMap["priority"],
+						toJSON(metaEntry.SchedulingInfo), toJSON(metaEntry.SLAConstraints),
+						toJSON(metaEntry.OwnershipDetails), toJSON(metaEntry.AuditTrail),
+						metaMap["data_domain"], metaMap["data_classification"],
+						metaMap["geo_location"], metaMap["temporal_coverage"],
+						metaEntry.DataQualityScore,
+						metaMap["schema_version"], metaMap["content_hash"],
+						metaMap["file_format"], metaEntry.FileSizeBytes,
+						metaEntry.RecordCount,
+						metaMap["update_frequency"], metaMap["retention_policy"],
+						metaMap["access_control"], metaMap["compliance_tags"],
+						metaMap["provenance_chain"],
+						metaMap["processing_status"], metaMap["api_endpoint"],
+						metaMap["version"], metaMap["parent_id"],
+						metaMap["expiry_date"],
+						metaMap["language"], metaMap["license_type"],
+						metaMap["contact_info"], metaEntry.NodeCount,
+						metaMap["ipfs_cid"],
+						metaMap["source_agent"], metaMap["source_pod"],
+						metaMap["source_ip"],
+					)
+					if sqlErr != nil {
+						logger.Warn("Failed to store TOSCA metadata in SQLite: %v", sqlErr)
+					}
+				}
+
+				// 3) In-memory store for fast lookups
+				datamodel.Metadata.AddMetadata(metaEntry)
+			}()
 
 			// Extract sample queryable fields for response
 			queryableFields := extractQueryableFieldPaths(toscaDoc, "", 50)
@@ -1789,4 +1888,16 @@ func toFloat(v interface{}) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// toJSON safely marshals a value to JSON string for SQLite storage.
+func toJSON(v interface{}) string {
+	if v == nil {
+		return "{}"
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/ipfs/kubo/core"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"optimusdb/config"
+	"optimusdb/datamodel"
 	"optimusdb/logger"
 	"optimusdb/mq"
 	"optimusdb/queryengine"
@@ -211,6 +212,7 @@ func InitSQLite(dbPath string) (*KnowledgeBaseSQLite, error) {
 		//GlobalLoggerDB.AddToOptimusLog("ERROR", fmt.Sprintf("Table creation failed for Contextual Metadata: %v", err), runtime.GOOS)
 		return nil, err
 	}
+	GlobalKBSQLite.MigrateMetadataColumns()
 
 	logger.Info("[INFO] SQLite Database Ready at:", dbPath)
 	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("SQLite Database Ready at: %v", dbPath), runtime.GOOS)
@@ -292,50 +294,73 @@ func (kb *KnowledgeBaseSQLite) createDataCatalog() error {
 	return nil
 }
 
+/*
+	func (kb *KnowledgeBaseSQLite) CreateMetadataCatalogTable() error {
+		tableQuery := `
+	        CREATE TABLE IF NOT EXISTS metadata_catalog (
+	            id TEXT PRIMARY KEY,
+	            metadata_type TEXT,
+	            component TEXT,
+	            behaviour TEXT,
+	            description TEXT,
+	            created_by TEXT,
+	            created_at TEXT,
+	            updated_at TEXT,
+	            name TEXT,
+	            tags TEXT,
+	            associated_id TEXT,
+	            status TEXT,
+	            priority TEXT,
+	            relationships TEXT,
+	            related_ids TEXT,
+	            scheduling_info TEXT,
+	            sla_constraints TEXT,
+	            ownership_details TEXT,
+	            audit_trail TEXT
+	        );
+
+	        -- Add indexes for better query performance
+	        CREATE INDEX IF NOT EXISTS idx_metadata_type
+	            ON metadata_catalog(metadata_type);
+
+	        CREATE INDEX IF NOT EXISTS idx_metadata_created_at
+	            ON metadata_catalog(created_at);
+
+	        CREATE INDEX IF NOT EXISTS idx_metadata_associated_id
+	            ON metadata_catalog(associated_id);
+
+	        CREATE INDEX IF NOT EXISTS idx_metadata_status
+	            ON metadata_catalog(status);
+	    `
+		_, err := kb.DB.Exec(tableQuery)
+		if err != nil {
+			return err
+		}
+		logger.Info("[INFO] Table `metadata_catalog` created or already exists.")
+		//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Table `metadata_catalog` created or already exists."), runtime.GOOS)
+		return nil
+	}
+*/
 func (kb *KnowledgeBaseSQLite) CreateMetadataCatalogTable() error {
-	tableQuery := `
-        CREATE TABLE IF NOT EXISTS metadata_catalog (
-            id TEXT PRIMARY KEY,
-            metadata_type TEXT,
-            component TEXT,
-            behaviour TEXT,
-            description TEXT,
-            created_by TEXT,
-            created_at TEXT,
-            updated_at TEXT,
-            name TEXT,
-            tags TEXT,
-            associated_id TEXT,
-            status TEXT,
-            priority TEXT,
-            relationships TEXT,
-            related_ids TEXT,
-            scheduling_info TEXT,
-            sla_constraints TEXT,
-            ownership_details TEXT,
-            audit_trail TEXT
-        );
-        
-        -- Add indexes for better query performance
-        CREATE INDEX IF NOT EXISTS idx_metadata_type 
-            ON metadata_catalog(metadata_type);
-        
-        CREATE INDEX IF NOT EXISTS idx_metadata_created_at 
-            ON metadata_catalog(created_at);
-        
-        CREATE INDEX IF NOT EXISTS idx_metadata_associated_id 
-            ON metadata_catalog(associated_id);
-        
-        CREATE INDEX IF NOT EXISTS idx_metadata_status 
-            ON metadata_catalog(status);
-    `
+	tableQuery := datamodel.ExtendedMetadataCatalogSQL()
 	_, err := kb.DB.Exec(tableQuery)
 	if err != nil {
 		return err
 	}
-	logger.Info("[INFO] Table `metadata_catalog` created or already exists.")
-	//GlobalLoggerDB.AddToOptimusLog("INFO", fmt.Sprintf("Table `metadata_catalog` created or already exists."), runtime.GOOS)
+	logger.Info("[INFO] Table `metadata_catalog` (48 columns) created or already exists.")
 	return nil
+}
+
+// MigrateMetadataColumns adds the 28 new columns to an existing metadata_catalog.
+// Safe to call on a fresh database too — "duplicate column" errors are ignored.
+func (kb *KnowledgeBaseSQLite) MigrateMetadataColumns() {
+	for _, stmt := range datamodel.MigrateMetadataCatalogSQL() {
+		_, err := kb.DB.Exec(stmt)
+		if err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			logger.Warn("[WARN] Migration: %v — %s", err, stmt)
+		}
+	}
+	logger.Info("[INFO] metadata_catalog extended columns migration complete.")
 }
 
 // createTables ensures the `datacatalog` table exists
