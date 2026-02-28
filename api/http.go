@@ -471,6 +471,131 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 				)
 			}
 
+			// ── FIX: AUTO-GENERATE EXTENDED METADATA for legacy uploads too ──
+			// Same as full_structure path: write to KBMetadata + metadata_catalog
+			go func() {
+				defer func() {
+					if rec := recover(); rec != nil {
+						logger.Warn("Panic in legacy TOSCA metadata auto-generation: %v", rec)
+					}
+				}()
+
+				// Build a toscaDoc from the raw YAML for GenerateMetadataFromTOSCA
+				legacyDoc := map[string]interface{}{
+					"description": description,
+				}
+				// Re-parse to get full structure for better metadata (best-effort)
+				if fullDoc, parseErr := tosca.ParseTOSCAToFullJSON(decoded); parseErr == nil {
+					legacyDoc = fullDoc
+				}
+
+				lgUploader := r.Header.Get("X-User")
+				if lgUploader == "" {
+					lgUploader = app.GetAgentName()
+				}
+				lgSourcePod := os.Getenv("POD_NAME")
+				lgSourceIP, _ := getLocalIPAddress()
+
+				var lgIpfsPath string
+				if optimusdb.Orbit != nil {
+					coreAPI := (*optimusdb.Orbit).IPFS()
+					nd := files.NewBytesFile(decoded)
+					p, ipfsErr := coreAPI.Unixfs().Add(context.Background(), nd)
+					if ipfsErr == nil {
+						lgIpfsPath = p.String()
+					}
+				}
+
+				metaEntry := datamodel.GenerateMetadataFromTOSCA(
+					templateID,
+					filename,
+					decoded,
+					legacyDoc,
+					lgIpfsPath,
+					lgUploader,
+					lgSourcePod,
+					lgSourceIP,
+					"tosca_imported",
+					app.GetAgentName(),
+				)
+
+				// 1) OrbitDB KBMetadata → CRDT-replicates to all peers
+				if optimusdb.KBMetadata != nil && *optimusdb.KBMetadata != nil {
+					metadataMap := datamodel.ConvertMetadataToMap(metaEntry)
+					metaCtx, metaCancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer metaCancel()
+
+					_, metaErr := (*optimusdb.KBMetadata).Put(metaCtx, metadataMap)
+					if metaErr != nil {
+						logger.Warn("Failed to store legacy TOSCA metadata in KBMetadata: %v", metaErr)
+					} else {
+						logger.Info("Legacy TOSCA metadata auto-generated in KBMetadata: %s → associated_id=%s",
+							metaEntry.ID, templateID)
+					}
+				}
+
+				// 2) SQLite metadata_catalog → fast local SQL queries
+				if app.GlobalKBSQLite != nil && app.GlobalKBSQLite.DB != nil {
+					insertSQL := `
+					INSERT OR REPLACE INTO metadata_catalog (
+						id, author, metadata_type, component, behaviour,
+						relationships, associated_id, name, description, tags,
+						status, created_by, created_at, updated_at, related_ids,
+						priority, scheduling_info, sla_constraints, ownership_details, audit_trail,
+						data_domain, data_classification, geo_location, temporal_coverage, data_quality_score,
+						schema_version, content_hash, file_format, file_size_bytes, record_count,
+						update_frequency, retention_policy, access_control, compliance_tags, provenance_chain,
+						processing_status, api_endpoint, version, parent_id, expiry_date,
+						language, license_type, contact_info, node_count, ipfs_cid,
+						source_agent, source_pod, source_ip
+					) VALUES (
+						?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,
+						?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,
+						?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,
+						?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,
+						?, ?, ?, ?, ?,  ?, ?, ?
+					)`
+
+					metaMap := datamodel.ConvertMetadataToMap(metaEntry)
+					_, sqlErr := app.GlobalKBSQLite.DB.Exec(insertSQL,
+						metaMap["_id"], metaMap["author"], metaMap["metadata_type"],
+						metaMap["component"], metaMap["behaviour"],
+						metaMap["relationships"], metaMap["associated_id"],
+						metaMap["name"], metaMap["description"],
+						strings.Join(metaEntry.Tags, ","),
+						metaMap["status"], metaMap["created_by"],
+						metaMap["created_at"], metaMap["updated_at"],
+						strings.Join(metaEntry.RelatedIDs, ","),
+						metaMap["priority"],
+						toJSON(metaEntry.SchedulingInfo), toJSON(metaEntry.SLAConstraints),
+						toJSON(metaEntry.OwnershipDetails), toJSON(metaEntry.AuditTrail),
+						metaMap["data_domain"], metaMap["data_classification"],
+						metaMap["geo_location"], metaMap["temporal_coverage"],
+						metaEntry.DataQualityScore,
+						metaMap["schema_version"], metaMap["content_hash"],
+						metaMap["file_format"], metaEntry.FileSizeBytes,
+						metaEntry.RecordCount,
+						metaMap["update_frequency"], metaMap["retention_policy"],
+						metaMap["access_control"], metaMap["compliance_tags"],
+						metaMap["provenance_chain"],
+						metaMap["processing_status"], metaMap["api_endpoint"],
+						metaMap["version"], metaMap["parent_id"],
+						metaMap["expiry_date"],
+						metaMap["language"], metaMap["license_type"],
+						metaMap["contact_info"], metaEntry.NodeCount,
+						metaMap["ipfs_cid"],
+						metaMap["source_agent"], metaMap["source_pod"],
+						metaMap["source_ip"],
+					)
+					if sqlErr != nil {
+						logger.Warn("Failed to store legacy TOSCA metadata in SQLite: %v", sqlErr)
+					}
+				}
+
+				// 3) In-memory store for fast lookups
+				datamodel.Metadata.AddMetadata(metaEntry)
+			}()
+
 			logger.Info("TOSCA uploaded (legacy mode): %s (filename: %s, nodes: %d)",
 				templateID, filename, nodeCount)
 
@@ -1399,7 +1524,36 @@ func ServeHTTP(optimusdb *app.KnowledgeBaseDB, theLog *app.LoggerSQLite, reqChan
 				sendErrorResponse(w, http.StatusBadRequest, "missing SQL")
 				return
 			}
-			rows, err := app.GlobalLoggerDB.SelectAll(sql)
+
+			// FIX: Route SQL to the correct SQLite database.
+			// Tables in KnowledgeBaseSQLite: metadata_catalog, datacatalog, toscametadata
+			// Tables in LoggerSQLite: optimusLogger, ems_events
+			// Auto-detect by checking if the query references a KnowledgeBase table.
+			sqlUpper := strings.ToUpper(sql)
+			kbTables := []string{"METADATA_CATALOG", "DATACATALOG", "TOSCAMETADATA"}
+			useKBSQLite := false
+			for _, t := range kbTables {
+				if strings.Contains(sqlUpper, t) {
+					useKBSQLite = true
+					break
+				}
+			}
+
+			// Also support explicit db selection via query parameter
+			dbParam := r.URL.Query().Get("db")
+			if dbParam == "kb" || dbParam == "knowledgebase" {
+				useKBSQLite = true
+			} else if dbParam == "log" || dbParam == "logger" {
+				useKBSQLite = false
+			}
+
+			var rows []map[string]interface{}
+			var err error
+			if useKBSQLite && app.GlobalKBSQLite != nil {
+				rows, err = app.GlobalKBSQLite.SelectAll(sql)
+			} else {
+				rows, err = app.GlobalLoggerDB.SelectAll(sql)
+			}
 			if err != nil {
 				sendErrorResponse(w, http.StatusBadRequest, "query failed: "+err.Error())
 				return

@@ -90,15 +90,16 @@ const (
 )
 
 type QueryOptions struct {
-	Strategy       QueryStrategy    `json:"strategy"`        // default: LOCAL_THEN_REMOTE_MERGE
-	Consistency    ConsistencyLevel `json:"consistency"`     // default: BEST_EFFORT
-	TimeBudgetMs   int              `json:"time_budget_ms"`  // default: 1200
-	QuorumN        int              `json:"quorum_n"`        // number of peers required (for QUORUM)
-	MinRows        int              `json:"min_rows"`        // threshold to stop early if enough rows
-	StaleOkTTLms   int              `json:"stale_ok_ttl_ms"` // use cached remote results within TTL
-	MaxPeers       int              `json:"max_peers"`       // top-K peers by reputation to query
-	IncludeLocal   bool             `json:"include_local"`   // default: true
-	AnnotateSource bool             `json:"annotate_source"` // default: true
+	Strategy       QueryStrategy    `json:"strategy"`         // default: LOCAL_THEN_REMOTE_MERGE
+	Consistency    ConsistencyLevel `json:"consistency"`      // default: BEST_EFFORT
+	TimeBudgetMs   int              `json:"time_budget_ms"`   // default: 1200
+	QuorumN        int              `json:"quorum_n"`         // number of peers required (for QUORUM)
+	MinRows        int              `json:"min_rows"`         // threshold to stop early if enough rows
+	StaleOkTTLms   int              `json:"stale_ok_ttl_ms"`  // use cached remote results within TTL
+	MaxPeers       int              `json:"max_peers"`        // top-K peers by reputation to query
+	IncludeLocal   bool             `json:"include_local"`    // default: true
+	AnnotateSource bool             `json:"annotate_source"`  // default: true
+	DSType         string           `json:"dstype,omitempty"` // FIX: target datastore for query routing
 }
 
 type Request struct {
@@ -252,12 +253,15 @@ func Service(knowledgeBaseDB *KnowledgeBaseDB,
 				opt.AnnotateSource = !(req.Options.AnnotateSource == false)
 			}
 
+			// FIX: Propagate DSType to query options for store-aware routing
+			opt.DSType = req.DSType
+
 			var out []map[string]interface{}
 			var err error
 
 			switch opt.Strategy {
 			case StrategyLocalOnly:
-				out, err = queryLocalDB(knowledgeBaseDB, req.Criteria)
+				out, err = queryLocalDB(knowledgeBaseDB, req.Criteria, req.DSType)
 				if err == nil && opt.AnnotateSource {
 					annotate(out, "local", "", StrategyLocalOnly)
 				}
@@ -2269,12 +2273,92 @@ func QueryUsingSQL(optimusdb *KnowledgeBaseDB, sqlQuery *SQLQuery) ([]map[string
 // //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Query local OrbitDB with enhanced filtering logic
 // =============================================================================
-// FIXED queryLocalDB - Now with Nested Path Support
+// resolveDocStoreByType resolves the OrbitDB DocumentStore for a given dstype.
+// Falls back to DsSWres if dstype is empty or unrecognized.
 // =============================================================================
 
-func queryLocalDB(knowledgeBaseDB *KnowledgeBaseDB, criteria []map[string]interface{}) ([]map[string]interface{}, error) {
+func resolveDocStoreByType(kb *KnowledgeBaseDB, dstype string) (iface.DocumentStore, error) {
+	switch strings.ToLower(dstype) {
+	case "kbmetadata":
+		if kb.KBMetadata == nil {
+			return nil, fmt.Errorf("KBMetadata store not initialized")
+		}
+		return *kb.KBMetadata, nil
+	case "kbdata":
+		if kb.KBdata == nil {
+			return nil, fmt.Errorf("KBdata store not initialized")
+		}
+		return *kb.KBdata, nil
+	case "dsswresaloc":
+		if kb.DsSWresaloc == nil {
+			return nil, fmt.Errorf("DsSWresaloc store not initialized")
+		}
+		return *kb.DsSWresaloc, nil
+	case "tosca_imported":
+		if kb.DsTOSCA_Imported == nil {
+			return nil, fmt.Errorf("DsTOSCA_Imported store not initialized")
+		}
+		return *kb.DsTOSCA_Imported, nil
+	case "tosca_adt":
+		if kb.DsTOSCA_ADT == nil {
+			return nil, fmt.Errorf("DsTOSCA_ADT store not initialized")
+		}
+		return *kb.DsTOSCA_ADT, nil
+	case "tosca_capacities":
+		if kb.DsTOSCA_Capacities == nil {
+			return nil, fmt.Errorf("DsTOSCA_Capacities store not initialized")
+		}
+		return *kb.DsTOSCA_Capacities, nil
+	case "tosca_deploymentplan":
+		if kb.DsTOSCA_DeploymentPlan == nil {
+			return nil, fmt.Errorf("DsTOSCA_DeploymentPlan store not initialized")
+		}
+		return *kb.DsTOSCA_DeploymentPlan, nil
+	case "tosca_eventhistory":
+		if kb.DsTOSCA_EventHistory == nil {
+			return nil, fmt.Errorf("DsTOSCA_EventHistory store not initialized")
+		}
+		return *kb.DsTOSCA_EventHistory, nil
+	case "whoiswho":
+		if kb.WhoiswhoStore == nil {
+			return nil, fmt.Errorf("WhoiswhoStore store not initialized")
+		}
+		return *kb.WhoiswhoStore, nil
+	case "validations":
+		if kb.Validations == nil {
+			return nil, fmt.Errorf("Validations store not initialized")
+		}
+		return *kb.Validations, nil
+	case "dsswres", "":
+		if kb.DsSWres == nil {
+			return nil, fmt.Errorf("DsSWres store not initialized")
+		}
+		return *kb.DsSWres, nil
+	default:
+		// Unrecognized dstype — fall back to DsSWres
+		if kb.DsSWres == nil {
+			return nil, fmt.Errorf("DsSWres store not initialized (fallback for dstype=%s)", dstype)
+		}
+		logger.Warn("Unrecognized dstype '%s', falling back to DsSWres", dstype)
+		return *kb.DsSWres, nil
+	}
+}
+
+// FIXED queryLocalDB - Now with Nested Path Support + DSType-aware store selection
+// =============================================================================
+
+func queryLocalDB(knowledgeBaseDB *KnowledgeBaseDB, criteria []map[string]interface{}, dstype ...string) ([]map[string]interface{}, error) {
 	ctx := context.Background()
-	dbDocStore := *knowledgeBaseDB.DsSWres
+
+	// Resolve the target store based on dstype (optional parameter for backward compat)
+	targetDstype := ""
+	if len(dstype) > 0 {
+		targetDstype = dstype[0]
+	}
+	dbDocStore, err := resolveDocStoreByType(knowledgeBaseDB, targetDstype)
+	if err != nil {
+		return nil, fmt.Errorf("store resolution failed for dstype=%s: %w", targetDstype, err)
+	}
 
 	results, err := dbDocStore.Query(ctx, func(doc interface{}) (bool, error) {
 		record, ok := doc.(map[string]interface{})
@@ -3203,7 +3287,7 @@ func localThenRemoteMerge(kb *KnowledgeBaseDB, criteria []map[string]interface{}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			local, lerr = queryLocalDB(kb, criteria)
+			local, lerr = queryLocalDB(kb, criteria, opt.DSType)
 			if lerr == nil && opt.AnnotateSource {
 				annotate(local, "local", "", StrategyLocalThenRemoteMerge)
 			}
@@ -3260,7 +3344,7 @@ func quorumMerge(kb *KnowledgeBaseDB, criteria []map[string]interface{}, opt Que
 	defer cancel()
 
 	// local first (non-blocking)
-	local, _ := queryLocalDB(kb, criteria)
+	local, _ := queryLocalDB(kb, criteria, opt.DSType)
 	if opt.AnnotateSource {
 		annotate(local, "local", "", StrategyQuorum)
 	}

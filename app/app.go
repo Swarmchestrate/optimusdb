@@ -1285,6 +1285,49 @@ func (kb *KnowledgeBaseSQLite) Close() {
 	}
 }
 
+// SelectAll executes a SELECT query against the KnowledgeBase SQLite database
+// and returns results as []map[string]interface{}.
+// This enables the /ems/sql endpoint to query metadata_catalog, datacatalog, etc.
+func (kb *KnowledgeBaseSQLite) SelectAll(stmt string) ([]map[string]interface{}, error) {
+	if kb == nil || kb.DB == nil {
+		return nil, errors.New("KnowledgeBase DB not initialized")
+	}
+	rows, err := kb.DB.Query(stmt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var out []map[string]interface{}
+	vals := make([]interface{}, len(cols))
+	ptrs := make([]interface{}, len(cols))
+	for i := range vals {
+		ptrs[i] = &vals[i]
+	}
+
+	for rows.Next() {
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, err
+		}
+		row := make(map[string]interface{}, len(cols))
+		for i, c := range cols {
+			switch v := vals[i].(type) {
+			case []byte:
+				row[c] = string(v)
+			default:
+				row[c] = v
+			}
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 func (db *KnowledgeBaseDB) AddDiscoveredPeer(peerID string) {
 	db.peersMutex.Lock()
 	defer db.peersMutex.Unlock()
