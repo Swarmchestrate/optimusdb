@@ -52,7 +52,7 @@ The upload path from the Resource Agent to OptimusDB is:
 Resource Agent
 │
 │  POST /swarmkb/upload
-│  { file: <base64>, filename: "swarm-eu-west-1.yaml" }
+│  { file: base64, filename: "swarm-eu-west-1.yaml" }
     ▼
     api/http.go → uploadTOSCAHandler()
     │
@@ -73,8 +73,8 @@ Resource Agent
     **Reproduction scenario:**
 
     ```
-    Upload 1:  filename = "swarm-eu-west-1.yaml"     content = <YAML bytes Ω>
-        Upload 2:  filename = "swarm-eu-central-1.yaml"  content = <YAML bytes Ω>  ← same content
+    Upload 1:  filename = "swarm-eu-west-1.yaml"     content = YAML bytes Ω
+        Upload 2:  filename = "swarm-eu-central-1.yaml"  content = YAML bytes Ω  ← same content
             ```
 
             **Expected:** Two independent OrbitDB documents, each retrievable by its swarmID.
@@ -108,7 +108,7 @@ Resource Agent
             OrbitDB's DocumentStore `Put()` is keyed on `_id`. It applies **last-write-wins** CRDT semantics: if a document with the same `_id` already exists, `Put()` replaces it without error. This is the correct and expected behaviour for a CRDT store — the bug is that the wrong key was being used.
 
             ```
-            templateID = sha256(<YAML bytes Ω>)[:8]  →  "a3f9c1b2de4f..."
+            templateID = sha256(YAML bytes Ω)[:8]  →  "a3f9c1b2de4f..."
 
                 Upload 1 PUT(_id="a3f9c1b2de4f...", _filename="swarm-eu-west-1.yaml")     → document created
                 Upload 2 PUT(_id="a3f9c1b2de4f...", _filename="swarm-eu-central-1.yaml")  → document OVERWRITTEN
