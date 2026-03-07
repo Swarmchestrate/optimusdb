@@ -100,10 +100,25 @@ func CountNodeTemplatesFromJSON(toscaDoc map[string]interface{}) int {
 // ID GENERATION
 // =============================================================================
 
-// ComputeTemplateID generates a unique ID for a TOSCA template based on content hash
+// ComputeTemplateID generates a unique ID for a TOSCA template based on content hash.
+// NOTE: Two files with identical content will produce the same ID regardless of filename.
+// Use ComputeTemplateIDWithSeed when the filename (e.g. swarmID) must distinguish them.
 func ComputeTemplateID(yamlContent []byte) string {
 	hash := sha256.Sum256(yamlContent)
 	return fmt.Sprintf("%x", hash[:8]) // Use first 8 bytes for shorter ID
+}
+
+// ComputeTemplateIDWithSeed generates a unique ID by hashing both the seed (e.g. filename /
+// swarmID) and the file content together. This guarantees that two files with identical
+// content but different seeds (filenames) produce different IDs, preventing OrbitDB
+// DocumentStore overwrites caused by _id collisions.
+//
+// Use this in v1 KB/RA integration where filename == swarmID.
+// The pure content hash is preserved in the content_hash metadata field for dedup auditing.
+func ComputeTemplateIDWithSeed(seed string, yamlContent []byte) string {
+	combined := append([]byte(seed+":"), yamlContent...)
+	hash := sha256.Sum256(combined)
+	return fmt.Sprintf("%x", hash[:8])
 }
 
 // =============================================================================

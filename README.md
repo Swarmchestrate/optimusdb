@@ -72,6 +72,9 @@ Key goals:
 - [Contributing](#contributing)
 - [License](#license)
 
+## Bugs List and related details for fixes or additions
+- [OptimusDB bugs and details of resolution](docs/BugFixes/OptimusDB_ABugsList.md)
+
 ---
 
 ## Features

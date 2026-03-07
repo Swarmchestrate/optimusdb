@@ -190,10 +190,22 @@ func uploadTOSCAHandler(optimusdb *app.KnowledgeBaseDB) http.HandlerFunc {
 		}
 
 		ctx := r.Context()
-		templateID := tosca.ComputeTemplateID(decoded)
+		//templateID := tosca.ComputeTemplateID(decoded)
 		filename := req.Filename
 		if filename == "" {
 			filename = "unknown"
+		}
+		// FIX: When a filename (swarmID) is provided, incorporate it into the template ID
+		// hash so that files with identical content but different filenames produce distinct
+		// _id values in OrbitDB. Without this, same-content files share the same _id and
+		// the second Put() silently overwrites the first (OrbitDB DocumentStore keying).
+		// The pure content hash is still stored separately in the content_hash metadata
+		// field for deduplication auditing.
+		var templateID string
+		if filename != "" && filename != "unknown" {
+			templateID = tosca.ComputeTemplateIDWithSeed(filename, decoded)
+		} else {
+			templateID = tosca.ComputeTemplateID(decoded)
 		}
 
 		// 2) Determine storage strategy based on request parameter
